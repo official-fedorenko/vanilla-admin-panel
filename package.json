@@ -1,0 +1,14 @@
+{
+  "name": "mypersonaladminpanel",
+  "version": "1.0.0",
+  "description": "Vanilla JS & Node.js Zero-Framework Admin Panel Template with SQLite",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.7"
+  }
+}

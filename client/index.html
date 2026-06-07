@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Загрузка...</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  
+  <div class="blob-bg"></div>
+  <div class="blob-bg blob-2"></div>
+
+  <!-- TOP HEADER BAR -->
+  <header class="topbar">
+    <a href="/" class="topbar__brand">
+      <div class="topbar__icon">
+        <i data-lucide="compass" class="logo-icon"></i>
+      </div>
+      <span class="topbar__name"><strong id="siteName">Мой Блог</strong></span>
+    </a>
+    
+    <div class="topbar__right">
+      <!-- Guest links (shown when not logged in) -->
+      <div id="guestNav" style="display:flex;align-items:center;gap:16px;">
+        <a href="/register.html" class="nav-btn-link">Регистрация</a>
+        <a href="/login.html" class="admin-link">Войти <i data-lucide="arrow-right"></i></a>
+      </div>
+      <!-- Auth links (shown when logged in) -->
+      <div id="authNav" style="display:none;align-items:center;gap:12px;">
+        <a href="/cabinet.html" class="admin-link" id="cabinetLink">
+          <i data-lucide="user"></i>
+          <span id="navUsername">Кабинет</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar__nav">
+        <p class="sidebar__section-label">Разделы</p>
+        <ul class="sidebar__menu">
+          <li>
+            <a href="#home" class="sidebar__link active" onclick="switchSection('home')">
+              <span class="sidebar__link-icon"><i data-lucide="home"></i></span>
+              <span>Главная</span>
+            </a>
+          </li>
+          <li>
+            <a href="#about" class="sidebar__link" onclick="switchSection('about')">
+              <span class="sidebar__link-icon"><i data-lucide="info"></i></span>
+              <span>О блоге</span>
+            </a>
+          </li>
+          <li>
+            <a href="#contact" class="sidebar__link" onclick="switchSection('contact')">
+              <span class="sidebar__link-icon"><i data-lucide="mail"></i></span>
+              <span>Обратная связь</span>
+            </a>
+          </li>
+        </ul>
+
+        <div id="sidebarRegisterBlock">
+          <p class="sidebar__section-label">Активность</p>
+          <ul class="sidebar__menu">
+            <li>
+              <a href="/register.html" class="sidebar__link">
+                <span class="sidebar__link-icon"><i data-lucide="user-plus"></i></span>
+                <span>Создать аккаунт</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- SIDEBAR TOGGLE FOR MOBILE -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle navigation">
+      <i data-lucide="menu" id="toggleIcon"></i>
+    </button>
+
+    <!-- CONTENT AREA -->
+    <main class="content">
+      <!-- HERO -->
+      <section class="hero" id="home">
+        <div class="hero__badge">
+          <i data-lucide="sparkles" style="width: 14px; height: 14px; color: var(--accent-cyan);"></i> 
+          Интеллектуальная платформа
+        </div>
+        <h1 class="hero__title" id="heroTitle">Добро пожаловать в блог</h1>
+        <p class="hero__subtitle" id="heroSubtitle">Последние новости, обзоры и статьи от ведущих экспертов индустрии.</p>
+        <div class="hero__actions">
+          <a href="/register.html" class="btn btn--primary" id="heroRegisterBtn">Создать аккаунт</a>
+          <a href="#articles-section" class="btn btn--ghost">Читать статьи</a>
+        </div>
+      </section>
+
+      <!-- ARTICLES SECTION -->
+      <section class="section" id="articles-section">
+        <h2 class="section__title">Последние статьи</h2>
+        <p class="section__subtitle">Самые свежие мысли и полезные материалы</p>
+        
+        <div class="articles-grid" id="articlesGrid">
+          <!-- Skeleton loader -->
+          <div class="article-card skeleton"></div>
+          <div class="article-card skeleton"></div>
+          <div class="article-card skeleton"></div>
+        </div>
+      </section>
+
+      <!-- ABOUT SECTION -->
+      <section class="section section--alt" id="about">
+        <h2 class="section__title" id="aboutTitle">О нашем блоге</h2>
+        <p class="section__subtitle" id="aboutSubtitle">Кто мы и для чего создали эту платформу</p>
+        
+        <div class="cards" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px;">
+          <div class="card" style="border-top: 4px solid var(--accent-purple);">
+            <div class="card__icon"><i data-lucide="edit-3"></i></div>
+            <h3 class="card__title" id="aboutCard1Title">Пишем о главном</h3>
+            <p class="card__text" id="aboutCard1Text">Публикуем материалы о веб-разработке, дизайне интерфейсов, системном администрировании и автоматизации процессов.</p>
+          </div>
+          <div class="card" style="border-top: 4px solid var(--accent-cyan);">
+            <div class="card__icon"><i data-lucide="shield-check"></i></div>
+            <h3 class="card__title" id="aboutCard2Title">Проверенный контент</h3>
+            <p class="card__text" id="aboutCard2Text">Все публикации проходят модерацию экспертами, чтобы вы получали только качественную и актуальную информацию.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTACT SECTION -->
+      <section class="section" id="contact">
+        <h2 class="section__title" id="contactTitle">Обратная связь</h2>
+        <p class="section__subtitle" id="contactSubtitle">Остались вопросы или хотите предложить сотрудничество?</p>
+        
+        <div class="contact-grid">
+          <div class="contact-info">
+            <div class="contact-item">
+              <span class="contact-item__icon"><i data-lucide="mail" style="color: var(--accent-cyan)"></i></span>
+              <div>
+                <strong>Электронная почта</strong>
+                <p id="contactEmail">info@example.com</p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <span class="contact-item__icon"><i data-lucide="map-pin" style="color: var(--accent-purple)"></i></span>
+              <div>
+                <strong>Наш офис</strong>
+                <p id="contactAddress">г. Москва, ул. Разработчиков, д. 42</p>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+            <div id="supportAuthPrompt" style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 20px; padding: 40px 30px; text-align: center; backdrop-filter: var(--glass-blur); max-width: 450px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+              <div style="width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, rgba(138,43,226,0.1), rgba(0,210,255,0.1)); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                <i data-lucide="message-square" style="width: 24px; height: 24px; stroke: var(--accent-cyan);"></i>
+              </div>
+              <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Обратная связь и поддержка</h3>
+              <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin-bottom: 24px;" id="supportPromptText">
+                Чтобы написать в службу поддержки или оставить обратную связь, пожалуйста, авторизуйтесь в вашем личном кабинете.
+              </p>
+              <div id="supportActionButtons" style="display: flex; gap: 12px; justify-content: center;">
+                <a href="/login.html" class="btn btn--primary" style="text-decoration: none; padding: 12px 24px;">Войти</a>
+                <a href="/register.html" class="btn" style="text-decoration: none; border: 1px solid var(--border-color); color: #fff; padding: 12px 24px; background: transparent; transition: background 0.2s;">Регистрация</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <span class="footer__copy">&copy; <span id="currentYear"></span> <span id="footerSiteName">Мой Блог</span>. Все права защищены.</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+  <script>
+    // Сайдбар тогглер
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const toggleIcon = document.getElementById('toggleIcon');
+    
+    sidebarToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      const isOpen = sidebar.classList.contains('open');
+      toggleIcon.setAttribute('data-lucide', isOpen ? 'x' : 'menu');
+      lucide.createIcons();
+    });
+
+    // Навигация
+    function switchSection(id) {
+      const links = document.querySelectorAll('.sidebar__link');
+      links.forEach(l => l.classList.remove('active'));
+      event.currentTarget.classList.add('active');
+      sidebar.classList.remove('open');
+      toggleIcon.setAttribute('data-lucide', 'menu');
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>

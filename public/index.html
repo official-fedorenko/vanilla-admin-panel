@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Панель Управления</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Quill Editor -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <a href="/" class="brand" style="text-decoration: none; color: inherit;">
+        <div class="brand-icon">A</div>
+        <span>MyAdmin</span>
+      </a>
+      
+      <ul class="nav-list">
+        <li class="nav-item active" data-section="articles">
+          <a href="#articles">
+            <i data-lucide="file-text"></i>
+            <span>Статьи (CRUD)</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="media">
+          <a href="#media">
+            <i data-lucide="image"></i>
+            <span>Медиатека</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="settings">
+          <a href="#settings">
+            <i data-lucide="settings"></i>
+            <span>Настройки</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="support">
+          <a href="#support">
+            <i data-lucide="message-square"></i>
+            <span>Обратная связь</span>
+          </a>
+        </li>
+        <li class="nav-item superadmin-only" data-section="users" style="display: none;">
+          <a href="#users">
+            <i data-lucide="users"></i>
+            <span>Пользователи</span>
+          </a>
+        </li>
+        <li class="nav-item superadmin-only" data-section="logs" style="display: none;">
+          <a href="#logs">
+            <i data-lucide="database"></i>
+            <span>Логи действий</span>
+          </a>
+        </li>
+      </ul>
+      
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar" id="avatarLetter">A</div>
+          <div class="user-details">
+            <h4 id="userDisplay">Admin</h4>
+            <span id="roleDisplay">Администратор</span>
+          </div>
+        </div>
+        <button class="logout-btn" id="logoutBtn" title="Выйти">
+          <i data-lucide="log-out"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- ARTICLES (CRUD) SECTION -->
+      <section id="section-articles" class="app-section active">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Менеджер статей</h2>
+            <p>Управление записями в базе данных (CRUD операции)</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="exportCSV('articles')">Экспорт CSV</button>
+            <button class="btn btn-secondary" onclick="exportJSON('articles')">Экспорт JSON</button>
+            <button class="btn" id="addArticleBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="crudSearch" class="form-control" placeholder="Поиск по названию...">
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Заголовок</th>
+                <th style="width: 150px;">Статус</th>
+                <th style="width: 200px;">Дата создания</th>
+                <th style="width: 120px; text-align: right;">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="articlesTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- MEDIA SECTION -->
+      <section id="section-media" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Медиатека</h2>
+            <p>Загрузка, просмотр и удаление файлов</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="exportCSV('media')">Экспорт CSV</button>
+            <button class="btn btn-secondary" onclick="exportJSON('media')">Экспорт JSON</button>
+          </div>
+        </div>
+        
+        <!-- Drag & Drop Zone -->
+        <div class="upload-zone" id="dropZone">
+          <input type="file" id="fileInput" multiple style="display: none;">
+          <i data-lucide="cloud-upload" style="width: 48px; height: 48px;"></i>
+          <h3>Перетащите файлы сюда или кликните для выбора</h3>
+          <p style="color: hsl(var(--text-muted)); font-size: 13px; margin-top: 8px;">Максимальный размер файла: 10MB (Изображения, документы)</p>
+        </div>
+        
+        <div class="media-grid" id="mediaGrid">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- SETTINGS SECTION -->
+      <section id="section-settings" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Системные настройки</h2>
+            <p>Управление конфигурацией вашего сайта</p>
+          </div>
+        </div>
+        
+        <div style="max-width: 600px; background-color: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); padding: 32px;">
+          <form id="settingsForm">
+            <!-- Dynamic elements loaded here -->
+            <div id="settingsContainer"></div>
+            
+            <button type="submit" class="btn" style="margin-top: 10px;">
+              <i data-lucide="save"></i>
+              <span>Сохранить настройки</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- SUPPORT / FEEDBACK SECTION -->
+      <section id="section-support" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Обратная связь и поддержка</h2>
+            <p>Общение с пользователями и ответы на вопросы с сайта</p>
+          </div>
+        </div>
+        
+        <div class="support-container" style="display: flex; gap: 20px; height: 600px; background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          
+          <!-- Tickets List -->
+          <div class="support-sidebar" style="width: 300px; border-right: 1px solid hsl(var(--border-color)); display: flex; flex-direction: column;">
+            <div style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2);">
+              <h3 style="font-size: 14px; margin: 0;">Диалоги</h3>
+            </div>
+            <div id="ticketsList" style="flex: 1; overflow-y: auto;">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+          
+          <!-- Chat Window -->
+          <div class="support-chat" style="flex: 1; display: flex; flex-direction: column;">
+            <!-- Header -->
+            <div id="chatHeader" style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; display: none;">
+              <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; font-weight: bold;" id="chatHeaderAvatar">?</div>
+              <div>
+                <div style="font-weight: 600;" id="chatHeaderName">Выберите диалог</div>
+                <div style="font-size: 12px; color: hsl(var(--text-muted));" id="chatHeaderEmail">...</div>
+              </div>
+            </div>
+            
+            <!-- Empty state -->
+            <div id="chatEmptyState" style="flex: 1; display: flex; align-items: center; justify-content: center; color: hsl(var(--text-muted)); flex-direction: column; gap: 10px;">
+              <i data-lucide="message-square" style="width: 48px; height: 48px; opacity: 0.5;"></i>
+              Выберите диалог слева для начала общения
+            </div>
+
+            <!-- Messages List -->
+            <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 20px; display: none; flex-direction: column; gap: 16px;">
+              <!-- Dynamically populated -->
+            </div>
+            
+            <!-- Input Area -->
+            <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color)); display: none;">
+              <form id="replyForm" style="display: flex; gap: 10px;">
+                <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1;" required autocomplete="off">
+                <button type="submit" class="btn" style="padding: 0 20px;">Отправить</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- USERS SECTION -->
+      <section id="section-users" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Управление пользователями</h2>
+            <p>Просмотр, создание, изменение и удаление учетных записей администраторов и редакторов</p>
+          </div>
+          <button class="btn" id="addUserBtn">
+            <i data-lucide="user-plus"></i>
+            <span>Добавить</span>
+          </button>
+        </div>
+        
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="usersSearch" class="form-control" placeholder="Поиск по имени или email...">
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 80px;">ID</th>
+                <th>Имя пользователя</th>
+                <th>Email</th>
+                <th>Роль</th>
+                <th>Дата создания</th>
+                <th style="width: 120px; text-align: right;">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- LOGS SECTION -->
+      <section id="section-logs" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Логи действий</h2>
+            <p>Полная история действий пользователей в системе (аудит событий)</p>
+          </div>
+          <button class="btn btn-danger" id="clearLogsBtn">
+            <i data-lucide="trash-2"></i>
+            <span>Очистить логи</span>
+          </button>
+        </div>
+        
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="logsSearch" class="form-control" placeholder="Поиск по пользователю или действию...">
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 200px;">Дата</th>
+                <th style="width: 180px;">Пользователь</th>
+                <th>Действие</th>
+              </tr>
+            </thead>
+            <tbody id="fullLogsTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ARTICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="articleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Добавить статью</h3>
+        <button class="modal-close" id="closeModalBtn">&times;</button>
+      </div>
+      <form id="articleForm">
+        <input type="hidden" id="articleId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="articleTitle">Заголовок статьи</label>
+            <input type="text" id="articleTitle" class="form-control" placeholder="Укажите заголовок..." required>
+          </div>
+          <div class="form-group">
+            <label for="articleContent">Содержимое</label>
+            <div id="quillEditor" style="height: 200px; background: hsl(var(--bg-main)); color: hsl(var(--text-primary)); border-color: hsl(var(--border-color));"></div>
+            <input type="hidden" id="articleContent">
+          </div>
+          <div class="form-group">
+            <label for="articleStatus">Статус публикации</label>
+            <select id="articleStatus" class="form-control">
+              <option value="draft">Черновик</option>
+              <option value="published">Опубликовано</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- USER MODAL DIALOG -->
+  <div class="modal-overlay" id="userModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="userModalTitle">Добавить пользователя</h3>
+        <button class="modal-close" id="closeUserModalBtn">&times;</button>
+      </div>
+      <form id="userForm">
+        <input type="hidden" id="userId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="userUsername">Имя пользователя</label>
+            <input type="text" id="userUsername" class="form-control" placeholder="Например: editor1" required>
+          </div>
+          <div class="form-group">
+            <label for="userEmail">E-mail</label>
+            <input type="email" id="userEmail" class="form-control" placeholder="Например: editor1@example.com" required>
+          </div>
+          <div class="form-group">
+            <label for="userPassword">Пароль</label>
+            <input type="password" id="userPassword" class="form-control" placeholder="Введите пароль...">
+            <small style="color: hsl(var(--text-muted)); font-size: 11px; display: block; margin-top: 4px;" id="passwordHelp">Для нового пользователя пароль обязателен. При редактировании оставьте пустым, если не хотите менять.</small>
+          </div>
+          <div class="form-group">
+            <label for="userRole">Роль в системе</label>
+            <select id="userRole" class="form-control">
+              <option value="User">Пользователь (User)</option>
+              <option value="Admin">Администратор (Admin)</option>
+              <option value="Superadmin">Суперадмин (Superadmin)</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelUserModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- App logic JS -->
+  <script src="app.js"></script>
+</body>
+</html>

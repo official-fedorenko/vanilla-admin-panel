@@ -1,0 +1,5 @@
+node_modules/
+db.sqlite
+.gemini/
+scratch.txt
+temp_cabinet.js

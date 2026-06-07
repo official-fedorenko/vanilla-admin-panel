@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Авторизация — Моя Админка</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <h1>Панель Управления</h1>
+        <p>Войдите для доступа к администрированию</p>
+      </div>
+      
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Имя пользователя</label>
+          <input type="text" id="username" class="form-control" placeholder="Введите имя..." required autocomplete="username">
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Пароль</label>
+          <input type="password" id="password" class="form-control" placeholder="Введите пароль..." required autocomplete="current-password">
+        </div>
+        
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">
+          <span>Войти в систему</span>
+          <i data-lucide="arrow-right"></i>
+        </button>
+      </form>
+      
+      <div id="loginError" style="margin-top: 15px; color: hsl(var(--accent-red)); font-size: 13px; text-align: center; display: none;">
+        Неверное имя пользователя или пароль
+      </div>
+
+      <div style="text-align: center; margin-top: 24px; border-top: 1px solid hsl(var(--border-color)); padding-top: 20px;">
+        <a href="/" style="color: hsl(var(--text-secondary)); text-decoration: none; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; transition: var(--transition-smooth);" onmouseover="this.style.color='hsl(var(--text-primary))'" onmouseout="this.style.color='hsl(var(--text-secondary))'">
+          <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+          На главную
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // Initialize icons
+    lucide.createIcons();
+
+    // Custom Toast Helper
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `
+        <i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}"></i>
+        <span>${message}</span>
+      `;
+      container.appendChild(toast);
+      lucide.createIcons({attrs: {'stroke-width': 2}});
+      
+      // Animate in
+      setTimeout(() => toast.classList.add('show'), 10);
+      
+      // Remove after 3s
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+      }, 3000);
+    }
+
+    // Login Form Handler
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const usernameInput = document.getElementById('username').value;
+      const passwordInput = document.getElementById('password').value;
+      const errorDiv = document.getElementById('loginError');
+      
+      errorDiv.style.display = 'none';
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: usernameInput,
+            password: passwordInput
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          showToast('Успешный вход! Перенаправление...', 'success');
+          setTimeout(() => {
+            window.location.href = '/admin/';
+          }, 800);
+        } else {
+          errorDiv.textContent = data.message || 'Неверные данные для входа';
+          errorDiv.style.display = 'block';
+          showToast(data.message || 'Ошибка входа', 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        errorDiv.textContent = 'Ошибка сети. Попробуйте позже.';
+        errorDiv.style.display = 'block';
+        showToast('Ошибка сети при попытке входа', 'error');
+      }
+    });
+  </script>
+</body>
+</html>

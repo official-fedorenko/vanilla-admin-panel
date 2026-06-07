@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Регистрация — Мой Блог</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #050505;
+      --bg-card: rgba(20, 20, 28, 0.85);
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0ab;
+      --accent-purple: #8a2be2;
+      --accent-cyan: #00d2ff;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(138, 43, 226, 0.6);
+      --red: #ff4a6e;
+      --green: #00e5a0;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+      overflow-x: hidden;
+    }
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .blob-1 { width: 500px; height: 500px; top: -100px; right: -100px; background: radial-gradient(circle, rgba(0,210,255,0.14) 0%, transparent 70%); }
+    .blob-2 { width: 400px; height: 400px; bottom: -80px; left: -100px; background: radial-gradient(circle, rgba(138,43,226,0.18) 0%, transparent 70%); }
+
+    .auth-wrapper {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 460px;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 24px;
+      transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--text-primary); }
+    .back-link svg { width: 16px; height: 16px; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 40px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 30px 60px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+      animation: slideUp 0.5s cubic-bezier(0.4,0,0.2,1);
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, rgba(0,210,255,0.15), rgba(138,43,226,0.1));
+      border: 1px solid rgba(0,210,255,0.2);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .card-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-cyan); }
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #fff 30%, rgba(255,255,255,0.7));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .form-group { margin-bottom: 18px; }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 13px 16px;
+      font-size: 15px;
+      border-radius: 12px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(138,43,226,0.12); }
+    input::placeholder { color: rgba(160,160,171,0.5); }
+    input.valid { border-color: rgba(0,229,160,0.5); }
+    input.invalid { border-color: rgba(255,74,110,0.5); }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+      transition: color 0.2s;
+    }
+    .hint.ok { color: var(--green); }
+    .hint.bad { color: var(--red); }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #00d2ff, #0099cc);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,210,255,0.3); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn.loading { pointer-events: none; }
+
+    .error-box {
+      background: rgba(255,74,110,0.1);
+      border: 1px solid rgba(255,74,110,0.3);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+      color: var(--red);
+      margin-top: 16px;
+      display: none;
+    }
+    .divider {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin: 24px 0;
+      position: relative;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: var(--border-color);
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+    .footer-link {
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    .footer-link a { color: var(--accent-purple); text-decoration: none; font-weight: 500; }
+    .footer-link a:hover { text-decoration: underline; }
+
+    .toast-container {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 10px; z-index: 2000;
+    }
+    .toast {
+      background: rgba(20,20,28,0.95); border: 1px solid var(--border-color);
+      border-left: 3px solid var(--accent-purple);
+      color: var(--text-primary); padding: 14px 18px; border-radius: 10px;
+      font-size: 14px; transform: translateX(120%);
+      transition: transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275); min-width: 260px;
+    }
+    .toast.success { border-left-color: var(--green); }
+    .toast.error { border-left-color: var(--red); }
+    .toast.show { transform: translateX(0); }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+
+  <div class="auth-wrapper">
+    <a href="/" class="back-link">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      На главную
+    </a>
+
+    <div class="card">
+      <div class="card-badge">Новый аккаунт</div>
+      <h1>Создать аккаунт</h1>
+      <p class="subtitle">Присоединяйтесь — это займёт минуту</p>
+
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="username">Имя пользователя</label>
+          <input type="text" id="username" placeholder="Например: alex_dev" required autocomplete="username" minlength="3">
+          <div class="hint" id="usernameHint">Минимум 3 символа, только буквы, цифры и _</div>
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="example@mail.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="password">Пароль</label>
+          <input type="password" id="password" placeholder="Минимум 6 символов" required autocomplete="new-password">
+          <div class="hint" id="passwordHint">Введите надёжный пароль</div>
+        </div>
+        <div class="form-group">
+          <label for="confirmPassword">Подтверждение пароля</label>
+          <input type="password" id="confirmPassword" placeholder="Повторите пароль" required autocomplete="new-password">
+          <div class="hint" id="confirmHint">Пароли должны совпадать</div>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Зарегистрироваться</button>
+        <div class="error-box" id="errorBox"></div>
+      </form>
+
+      <div class="divider">или</div>
+      <div class="footer-link">Уже есть аккаунт? <a href="/login.html">Войти</a></div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    function showToast(msg, type = 'success') {
+      const c = document.getElementById('toastContainer');
+      const t = document.createElement('div');
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      c.appendChild(t);
+      setTimeout(() => t.classList.add('show'), 10);
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3500);
+    }
+
+    // Живая валидация логина с проверкой занятости
+    const usernameInput = document.getElementById('username');
+    const usernameHint = document.getElementById('usernameHint');
+    let usernameTimeout = null;
+
+    usernameInput.addEventListener('input', () => {
+      if (usernameTimeout) {
+        clearTimeout(usernameTimeout);
+      }
+
+      const val = usernameInput.value.trim();
+      if (!val) {
+        usernameInput.className = '';
+        usernameHint.className = 'hint';
+        usernameHint.textContent = 'Минимум 3 символа, только буквы, цифры и _';
+        return;
+      }
+
+      const valid = /^[a-zA-Z0-9_]{3,}$/.test(val);
+      if (!valid) {
+        usernameInput.className = 'invalid';
+        usernameHint.className = 'hint bad';
+        usernameHint.textContent = 'Минимум 3 символа, только a-z, 0-9 и _';
+        return;
+      }
+
+      // Пока идет проверка, сбрасываем класс и пишем статус проверки
+      usernameInput.className = '';
+      usernameHint.className = 'hint';
+      usernameHint.textContent = 'Проверка доступности имени...';
+
+      usernameTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/auth/check-username?username=${encodeURIComponent(val)}`);
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          if (data.success) {
+            if (data.available) {
+              usernameInput.className = 'valid';
+              usernameHint.className = 'hint ok';
+              usernameHint.textContent = '✓ Имя пользователя свободно';
+            } else {
+              usernameInput.className = 'invalid';
+              usernameHint.className = 'hint bad';
+              usernameHint.textContent = '✗ Это имя пользователя уже занято';
+            }
+          }
+        } catch (e) {
+          usernameInput.className = '';
+          usernameHint.className = 'hint';
+          usernameHint.textContent = 'Не удалось проверить имя';
+        }
+      }, 500);
+    });
+
+    // Живая валидация пароля
+    const passwordInput = document.getElementById('password');
+    const passwordHint = document.getElementById('passwordHint');
+    passwordInput.addEventListener('input', () => {
+      const len = passwordInput.value.length;
+      passwordHint.className = 'hint' + (len ? (len >= 6 ? ' ok' : ' bad') : '');
+      passwordHint.textContent = len >= 6 ? '✓ Пароль достаточно длинный' : `Ещё ${6 - len} символ(а)`;
+    });
+
+    // Живая валидация подтверждения пароля
+    const confirmInput = document.getElementById('confirmPassword');
+    const confirmHint = document.getElementById('confirmHint');
+    confirmInput.addEventListener('input', () => {
+      const match = confirmInput.value === passwordInput.value;
+      const filled = confirmInput.value.length > 0;
+      confirmInput.className = filled ? (match ? 'valid' : 'invalid') : '';
+      confirmHint.className = 'hint' + (filled ? (match ? ' ok' : ' bad') : '');
+      confirmHint.textContent = !filled ? 'Пароли должны совпадать' : match ? '✓ Пароли совпадают' : '✗ Пароли не совпадают';
+    });
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      const errorBox = document.getElementById('errorBox');
+
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('confirmPassword').value;
+
+      errorBox.style.display = 'none';
+
+      if (!/^[a-zA-Z0-9_]{3,}$/.test(username)) {
+        errorBox.textContent = 'Имя пользователя может содержать только буквы, цифры и _, минимум 3 символа';
+        errorBox.style.display = 'block'; return;
+      }
+      if (password.length < 6) {
+        errorBox.textContent = 'Пароль должен содержать минимум 6 символов';
+        errorBox.style.display = 'block'; return;
+      }
+      if (password !== confirm) {
+        errorBox.textContent = 'Пароли не совпадают';
+        errorBox.style.display = 'block'; return;
+      }
+
+      btn.disabled = true;
+      btn.classList.add('loading');
+      btn.textContent = 'Создаём аккаунт...';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          showToast('Аккаунт создан! Добро пожаловать 🎉', 'success');
+          btn.textContent = 'Перенаправление...';
+          setTimeout(() => { window.location.href = '/cabinet.html'; }, 900);
+        } else {
+          errorBox.textContent = data.message || 'Ошибка при регистрации';
+          errorBox.style.display = 'block';
+          btn.disabled = false;
+          btn.classList.remove('loading');
+          btn.textContent = 'Зарегистрироваться';
+        }
+      } catch (err) {
+        errorBox.textContent = 'Ошибка сети. Попробуйте позже.';
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.classList.remove('loading');
+        btn.textContent = 'Зарегистрироваться';
+      }
+    });
+  </script>
+</body>
+</html>
