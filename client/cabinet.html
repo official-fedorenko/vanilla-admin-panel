@@ -358,12 +358,18 @@
 
         <!-- Чат поддержки -->
         <div class="card" style="display: flex; flex-direction: column; height: 500px;">
-          <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="color: var(--accent-purple);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-              <span id="cabinetChatTitle">Чат с поддержкой</span>
+          <div class="card-title" style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="color: var(--accent-purple);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                <span id="cabinetChatTitle">Чат с поддержкой</span>
+              </div>
+              <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
             </div>
-            <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+            <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; gap: 12px; margin-top: 2px;">
+              <span>Создатель: <strong id="ticketCreator" style="color: var(--accent-cyan);">...</strong></span>
+              <span>Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong></span>
+            </div>
           </div>
           <div id="cabinetChatMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
             <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка сообщений...</div>
@@ -701,6 +707,9 @@
       document.getElementById('adminBackBtn').style.display = 'inline-block';
       document.getElementById('cabinetChatForm').style.display = 'flex';
       
+      document.getElementById('ticketCreator').textContent = name;
+      document.getElementById('cabinetChatSubtitle').style.display = 'flex';
+      
       // Load messages
       await loadActiveTicketMessages(false);
       
@@ -714,6 +723,7 @@
 
     window.closeAdminChatInline = function() {
       activeAdminTicketId = null;
+      document.getElementById('cabinetChatSubtitle').style.display = 'none';
       loadAdminTickets();
     };
 
@@ -724,6 +734,18 @@
         if (res.ok) {
           const data = await res.json();
           renderChatMessages(data.messages, isPolling);
+          
+          // Determine last replier
+          if (data.messages && data.messages.length > 0) {
+            const lastMsg = data.messages[data.messages.length - 1];
+            let lastReplier = lastMsg.name || 'Пользователь';
+            if (lastMsg.sender_role === 'Admin' || lastMsg.sender_role === 'Superadmin') {
+              lastReplier = `${lastMsg.name} (Поддержка)`;
+            }
+            document.getElementById('ticketLastReplier').textContent = lastReplier;
+          } else {
+            document.getElementById('ticketLastReplier').textContent = 'Нет сообщений';
+          }
         }
       } catch(e) {}
     }
