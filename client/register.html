@@ -244,6 +244,21 @@
           <input type="password" id="confirmPassword" placeholder="Повторите пароль" required autocomplete="new-password">
           <div class="hint" id="confirmHint">Пароли должны совпадать</div>
         </div>
+
+        <!-- Honeypot (невидимые поля для ботов) -->
+        <input type="text" name="website" id="website" style="display:none" tabindex="-1" autocomplete="off">
+        <input type="text" name="hp" id="hp" style="position:absolute;left:-9999px;top:-9999px" tabindex="-1" autocomplete="off">
+
+        <!-- Динамическая защита от ботов (случайный простой пример) -->
+        <div class="form-group" style="margin-top: 8px;">
+          <label>Защита от ботов: <span id="botQuestionText"></span></label>
+          <input type="text" id="botAnswer" placeholder="Ответ" required autocomplete="off" style="max-width: 120px;">
+          <!-- Скрытые поля для передачи вопроса на сервер -->
+          <input type="hidden" id="botNum1">
+          <input type="hidden" id="botNum2">
+          <input type="hidden" id="botOp">
+        </div>
+
         <button type="submit" class="btn" id="submitBtn">Зарегистрироваться</button>
         <div class="error-box" id="errorBox"></div>
       </form>
@@ -265,6 +280,28 @@
       setTimeout(() => t.classList.add('show'), 10);
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3500);
     }
+
+    // === Усиленная защита от ботов ===
+    let formLoadTime = Date.now();
+
+    function generateRandomBotQuestion() {
+      const num1 = Math.floor(Math.random() * 8) + 2;   // 2-9
+      const num2 = Math.floor(Math.random() * 8) + 2;   // 2-9
+      const isAddition = Math.random() > 0.5;
+      const op = isAddition ? '+' : '-';
+      const correctAnswer = isAddition ? (num1 + num2) : (num1 - num2);
+
+      document.getElementById('botQuestionText').textContent = `${num1} ${op} ${num2} = ?`;
+      document.getElementById('botNum1').value = num1;
+      document.getElementById('botNum2').value = num2;
+      document.getElementById('botOp').value = op;
+
+      // Сохраняем правильный ответ для клиентской проверки
+      window.botCorrectAnswer = correctAnswer;
+    }
+
+    // Генерируем вопрос сразу при загрузке страницы
+    generateRandomBotQuestion();
 
     // Живая валидация логина с проверкой занятости
     const usernameInput = document.getElementById('username');
@@ -351,7 +388,25 @@
       const password = document.getElementById('password').value;
       const confirm = document.getElementById('confirmPassword').value;
 
+      // Honeypot
+      const hp = document.getElementById('hp').value;
+      const website = document.getElementById('website').value;
+
+      // Ответ на динамический вопрос
+      const botAnswerRaw = document.getElementById('botAnswer').value.trim();
+      const botNum1 = document.getElementById('botNum1').value;
+      const botNum2 = document.getElementById('botNum2').value;
+      const botOp = document.getElementById('botOp').value;
+
       errorBox.style.display = 'none';
+
+      // === Проверка таймера (форма должна быть открыта минимум ~4.5 сек) ===
+      const minOpenTime = 4500;
+      if (Date.now() - formLoadTime < minOpenTime) {
+        errorBox.textContent = 'Пожалуйста, не торопитесь заполнять форму. Подождите ещё немного.';
+        errorBox.style.display = 'block';
+        return;
+      }
 
       if (!/^[a-zA-Z0-9_]{3,}$/.test(username)) {
         errorBox.textContent = 'Имя пользователя может содержать только буквы, цифры и _, минимум 3 символа';
@@ -365,6 +420,14 @@
         errorBox.textContent = 'Пароли не совпадают';
         errorBox.style.display = 'block'; return;
       }
+      if (parseInt(botAnswerRaw, 10) !== window.botCorrectAnswer) {
+        errorBox.textContent = 'Неверный ответ на вопрос защиты от ботов';
+        errorBox.style.display = 'block';
+        // Перегенерируем вопрос при ошибке
+        generateRandomBotQuestion();
+        document.getElementById('botAnswer').value = '';
+        return;
+      }
 
       btn.disabled = true;
       btn.classList.add('loading');
@@ -374,7 +437,17 @@
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password })
+          body: JSON.stringify({ 
+            username, 
+            email, 
+            password,
+            hp,           // honeypot
+            website,      // honeypot
+            botNum1,
+            botNum2,
+            botOp,
+            botAnswer: botAnswerRaw
+          })
         });
         const data = await res.json();
 
@@ -388,6 +461,9 @@
           btn.disabled = false;
           btn.classList.remove('loading');
           btn.textContent = 'Зарегистрироваться';
+          // Перегенерируем вопрос при ошибке
+          generateRandomBotQuestion();
+          document.getElementById('botAnswer').value = '';
         }
       } catch (err) {
         errorBox.textContent = 'Ошибка сети. Попробуйте позже.';

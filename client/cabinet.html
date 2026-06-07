@@ -330,6 +330,17 @@
             <div class="input-readonly" id="displayUsername">...</div>
           </div>
 
+          <div class="form-group">
+            <label>Аватарка</label>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+              <div id="avatarPreview" style="width:64px; height:64px; border-radius:50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display:flex; align-items:center; justify-content:center; overflow:hidden; border:2px solid var(--border-color);">
+                <!-- image or letter will be set in JS -->
+              </div>
+              <button type="button" id="uploadAvatarBtn" style="padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:13px;">Загрузить фото</button>
+              <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+            </div>
+          </div>
+
           <form id="profileForm">
             <div class="form-group">
               <label for="emailInput">Email</label>
@@ -434,9 +445,25 @@
 
     function populateUI(user) {
       const letter = user.username.charAt(0).toUpperCase();
-      document.getElementById('navAvatar').textContent = letter;
+      const navAvatar = document.getElementById('navAvatar');
+      const heroAvatar = document.getElementById('heroAvatar');
+      const avatarPreview = document.getElementById('avatarPreview');
+
+      // Set avatars (image or letter)
+      function setAvatar(el, url, letter) {
+        if (url) {
+          el.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;" />`;
+        } else {
+          el.textContent = letter;
+          el.style.background = 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))';
+        }
+      }
+
+      setAvatar(navAvatar, user.avatar_url, letter);
+      setAvatar(heroAvatar, user.avatar_url, letter);
+      if (avatarPreview) setAvatar(avatarPreview, user.avatar_url, letter);
+
       document.getElementById('navUsername').textContent = user.username;
-      document.getElementById('heroAvatar').textContent = letter;
       document.getElementById('heroUsername').textContent = user.username;
       document.getElementById('heroEmail').textContent = user.email;
       let roleText = 'Пользователь';
@@ -531,6 +558,8 @@
           document.getElementById('heroEmail').textContent = email;
           document.getElementById('currentPassword').value = '';
           document.getElementById('newPassword').value = '';
+          // Refresh profile to get new avatar if any
+          await loadProfile();
         } else {
           showToast(data.message || 'Ошибка при сохранении', 'error');
         }
@@ -542,6 +571,57 @@
       }
     });
 
+    // Avatar upload
+    const uploadAvatarBtn = document.getElementById('uploadAvatarBtn');
+    const avatarFileInput = document.getElementById('avatarFileInput');
+    if (uploadAvatarBtn && avatarFileInput) {
+      uploadAvatarBtn.onclick = () => avatarFileInput.click();
+
+      avatarFileInput.onchange = async () => {
+        const file = avatarFileInput.files[0];
+        if (!file) return;
+        uploadAvatarBtn.disabled = true;
+        uploadAvatarBtn.textContent = 'Загрузка...';
+
+        try {
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const base64 = ev.target.result.split(',')[1];
+            const uploadRes = await fetch('/api/media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+            });
+            if (uploadRes.ok) {
+              const data = await uploadRes.json();
+              if (data.urls && data.urls.length > 0) {
+                const avatarUrl = data.urls[0];
+                // Save avatar_url to profile
+                const updateRes = await fetch('/api/cabinet/profile', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ avatar_url: avatarUrl })
+                });
+                if (updateRes.ok) {
+                  showToast('Аватарка обновлена', 'success');
+                  await loadProfile(); // refresh UI
+                }
+              }
+            } else {
+              showToast('Ошибка загрузки аватарки', 'error');
+            }
+          };
+          reader.readAsDataURL(file);
+        } catch (e) {
+          showToast('Ошибка при загрузке', 'error');
+        } finally {
+          uploadAvatarBtn.disabled = false;
+          uploadAvatarBtn.textContent = 'Загрузить фото';
+          avatarFileInput.value = '';
+        }
+      };
+    }
+
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try {
@@ -552,10 +632,17 @@
       }
     });
 
-    // Chat logic
-    let chatPolling = null;
+    // Chat logic - улучшено: используем SSE вместо polling для real-time
     let activeAdminTicketId = null;
-    
+    let chatEventSource = null;
+
+    function closeChatStream() {
+      if (chatEventSource) {
+        chatEventSource.close();
+        chatEventSource = null;
+      }
+    }
+
     async function loadChatMessages(isPolling = false) {
       if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
         if (activeAdminTicketId) {
@@ -579,6 +666,37 @@
       } catch(e) {}
     }
 
+    // Fallback: простой polling вместо SSE (настоящий /api/support/stream пока не реализован)
+    let chatPollingInterval = null;
+
+    function connectChatStream(ticketId = null) {
+      closeChatStream();
+      if (chatPollingInterval) clearInterval(chatPollingInterval);
+
+      // Сразу грузим текущие сообщения
+      loadChatMessages();
+
+      // Polling каждые 4 секунды (как в админке)
+      chatPollingInterval = setInterval(() => {
+        if (document.getElementById('cabinetChatMessages')) {
+          loadChatMessages(true);
+        } else {
+          clearInterval(chatPollingInterval);
+        }
+      }, 4000);
+    }
+
+    function closeChatStream() {
+      if (chatEventSource) {
+        chatEventSource.close();
+        chatEventSource = null;
+      }
+      if (chatPollingInterval) {
+        clearInterval(chatPollingInterval);
+        chatPollingInterval = null;
+      }
+    }
+
     function renderChatMessages(messages, isPolling) {
       const container = document.getElementById('cabinetChatMessages');
       const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
@@ -600,11 +718,19 @@
         const name = alignRight ? 'Вы' : (msg.name || 'Поддержка');
         const time = new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         
+        let contentHtml = '';
+        if (msg.message) {
+          contentHtml += `<div>${escapeHtml(msg.message)}</div>`;
+        }
+        if (msg.image_url) {
+          contentHtml += `<img src="${msg.image_url}" style="max-width: 200px; max-height: 200px; border-radius: 8px; margin-top: 6px; display: block;" />`;
+        }
+
         html += `
           <div style="display: flex; flex-direction: column; align-items: ${align};">
             <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">${escapeHtml(name)} • ${time}</div>
             <div style="background: ${bg}; color: ${color}; padding: 10px 14px; border-radius: 14px; max-width: 85%; font-size: 13px; word-break: break-word;">
-              ${escapeHtml(msg.message)}
+              ${contentHtml}
             </div>
           </div>
         `;
@@ -616,41 +742,101 @@
       }
     }
 
-    document.getElementById('cabinetChatForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const input = document.getElementById('cabinetChatMessageInput');
-      const message = input.value.trim();
-      if (!message) return;
-      
-      input.disabled = true;
+    // Chat form with image support
+    const chatForm = document.getElementById('cabinetChatForm');
+    const chatInput = document.getElementById('cabinetChatMessageInput');
+    let pendingImageUrl = null;
+
+    // Add image upload button (simple)
+    const uploadBtn = document.createElement('button');
+    uploadBtn.type = 'button';
+    uploadBtn.textContent = '📎';
+    uploadBtn.style.cssText = 'margin-right:6px; padding: 0 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 8px; cursor: pointer;';
+    chatForm.insertBefore(uploadBtn, chatInput);
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+    chatForm.appendChild(fileInput);
+
+    uploadBtn.onclick = () => fileInput.click();
+
+    fileInput.onchange = async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = '...';
+
       try {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const base64 = ev.target.result.split(',')[1];
+          const uploadRes = await fetch('/api/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+          });
+          if (uploadRes.ok) {
+            const data = await uploadRes.json();
+            if (data.urls && data.urls.length > 0) {
+              pendingImageUrl = data.urls[0];
+              showToast('Изображение прикреплено', 'success');
+            }
+          }
+        };
+        reader.readAsDataURL(file);
+      } catch (e) {
+        showToast('Ошибка загрузки изображения', 'error');
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = '📎';
+        fileInput.value = '';
+      }
+    };
+
+    chatForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const message = chatInput.value.trim();
+      if (!message && !pendingImageUrl) return;
+      
+      chatInput.disabled = true;
+      try {
+        const payload = { message };
+        if (pendingImageUrl) {
+          payload.imageUrl = pendingImageUrl;
+        }
+
         if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
           if (!activeAdminTicketId) return;
+          payload.ticketId = activeAdminTicketId;
           const res = await fetch('/api/support/reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticketId: activeAdminTicketId, message })
+            body: JSON.stringify(payload)
           });
           if (res.ok) {
-            input.value = '';
+            chatInput.value = '';
+            pendingImageUrl = null;
             await loadActiveTicketMessages(false);
           }
         } else {
           const res = await fetch('/api/support/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify(payload)
           });
           if (res.ok) {
-            input.value = '';
+            chatInput.value = '';
+            pendingImageUrl = null;
             await loadChatMessages();
           }
         }
       } catch(e) {
         showToast('Ошибка при отправке', 'error');
       } finally {
-        input.disabled = false;
-        input.focus();
+        chatInput.disabled = false;
+        chatInput.focus();
       }
     });
 
@@ -686,9 +872,13 @@
         const unreadBadge = t.unread_count > 0 ? `<span style="background: var(--red); color: white; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: bold; margin-left: auto;">${t.unread_count}</span>` : '';
         const nameLetter = (t.name || 'U').charAt(0).toUpperCase();
         
+        const avatarHtml = t.avatar_url 
+          ? `<img src="${t.avatar_url}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;" />` 
+          : `<div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: white;">${nameLetter}</div>`;
+
         html += `
-          <div class="ticket-item" onclick="openAdminChatInline('${t.ticket_id}', '${escapeHtml(t.name || 'Пользователь')}', '${escapeHtml(t.email || '')}')" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: background 0.2s; background: rgba(255,255,255,0.01);" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'">
-            <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: white;">${nameLetter}</div>
+          <div class="ticket-item" onclick="openAdminChatInline('${t.ticket_id}', '${escapeHtml(t.name || 'Пользователь')}', '${escapeHtml(t.email || '')}', '${t.avatar_url || ''}')" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: background 0.2s; background: rgba(255,255,255,0.01);" onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background='rgba(255,255,255,0.01)'">
+            ${avatarHtml}
             <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 2px;">
               <span style="font-weight: 600; font-size: 14px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; color: #fff;">${escapeHtml(t.name || 'Пользователь')}</span>
               <span style="font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(t.email || '')}</span>
@@ -701,14 +891,29 @@
       container.innerHTML = html;
     }
 
-    window.openAdminChatInline = async function(ticketId, name, email) {
+    window.openAdminChatInline = async function(ticketId, name, email, avatarUrl = '') {
       activeAdminTicketId = ticketId;
-      document.getElementById('cabinetChatTitle').textContent = `Чат: ${name}`;
+      
+      // Показываем всегда имя и аватар собеседника в заголовке
+      const chatHeader = document.getElementById('cabinetChatTitle');
+      const avatarLetter = (name || 'U').charAt(0).toUpperCase();
+      
+      let avatarHtml = avatarUrl 
+        ? `<img src="${avatarUrl}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;margin-right:8px;" />` 
+        : `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent-purple),var(--accent-cyan));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:white;margin-right:8px;">${avatarLetter}</div>`;
+      
+      chatHeader.innerHTML = `
+        <div style="display:flex;align-items:center;">
+          ${avatarHtml}
+          <span>Чат с ${escapeHtml(name || 'Пользователь')}</span>
+        </div>
+      `;
+      
       document.getElementById('adminBackBtn').style.display = 'inline-block';
       document.getElementById('cabinetChatForm').style.display = 'flex';
       
-      document.getElementById('ticketCreator').textContent = name;
-      document.getElementById('cabinetChatSubtitle').style.display = 'flex';
+      // Скрываем старый субтитл — в заголовке теперь всегда только аватар + имя собеседника
+      document.getElementById('cabinetChatSubtitle').style.display = 'none';
       
       // Load messages
       await loadActiveTicketMessages(false);
@@ -719,9 +924,13 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticketId })
       });
+
+      // Подключаемся к реал-тайм стриму для этого тикета
+      connectChatStream(ticketId);
     };
 
     window.closeAdminChatInline = function() {
+      closeChatStream();
       activeAdminTicketId = null;
       document.getElementById('cabinetChatSubtitle').style.display = 'none';
       loadAdminTickets();
@@ -762,10 +971,10 @@
         if (currentUserData) {
           if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
             await loadAdminTickets();
-            chatPolling = setInterval(loadAdminTickets, 5000);
+            // Для админа подключаемся к стриму только когда открыт конкретный чат
           } else {
             await loadChatMessages();
-            chatPolling = setInterval(() => loadChatMessages(true), 5000);
+            connectChatStream(); // SSE для обычного пользователя
           }
         }
       })();

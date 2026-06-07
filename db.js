@@ -5,23 +5,76 @@ const crypto = require('crypto');
 const dbPath = path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(dbPath);
 
+// === Простая система миграций (для надёжности) ===
+const MIGRATIONS = [
+  {
+    version: 1,
+    description: 'Initial schema + default data',
+    up: () => {
+      // The existing CREATEs and seeds are run below.
+      // This migration is considered applied on first run.
+    }
+  },
+  {
+    version: 2,
+    description: 'Add image_url to support_messages for chat images',
+    up: () => {
+      db.run("ALTER TABLE support_messages ADD COLUMN image_url TEXT", () => {});
+    }
+  }
+];
+
+function runMigrations() {
+  db.serialize(() => {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        description TEXT,
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.get("SELECT MAX(version) as current FROM schema_migrations", (err, row) => {
+      const currentVersion = row && row.current ? row.current : 0;
+
+      MIGRATIONS.forEach(migration => {
+        if (migration.version > currentVersion) {
+          console.log(`[db] Running migration ${migration.version}: ${migration.description}`);
+          migration.up();
+          db.run(
+            "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
+            [migration.version, migration.description]
+          );
+        }
+      });
+    });
+  });
+}
+
 // Хеширование пароля с помощью встроенного модуля pbkdf2
+// 1000 → подняли до 120000 итераций для лучшей стойкости (формат хранения не изменился)
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
   return `${salt}:${hash}`;
 }
 
-// Проверка пароля
+// Проверка пароля (поддерживает как старые, так и новые хэши)
 function verifyPassword(password, storedHash) {
   if (!storedHash || !storedHash.includes(':')) return false;
   const [salt, originalHash] = storedHash.split(':');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return hash === originalHash;
+  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  // Если не совпало — попробуем со старыми 1000 итерациями (для существующих аккаунтов)
+  if (hash !== originalHash) {
+    const oldHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+    return oldHash === originalHash;
+  }
+  return true;
 }
 
 // Инициализация базы данных
 db.serialize(() => {
+  runMigrations();
   // 1. Таблица пользователей
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -123,12 +176,24 @@ db.serialize(() => {
       message TEXT NOT NULL,
       sender_role TEXT NOT NULL,
       is_read INTEGER DEFAULT 0,
+      image_url TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `, () => {
-    // В случае если таблица уже существует, пытаемся добавить колонку (просто игнорируем ошибку, если она уже есть)
     db.run("ALTER TABLE support_messages ADD COLUMN is_read INTEGER DEFAULT 0", () => {});
+    db.run("ALTER TABLE support_messages ADD COLUMN image_url TEXT", () => {});
   });
+
+  // 7. Простая таблица сессий (для надёжности — переживают перезапуск сервера)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER,
+      username TEXT,
+      role TEXT,
+      expires_at DATETIME
+    )
+  `);
 
   // Удаляем старые настройки статистики
   db.run("DELETE FROM settings WHERE key LIKE 'stat_%'");
@@ -149,7 +214,7 @@ db.serialize(() => {
   stmt.run("contact_title", "Обратная связь", "Контакты: Заголовок раздела");
   stmt.run("contact_subtitle", "Остались вопросы или хотите предложить сотрудничество?", "Контакты: Подзаголовок");
   stmt.run("contact_email", "info@example.com", "Контакты: Электронная почта");
-  stmt.run("contact_address", "г. Москва, ул. Разработчиков, д. 42", "Контакты: Адрес");
+  stmt.run("contact_address", "г. Вильнюс, ул. Разработчиков, д. 42", "Контакты: Адрес");
   stmt.finalize();
 
   // Заполняем тестовые статьи
@@ -163,8 +228,43 @@ db.serialize(() => {
   });
 });
 
+// === Простые helpers для персистентных сессий (надёжность) ===
+function saveSession(token, user, ttlHours = 24) {
+  const expires = new Date(Date.now() + ttlHours * 3600 * 1000).toISOString();
+  db.run(
+    "INSERT OR REPLACE INTO sessions (token, user_id, username, role, expires_at) VALUES (?, ?, ?, ?, ?)",
+    [token, user.id, user.username, user.role, expires]
+  );
+}
+
+function loadSessionsIntoMap(sessionsMap) {
+  db.all("SELECT * FROM sessions WHERE expires_at > datetime('now')", [], (err, rows) => {
+    if (err || !rows) return;
+    rows.forEach(row => {
+      sessionsMap.set(row.token, {
+        id: row.user_id,
+        username: row.username,
+        role: row.role
+      });
+    });
+    if (rows.length) console.log(`[sessions] Восстановлено ${rows.length} сессий из БД`);
+  });
+}
+
+function deleteSession(token) {
+  db.run("DELETE FROM sessions WHERE token = ?", [token]);
+}
+
+function cleanupExpiredSessions() {
+  db.run("DELETE FROM sessions WHERE expires_at <= datetime('now')");
+}
+
 module.exports = {
   db,
   hashPassword,
-  verifyPassword
+  verifyPassword,
+  saveSession,
+  loadSessionsIntoMap,
+  deleteSession,
+  cleanupExpiredSessions
 };

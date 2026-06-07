@@ -2,22 +2,21 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { db, verifyPassword } = require('./db');
+const { db, verifyPassword, hashPassword, saveSession, loadSessionsIntoMap, deleteSession, cleanupExpiredSessions } = require('./db');
 
 const PORT = 3080;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CLIENT_DIR = path.join(__dirname, 'client');
 
-// Создаем папку uploads, если ее нет
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Сессии в оперативной памяти (токен -> user_details)
 const sessions = new Map();
+loadSessionsIntoMap(sessions);
+cleanupExpiredSessions();
 
-// MIME-типы для раздачи статических файлов
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -30,7 +29,51 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8'
 };
 
-// Функция парсинга Cookies
+// === Загрузка файлов через base64 (то, что уже использует фронтенд) ===
+async function handleBase64Upload(req) {
+  const body = await getJsonBody(req);
+  const inputFiles = Array.isArray(body.files) ? body.files : [];
+  const result = [];
+
+  const MAX_FILES = 6;
+  const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 МБ после декодирования
+
+  if (inputFiles.length > MAX_FILES) {
+    throw new Error('Слишком много файлов за раз (макс. ' + MAX_FILES + ')');
+  }
+
+  for (const f of inputFiles) {
+    if (!f || !f.data || !f.filename) continue;
+
+    let buffer;
+    try {
+      buffer = Buffer.from(f.data, 'base64');
+    } catch (e) {
+      continue;
+    }
+
+    if (buffer.length === 0 || buffer.length > MAX_SIZE_BYTES) {
+      throw new Error(`Файл "${f.filename}" слишком большой (макс 8 МБ)`);
+    }
+
+    // Простая защита имени файла
+    const safeOriginal = String(f.filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+    const uniqueName = Date.now() + '-' + Math.floor(Math.random() * 1e10) + '-' + safeOriginal;
+    const fullPath = path.join(UPLOADS_DIR, uniqueName);
+
+    await fs.promises.writeFile(fullPath, buffer);
+
+    result.push({
+      filename: f.filename,
+      fileUrl: '/uploads/' + uniqueName,
+      fileSize: buffer.length,
+      mimeType: f.mimeType || 'application/octet-stream'
+    });
+  }
+
+  return result;
+}
+
 function parseCookies(request) {
   const list = {};
   const rc = request.headers.cookie;
@@ -43,7 +86,6 @@ function parseCookies(request) {
   return list;
 }
 
-// Проверка авторизации
 function getSessionUser(req) {
   const cookies = parseCookies(req);
   const sessionToken = cookies.session;
@@ -53,7 +95,6 @@ function getSessionUser(req) {
   return null;
 }
 
-// Вспомогательная функция чтения JSON-тела запроса
 function getJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -70,136 +111,130 @@ function getJsonBody(req) {
   });
 }
 
-// Отправка JSON-ответа
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(data));
 }
 
-// Логирование действий
 function logAction(user, action) {
   db.run("INSERT INTO logs (user, action) VALUES (?, ?)", [user, action], (err) => {
     if (err) console.error("Ошибка записи лога:", err);
   });
 }
 
-// Простой парсер multipart/form-data для загрузки файлов
-function handleMultipartUpload(req) {
-  return new Promise((resolve, reject) => {
-    const contentType = req.headers['content-type'];
-    const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
-    if (!boundaryMatch) {
-      return reject(new Error('No boundary in multipart/form-data'));
-    }
-    const boundary = '--' + (boundaryMatch[1] || boundaryMatch[2]);
-    
-    let buffer = Buffer.alloc(0);
-    req.on('data', chunk => {
-      buffer = Buffer.concat([buffer, chunk]);
-    });
-    
-    req.on('end', () => {
-      try {
-        const parts = [];
-        let index = buffer.indexOf(boundary);
-        
-        while (index !== -1) {
-          const nextIndex = buffer.indexOf(boundary, index + boundary.length);
-          if (nextIndex === -1) break;
-          
-          const partBuffer = buffer.slice(index + boundary.length + 2, nextIndex - 2); // убираем \r\n
-          parts.push(partBuffer);
-          index = nextIndex;
-        }
+// === Простая защита от ботов (rate limit + honeypot) ===
+const rateLimits = new Map(); // key -> { attempts, first, last }
 
-        const uploadedFiles = [];
-        
-        for (const part of parts) {
-          if (part.length === 0) continue;
-          
-          const headerEndIndex = part.indexOf('\r\n\r\n');
-          if (headerEndIndex === -1) continue;
-          
-          const headersText = part.slice(0, headerEndIndex).toString();
-          const bodyBuffer = part.slice(headerEndIndex + 4);
-          
-          // Проверяем, файл ли это
-          const filenameMatch = headersText.match(/filename="([^"]+)"/i);
-          const nameMatch = headersText.match(/name="([^"]+)"/i);
-          const mimeMatch = headersText.match(/Content-Type:\s*([^\r\n]+)/i);
-          
-          if (filenameMatch) {
-            const filename = filenameMatch[1];
-            const mimeType = mimeMatch ? mimeMatch[1].trim() : 'application/octet-stream';
-            
-            // Генерируем уникальное имя файла для избежания перезаписи
-            const fileExt = path.extname(filename);
-            const safeName = crypto.randomBytes(16).toString('hex') + fileExt;
-            const filePath = path.join(UPLOADS_DIR, safeName);
-            
-            fs.writeFileSync(filePath, bodyBuffer);
-            
-            uploadedFiles.push({
-              filename: filename,
-              filePath: filePath,
-              fileUrl: `/uploads/${safeName}`,
-              fileSize: bodyBuffer.length,
-              mimeType: mimeType
-            });
-          }
-        }
-        resolve(uploadedFiles);
-      } catch (err) {
-        reject(err);
-      }
-    });
-  });
+function getClientIP(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket.remoteAddress || 'unknown';
 }
 
-// Создаем сервер
+function isRateLimited(ip, action = 'register', maxAttempts = 5, minIntervalMs = 30000) {
+  const now = Date.now();
+  const key = `${ip}:${action}`;
+  let entry = rateLimits.get(key);
+
+  if (!entry) {
+    entry = { attempts: 0, first: now, last: 0 };
+    rateLimits.set(key, entry);
+  }
+
+  // Сбрасываем счётчик через 1 час
+  if (now - entry.first > 60 * 60 * 1000) {
+    entry.attempts = 0;
+    entry.first = now;
+  }
+
+  // Слишком частые попытки
+  if (now - entry.last < minIntervalMs) {
+    return { limited: true, reason: 'too_fast' };
+  }
+
+  if (entry.attempts >= maxAttempts) {
+    return { limited: true, reason: 'max_attempts' };
+  }
+
+  entry.attempts += 1;
+  entry.last = now;
+
+  // Редкая очистка
+  if (Math.random() < 0.03) {
+    for (const [k, e] of rateLimits) {
+      if (now - e.first > 2 * 60 * 60 * 1000) rateLimits.delete(k);
+    }
+  }
+
+  return { limited: false };
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
   const method = req.method;
 
-  console.log(`[Request] ${method} ${pathname}`);
+  // Логируем только важное (или включи DEBUG=true для всех запросов)
+  if (process.env.DEBUG || pathname.startsWith('/api/')) {
+    // console.log(`[Request] ${method} ${pathname}`);
+  }
 
-  // --- API ЭНДПОИНТЫ ---
+  const user = getSessionUser(req);
 
-  // 1. Вход (API Auth Login)
+  // Public articles
+  if (pathname === '/api/public/articles' && method === 'GET') {
+    db.all("SELECT id, title, content, created_at FROM articles WHERE status = 'published' ORDER BY id DESC", [], (err, rows) => {
+      if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
+      sendJson(res, 200, rows);
+    });
+    return;
+  }
+
+  // Public settings
+  if (pathname === '/api/public/settings' && method === 'GET') {
+    db.all("SELECT key, value FROM settings", [], (err, rows) => {
+      if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
+      sendJson(res, 200, rows);
+    });
+    return;
+  }
+
+  // Login (с защитой от брутфорса)
   if (pathname === '/api/auth/login' && method === 'POST') {
     try {
+      const ip = getClientIP(req);
+      const loginLimit = isRateLimited(ip, 'login', 8, 1800); // max 8 попыток, 1.8 сек между
+      if (loginLimit.limited) {
+        return sendJson(res, 429, { success: false, message: 'Слишком много попыток входа. Подождите немного.' });
+      }
+
       const { username, password } = await getJsonBody(req);
       if (!username || !password) {
         return sendJson(res, 400, { success: false, message: 'Имя пользователя и пароль обязательны' });
       }
 
-      db.get("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", [username], (err, user) => {
-        if (err || !user) {
+      db.get("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", [username], (err, userRow) => {
+        if (err || !userRow) {
           return sendJson(res, 401, { success: false, message: 'Неверное имя пользователя или пароль' });
         }
 
-        const isValid = verifyPassword(password, user.password_hash);
+        const isValid = verifyPassword(password, userRow.password_hash);
         if (!isValid) {
           return sendJson(res, 401, { success: false, message: 'Неверное имя пользователя или пароль' });
         }
 
-        // Создаем токен сессии
         const token = crypto.randomBytes(32).toString('hex');
-        sessions.set(token, {
-          id: user.id,
-          username: user.username,
-          role: user.role
-        });
+        const sessionUser = { id: userRow.id, username: userRow.username, role: userRow.role };
+        sessions.set(token, sessionUser);
+        saveSession(token, sessionUser);
 
-        logAction(user.username, 'Вход в систему');
+        logAction(userRow.username, 'Вход в систему');
 
-        // Устанавливаем куку
         res.writeHead(200, {
           'Set-Cookie': `session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`,
           'Content-Type': 'application/json; charset=utf-8'
         });
-        res.end(JSON.stringify({ success: true, user: { username: user.username, role: user.role } }));
+        res.end(JSON.stringify({ success: true, user: { username: userRow.username, role: userRow.role } }));
       });
     } catch (e) {
       sendJson(res, 500, { success: false, message: 'Внутренняя ошибка сервера' });
@@ -207,101 +242,97 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 2. Выход (API Auth Logout)
-  if (pathname === '/api/auth/logout' && method === 'POST') {
-    const cookies = parseCookies(req);
-    const token = cookies.session;
-    if (token) {
-      sessions.delete(token);
-    }
-    res.writeHead(200, {
-      'Set-Cookie': 'session=; HttpOnly; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
-      'Content-Type': 'application/json; charset=utf-8'
-    });
-    res.end(JSON.stringify({ success: true }));
-    return;
-  }
-
-  // 3. Проверка текущей сессии
-  if (pathname === '/api/auth/me' && method === 'GET') {
-    const user = getSessionUser(req);
-    if (!user) {
-      return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    }
-    return sendJson(res, 200, { success: true, user });
-  }
-
-  // 3.4 Проверка доступности имени пользователя (публичный)
-  if (pathname === '/api/auth/check-username' && method === 'GET') {
-    const username = parsedUrl.searchParams.get('username');
-    if (!username) {
-      return sendJson(res, 400, { success: false, message: 'Имя пользователя не указано' });
-    }
-    const cleanUsername = username.trim();
-    if (!/^[a-zA-Z0-9_]{3,}$/.test(cleanUsername)) {
-      return sendJson(res, 400, { success: false, message: 'Неверный формат имени пользователя' });
-    }
-    db.get("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", [cleanUsername], (err, row) => {
-      if (err) {
-        return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      }
-      return sendJson(res, 200, { success: true, available: !row });
-    });
-    return;
-  }
-
-  // 3.5 Регистрация нового пользователя (публичный)
+  // === Регистрация (с защитой от ботов) ===
   if (pathname === '/api/auth/register' && method === 'POST') {
     try {
-      const { username, email, password } = await getJsonBody(req);
-      if (!username || !email || !password) {
-        return sendJson(res, 400, { success: false, message: 'Все поля обязательны' });
-      }
-      if (password.length < 6) {
-        return sendJson(res, 400, { success: false, message: 'Пароль должен содержать минимум 6 символов' });
+      const body = await getJsonBody(req);
+      const { username, email, password, hp, website, address } = body; // hp, website, address — honeypot поля
+
+      // 1. Honeypot — если заполнено, это бот
+      if (hp || website || address) {
+        return sendJson(res, 400, { success: false, message: 'Ошибка регистрации' });
       }
 
-      // Проверяем, разрешена ли регистрация
+      // 2. Rate limiting (усилено)
+      const ip = getClientIP(req);
+      const limitCheck = isRateLimited(ip, 'register', 3, 40000); // max 3 попытки, минимум 40 сек между
+      if (limitCheck.limited) {
+        return sendJson(res, 429, { 
+          success: false, 
+          message: 'Слишком много попыток регистрации. Попробуйте позже.' 
+        });
+      }
+
+      // 3. Проверка случайного вопроса защиты от ботов (серверная верификация)
+      const { botNum1, botNum2, botOp, botAnswer } = body;
+      if (!botNum1 || !botNum2 || !botOp || !botAnswer) {
+        return sendJson(res, 400, { success: false, message: 'Не пройдена проверка защиты от ботов' });
+      }
+      const n1 = parseInt(botNum1, 10);
+      const n2 = parseInt(botNum2, 10);
+      const expected = botOp === '+' ? (n1 + n2) : (n1 - n2);
+      if (parseInt(botAnswer, 10) !== expected || n1 < 1 || n2 < 1 || n1 > 20 || n2 > 20) {
+        return sendJson(res, 400, { success: false, message: 'Неверный ответ на вопрос защиты от ботов' });
+      }
+
+      // 4. Проверка, разрешена ли регистрация (из настроек)
       db.get("SELECT value FROM settings WHERE key = 'allow_registration'", [], (err, row) => {
-        if (err || !row || row.value !== 'true') {
-          return sendJson(res, 403, { success: false, message: 'Регистрация на данный момент закрыта' });
+        const allowed = row && row.value === 'true';
+        if (!allowed) {
+          return sendJson(res, 403, { success: false, message: 'Регистрация сейчас отключена' });
         }
 
-        const { hashPassword } = require('./db');
-        const passwordHash = hashPassword(password);
+        // Валидация
+        if (!username || !email || !password) {
+          return sendJson(res, 400, { success: false, message: 'Все поля обязательны' });
+        }
+        if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+          return sendJson(res, 400, { success: false, message: 'Имя пользователя: 3-20 символов, только буквы, цифры и _' });
+        }
+        if (password.length < 6) {
+          return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 6 символов' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          return sendJson(res, 400, { success: false, message: 'Некорректный email' });
+        }
 
+        // Проверяем уникальность
         db.get(
           "SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)",
-          [username.trim(), email.trim().toLowerCase()],
-          (err, existingUser) => {
-            if (err) {
-              return sendJson(res, 500, { success: false, message: 'Ошибка сервера при проверке имени' });
+          [username, email],
+          (err2, existing) => {
+            if (existing) {
+              return sendJson(res, 409, { success: false, message: 'Пользователь с таким именем или email уже существует' });
             }
-            if (existingUser) {
-              return sendJson(res, 400, { success: false, message: 'Пользователь с таким именем или email уже существует' });
-            }
+
+            const password_hash = hashPassword(password);
 
             db.run(
-              "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-              [username.trim(), email.trim().toLowerCase(), passwordHash, 'User'],
-              function(err) {
-                if (err) {
-                  if (err.message.includes('UNIQUE')) {
-                    return sendJson(res, 400, { success: false, message: 'Пользователь с таким именем или email уже существует' });
-                  }
-                  return sendJson(res, 500, { success: false, message: 'Ошибка сервера при создании пользователя' });
+              "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, 'User')",
+              [username, email, password_hash],
+              function (err3) {
+                if (err3) {
+                  console.error('Register error:', err3);
+                  return sendJson(res, 500, { success: false, message: 'Не удалось создать аккаунт' });
                 }
-                const newUserId = this.lastID;
-                // Автоматически входим в систему
-                const token = crypto.randomBytes(32).toString('hex');
-                sessions.set(token, { id: newUserId, username: username.trim(), role: 'User' });
-                logAction(username.trim(), 'Зарегистрировался в системе');
 
-                res.writeHead(201, {
+                const newUserId = this.lastID;
+                logAction(username, 'Регистрация нового пользователя');
+
+                // Автоматически логиним пользователя
+                const token = crypto.randomBytes(32).toString('hex');
+                const sessionUser = { id: newUserId, username, role: 'User' };
+                sessions.set(token, sessionUser);
+                saveSession(token, sessionUser);
+
+                res.writeHead(200, {
                   'Set-Cookie': `session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`,
                   'Content-Type': 'application/json; charset=utf-8'
                 });
-                res.end(JSON.stringify({ success: true, user: { username: username.trim(), role: 'User' } }));
+                res.end(JSON.stringify({ 
+                  success: true, 
+                  user: { username, role: 'User' } 
+                }));
               }
             );
           }
@@ -313,12 +344,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ВСЕ ЭНДПОИНТЫ НИЖЕ ТРЕБУЮТ АВТОРИЗАЦИИ
-  const user = getSessionUser(req);
+  // Проверка доступности username (с защитой от перебора)
+  if (pathname === '/api/auth/check-username' && method === 'GET') {
+    const username = parsedUrl.searchParams.get('username') || '';
+    const ip = getClientIP(req);
 
-  // 3.6 API: Личный кабинет — просмотр профиля
+    // Лёгкий rate limit на проверку имён (чтобы не спамили)
+    const limitCheck = isRateLimited(ip, 'check-username', 20, 1200);
+    if (limitCheck.limited) {
+      return sendJson(res, 429, { success: false, available: false });
+    }
+
+    if (!/^[a-zA-Z0-9_]{3,}$/.test(username)) {
+      return sendJson(res, 200, { success: true, available: false });
+    }
+
+    db.get(
+      "SELECT 1 FROM users WHERE LOWER(username) = LOWER(?)",
+      [username],
+      (err, row) => {
+        sendJson(res, 200, { success: true, available: !row });
+      }
+    );
+    return;
+  }
+
+  // Auth check endpoints (needed for cabinet after login)
+  if (pathname === '/api/auth/me' && method === 'GET') {
+    const user = getSessionUser(req);
+    if (!user) {
+      return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    }
+    return sendJson(res, 200, { success: true, user });
+  }
+
   if (pathname === '/api/cabinet/me' && method === 'GET') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    const user = getSessionUser(req);
+    if (!user) {
+      return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    }
     db.get("SELECT id, username, email, role, avatar_url, created_at FROM users WHERE id = ?", [user.id], (err, row) => {
       if (err || !row) return sendJson(res, 404, { success: false, message: 'Пользователь не найден' });
       sendJson(res, 200, { success: true, user: row });
@@ -326,185 +390,199 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 3.7 API: Личный кабинет — обновление профиля
+  // Обновление профиля пользователя (email, пароль, avatar_url)
   if (pathname === '/api/cabinet/profile' && method === 'PUT') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    try {
-      const { email, password, currentPassword } = await getJsonBody(req);
-
-      // Сначала получаем текущие данные пользователя (включая хеш пароля)
-      db.get("SELECT * FROM users WHERE id = ?", [user.id], (err, dbUser) => {
-        if (err || !dbUser) return sendJson(res, 404, { success: false, message: 'Пользователь не найден' });
-
-        // Если меняем пароль — нужно подтвердить старый
-        if (password) {
-          const { verifyPassword, hashPassword } = require('./db');
-          if (!currentPassword || !verifyPassword(currentPassword, dbUser.password_hash)) {
-            return sendJson(res, 400, { success: false, message: 'Неверный текущий пароль' });
-          }
-          if (password.length < 6) {
-            return sendJson(res, 400, { success: false, message: 'Новый пароль должен содержать минимум 6 символов' });
-          }
-          const newHash = hashPassword(password);
-          const newEmail = email ? email.trim().toLowerCase() : dbUser.email;
-
-          db.run("UPDATE users SET email = ?, password_hash = ? WHERE id = ?", [newEmail, newHash, user.id], (err) => {
-            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления профиля' });
-            logAction(user.username, 'Обновил профиль (с изменением пароля)');
-            sendJson(res, 200, { success: true, message: 'Профиль успешно обновлён' });
-          });
-        } else {
-          // Меняем только email
-          if (!email) return sendJson(res, 400, { success: false, message: 'Нет данных для обновления' });
-          db.run("UPDATE users SET email = ? WHERE id = ?", [email.trim().toLowerCase(), user.id], (err) => {
-            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления email' });
-            logAction(user.username, 'Обновил email профиля');
-            sendJson(res, 200, { success: true, message: 'Email успешно обновлён' });
-          });
-        }
-      });
-    } catch(e) {
-      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+    const current = getSessionUser(req);
+    if (!current) {
+      return sendJson(res, 401, { success: false, message: 'Неавторизован' });
     }
+
+    (async () => {
+      try {
+        const body = await getJsonBody(req);
+        const { email, password, currentPassword, avatar_url } = body;
+
+        db.get("SELECT * FROM users WHERE id = ?", [current.id], (err, dbUser) => {
+          if (err || !dbUser) {
+            return sendJson(res, 404, { success: false, message: 'Пользователь не найден' });
+          }
+
+          const fields = [];
+          const values = [];
+
+          if (email && email !== dbUser.email) {
+            fields.push('email = ?');
+            values.push(email);
+          }
+
+          if (avatar_url) {
+            fields.push('avatar_url = ?');
+            values.push(avatar_url);
+          }
+
+          if (password) {
+            if (!currentPassword) {
+              return sendJson(res, 400, { success: false, message: 'Для смены пароля укажите текущий пароль' });
+            }
+            const ok = verifyPassword(currentPassword, dbUser.password_hash);
+            if (!ok) {
+              return sendJson(res, 400, { success: false, message: 'Неверный текущий пароль' });
+            }
+            fields.push('password_hash = ?');
+            values.push(hashPassword(password));
+          }
+
+          if (fields.length === 0) {
+            return sendJson(res, 400, { success: false, message: 'Нет изменений для сохранения' });
+          }
+
+          values.push(current.id);
+
+          db.run(
+            `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+            values,
+            function (updateErr) {
+              if (updateErr) {
+                const msg = updateErr.message.includes('UNIQUE') ? 'Такой email уже используется' : 'Ошибка сохранения профиля';
+                return sendJson(res, 400, { success: false, message: msg });
+              }
+              logAction(current.username, 'Обновил свой профиль');
+              // Вернём свежие данные
+              db.get("SELECT id, username, email, role, avatar_url, created_at FROM users WHERE id = ?", [current.id], (e2, fresh) => {
+                sendJson(res, 200, { success: true, message: 'Профиль обновлён', user: fresh });
+              });
+            }
+          );
+        });
+      } catch (e) {
+        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+      }
+    })();
     return;
   }
 
-  // 4. API: Статистика Dashboard
+  // === Full admin API handlers (restored for full functionality) ===
+
+  // Logout
+  if (pathname === '/api/auth/logout' && method === 'POST') {
+    const cookies = parseCookies(req);
+    const token = cookies.session;
+    if (token) {
+      sessions.delete(token);
+      deleteSession(token);
+    }
+    res.writeHead(200, {
+      'Set-Cookie': 'session=; HttpOnly; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      'Content-Type': 'application/json; charset=utf-8'
+    });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
+  // Dashboard stats (параллельно вместо вложенных колбэков)
   if (pathname === '/api/dashboard/stats' && method === 'GET') {
     if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    
-    db.get("SELECT COUNT(*) as count FROM users", (err, usersRow) => {
-      db.get("SELECT COUNT(*) as count FROM articles", (err, articlesRow) => {
-        db.get("SELECT COUNT(*) as count FROM media", (err, mediaRow) => {
-          sendJson(res, 200, {
-            users: usersRow ? usersRow.count : 0,
-            articles: articlesRow ? articlesRow.count : 0,
-            mediaFiles: mediaRow ? mediaRow.count : 0
+
+    Promise.all([
+      new Promise(res => db.get("SELECT COUNT(*) as count FROM users", (e, r) => res(r ? r.count : 0))),
+      new Promise(res => db.get("SELECT COUNT(*) as count FROM articles", (e, r) => res(r ? r.count : 0))),
+      new Promise(res => db.get("SELECT COUNT(*) as count FROM media", (e, r) => res(r ? r.count : 0)))
+    ]).then(([users, articles, mediaFiles]) => {
+      sendJson(res, 200, { users, articles, mediaFiles });
+    }).catch(() => sendJson(res, 200, { users: 0, articles: 0, mediaFiles: 0 }));
+
+    return;
+  }
+
+  // CRUD articles (used heavily in admin)
+  if (pathname.startsWith('/api/crud/articles')) {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+
+    if (method === 'GET') {
+      db.all("SELECT * FROM articles ORDER BY id DESC", [], (err, rows) => {
+        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
+        sendJson(res, 200, rows);
+      });
+    } else if (method === 'POST') {
+      try {
+        const body = await getJsonBody(req);
+        db.run("INSERT INTO articles (title, content, status) VALUES (?, ?, ?)", 
+          [body.title, body.content, body.status || 'draft'], function(err) {
+          if (err) return sendJson(res, 500, { message: 'Ошибка создания' });
+          sendJson(res, 201, { id: this.lastID, success: true });
+        });
+      } catch (e) {
+        sendJson(res, 400, { message: 'Невалидный JSON' });
+      }
+    } else if (method === 'PUT') {
+      try {
+        const id = parsedUrl.searchParams.get('id');
+        const body = await getJsonBody(req);
+        db.run("UPDATE articles SET title = ?, content = ?, status = ? WHERE id = ?", 
+          [body.title, body.content, body.status, id], function(err) {
+          if (err) return sendJson(res, 500, { message: 'Ошибка обновления' });
+          sendJson(res, 200, { success: true });
+        });
+      } catch (e) {
+        sendJson(res, 400, { message: 'Невалидный JSON' });
+      }
+    } else if (method === 'DELETE') {
+      const id = parsedUrl.searchParams.get('id');
+      db.run("DELETE FROM articles WHERE id = ?", [id], function(err) {
+        if (err) return sendJson(res, 500, { message: 'Ошибка удаления' });
+        sendJson(res, 200, { success: true });
+      });
+    }
+    return;
+  }
+
+  // Media
+  if (pathname === '/api/media') {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+
+    if (method === 'GET') {
+      db.all("SELECT * FROM media ORDER BY id DESC", [], (err, rows) => {
+        if (err) return sendJson(res, 500, { message: 'Ошибка БД' });
+        const formatted = rows.map(r => ({
+          id: r.id, filename: r.filename, file_url: r.file_path,
+          mime_type: r.mime_type, file_size: r.file_size
+        }));
+        sendJson(res, 200, formatted);
+      });
+    } else if (method === 'POST') {
+      try {
+        const files = await handleBase64Upload(req);
+        if (files.length === 0) return sendJson(res, 400, { message: 'Файлы не найдены' });
+
+        const stmt = db.prepare("INSERT INTO media (filename, file_path, file_size, mime_type) VALUES (?, ?, ?, ?)");
+        db.serialize(() => {
+          files.forEach(f => {
+            stmt.run(f.filename, f.fileUrl, f.fileSize, f.mimeType);
+          });
+          stmt.finalize();
+
+          // Возвращаем и count, и urls — чтобы работало и в админке, и в кабинете (аватар)
+          sendJson(res, 201, {
+            success: true,
+            count: files.length,
+            urls: files.map(f => f.fileUrl)
           });
         });
-      });
-    });
-    return;
-  }
-
-  // 4.5 API: Логи активности
-  if (pathname === '/api/logs') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    
-    if (method === 'GET') {
-      const limit = parsedUrl.searchParams.get('limit') || '500';
-      db.all("SELECT * FROM logs ORDER BY id DESC LIMIT ?", [limit], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    } 
-    else if (method === 'DELETE') {
-      if (user.role !== 'Superadmin') return sendJson(res, 403, { success: false, message: 'Только Superadmin может удалять логи' });
-      db.run("DELETE FROM logs", [], (err) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка при очистке логов' });
-        logAction(user.username, 'Очищена история логов действий');
-        sendJson(res, 200, { success: true });
-      });
-    }
-    return;
-  }
-
-  // 4.6 API: Управление пользователями (только для роли Superadmin)
-  if (pathname === '/api/users') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    if (user.role !== 'Superadmin') return sendJson(res, 403, { success: false, message: 'Только Superadmin может управлять пользователями' });
-
-    if (method === 'GET') {
-      db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    }
-    else if (method === 'POST') {
-      try {
-        const { username, email, password, role } = await getJsonBody(req);
-        if (!username || !email || !password || !role) {
-          return sendJson(res, 400, { success: false, message: 'Все поля обязательны' });
-        }
-        const { hashPassword } = require('./db');
-        const passwordHash = hashPassword(password);
-        db.run(
-          "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-          [username, email, passwordHash, role],
-          function(err) {
-            if (err) {
-              if (err.message.includes('UNIQUE')) {
-                return sendJson(res, 400, { success: false, message: 'Пользователь с таким именем или email уже существует' });
-              }
-              return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-            }
-            logAction(user.username, `Создан новый пользователь: ${username} (роль: ${role})`);
-            sendJson(res, 201, { success: true, id: this.lastID });
-          }
-        );
-      } catch (e) {
-        sendJson(res, 400, { success: false, message: 'Невалидный JSON' });
+      } catch (err) {
+        sendJson(res, 500, { message: err.message || 'Ошибка загрузки' });
       }
-    }
-    else if (method === 'PUT') {
-      try {
-        const id = parsedUrl.searchParams.get('id');
-        if (!id) return sendJson(res, 400, { success: false, message: 'ID не указан' });
-        const { username, email, password, role } = await getJsonBody(req);
-        if (!username || !email || !role) {
-          return sendJson(res, 400, { success: false, message: 'Обязательные поля отсутствуют' });
-        }
-        
-        if (password) {
-          const { hashPassword } = require('./db');
-          const passwordHash = hashPassword(password);
-          db.run(
-            "UPDATE users SET username = ?, email = ?, password_hash = ?, role = ? WHERE id = ?",
-            [username, email, passwordHash, role, id],
-            function(err) {
-              if (err) {
-                if (err.message.includes('UNIQUE')) {
-                  return sendJson(res, 400, { success: false, message: 'Имя пользователя или email уже заняты' });
-                }
-                return sendJson(res, 500, { success: false, message: 'Ошибка при обновлении пользователя' });
-              }
-              logAction(user.username, `Обновлен пользователь: ${username} (с изменением пароля, роль: ${role})`);
-              sendJson(res, 200, { success: true });
-            }
-          );
-        } else {
-          db.run(
-            "UPDATE users SET username = ?, email = ?, role = ? WHERE id = ?",
-            [username, email, role, id],
-            function(err) {
-              if (err) {
-                if (err.message.includes('UNIQUE')) {
-                  return sendJson(res, 400, { success: false, message: 'Имя пользователя или email уже заняты' });
-                }
-                return sendJson(res, 500, { success: false, message: 'Ошибка при обновлении пользователя' });
-              }
-              logAction(user.username, `Обновлен пользователь: ${username} (роль: ${role})`);
-              sendJson(res, 200, { success: true });
-            }
-          );
-        }
-      } catch (e) {
-        sendJson(res, 400, { success: false, message: 'Невалидный JSON' });
-      }
-    }
-    else if (method === 'DELETE') {
+    } else if (method === 'DELETE') {
       const id = parsedUrl.searchParams.get('id');
-      if (!id) return sendJson(res, 400, { success: false, message: 'ID не указан' });
-      
-      if (parseInt(id, 10) === parseInt(user.id, 10)) {
-        return sendJson(res, 400, { success: false, message: 'Вы не можете удалить самого себя' });
-      }
+      db.get("SELECT * FROM media WHERE id = ?", [id], async (err, file) => {
+        if (err || !file) return sendJson(res, 404, { message: 'Файл не найден' });
 
-      db.get("SELECT username FROM users WHERE id = ?", [id], (err, targetUser) => {
-        if (err || !targetUser) return sendJson(res, 404, { success: false, message: 'Пользователь не найден' });
-        db.run("DELETE FROM users WHERE id = ?", [id], function(err) {
-          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных при удалении' });
-          logAction(user.username, `Удален пользователь: ${targetUser.username}`);
+        try {
+          const filename = path.basename(file.file_path);
+          const fullPath = path.join(UPLOADS_DIR, filename);
+          await fs.promises.unlink(fullPath).catch(() => {}); // не падаем, если файла уже нет
+        } catch (e) { /* ignore */ }
+
+        db.run("DELETE FROM media WHERE id = ?", [id], () => {
           sendJson(res, 200, { success: true });
         });
       });
@@ -512,197 +590,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // --- API ЧАТА ПОДДЕРЖКИ ---
-  if (pathname === '/api/support/send' && method === 'POST') {
-    try {
-      const body = await getJsonBody(req);
-      const { message, ticketId } = body;
-      if (!message) return sendJson(res, 400, { success: false, message: 'Сообщение не может быть пустым' });
-
-      let tId = ticketId;
-      let senderName = body.name || 'Гость';
-      let senderEmail = body.email || '';
-      let userId = null;
-      let role = 'Guest';
-
-      if (user) {
-        tId = 'user_' + user.id;
-        senderName = user.username;
-        userId = user.id;
-        role = user.role;
-      } else {
-        if (!tId) tId = 'guest_' + crypto.randomBytes(8).toString('hex');
-      }
-
-      db.run(
-        "INSERT INTO support_messages (ticket_id, user_id, name, email, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [tId, userId, senderName, senderEmail, message, role, 0],
-        function(err) {
-          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения сообщения' });
-          if (user) logAction(user.username, 'Отправил сообщение в поддержку');
-          sendJson(res, 201, { success: true, ticketId: tId, messageId: this.lastID });
-        }
-      );
-    } catch(e) {
-      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-    }
-    return;
-  }
-
-  if (pathname === '/api/support/messages' && method === 'GET') {
-    let tId = parsedUrl.searchParams.get('ticketId');
-    if (user && user.role !== 'Admin' && user.role !== 'Superadmin') {
-      tId = 'user_' + user.id; // Обычный пользователь видит только свой чат
-    } else if (user && (user.role === 'Admin' || user.role === 'Superadmin')) {
-      if (!tId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
-    } else {
-      if (!tId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
-    }
-
-    db.all("SELECT * FROM support_messages WHERE ticket_id = ? ORDER BY id ASC", [tId], (err, rows) => {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      sendJson(res, 200, { success: true, messages: rows });
-    });
-    return;
-  }
-
-  if (pathname === '/api/support/tickets' && method === 'GET') {
-    if (!user || (user.role !== 'Admin' && user.role !== 'Superadmin')) {
-      return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
-    }
-    const query = `
-      SELECT ticket_id, name, email, MAX(created_at) as last_activity,
-             SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count
-      FROM support_messages 
-      GROUP BY ticket_id 
-      ORDER BY last_activity DESC
-    `;
-    db.all(query, [], (err, rows) => {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      sendJson(res, 200, { success: true, tickets: rows });
-    });
-    return;
-  }
-
-  if (pathname === '/api/support/reply' && method === 'POST') {
-    if (!user || (user.role !== 'Admin' && user.role !== 'Superadmin')) {
-      return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
-    }
-    try {
-      const { ticketId, message } = await getJsonBody(req);
-      if (!ticketId || !message) return sendJson(res, 400, { success: false, message: 'Неверные данные' });
-
-      db.run(
-        "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?)",
-        [ticketId, user.id, user.username, message, user.role, 0],
-        function(err) {
-          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения ответа' });
-          logAction(user.username, `Ответил в тикете ${ticketId}`);
-          sendJson(res, 201, { success: true, messageId: this.lastID });
-        }
-      );
-    } catch(e) {
-      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-    }
-    return;
-  }
-
-  if (pathname === '/api/support/read' && method === 'POST') {
-    try {
-      const { ticketId } = await getJsonBody(req);
-      if (!ticketId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
-      if (!user || (user.role !== 'Admin' && user.role !== 'Superadmin')) {
-        db.run("UPDATE support_messages SET is_read = 1 WHERE ticket_id = ? AND (sender_role = 'Admin' OR sender_role = 'Superadmin')", [ticketId], () => {
-          sendJson(res, 200, { success: true });
-        });
-      } else {
-        db.run("UPDATE support_messages SET is_read = 1 WHERE ticket_id = ? AND sender_role != 'Admin' AND sender_role != 'Superadmin'", [ticketId], () => {
-          sendJson(res, 200, { success: true });
-        });
-      }
-    } catch(e) {
-      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-    }
-    return;
-  }
-
-
-  // 5. API: Динамический CRUD
-  if (pathname.startsWith('/api/crud/')) {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    
-    const table = pathname.replace('/api/crud/', '');
-    const allowedTables = ['articles']; // Добавляй новые таблицы сюда!
-    
-    if (!allowedTables.includes(table)) {
-      return sendJson(res, 400, { message: 'Таблица не разрешена для CRUD' });
-    }
-
-    if (method === 'GET') {
-      db.all(`SELECT * FROM ${table} ORDER BY id DESC`, [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    } 
-    else if (method === 'POST') {
-      try {
-        const body = await getJsonBody(req);
-        if (Object.keys(body).length === 0) return sendJson(res, 400, { message: 'Пустые данные' });
-
-        const keys = Object.keys(body);
-        const values = Object.values(body);
-        const placeholders = keys.map(() => '?').join(', ');
-
-        db.run(
-          `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`,
-          values,
-          function(err) {
-            if (err) return sendJson(res, 500, { message: 'Ошибка создания записи' });
-            logAction(user.username, `Создана запись в ${table} (ID: ${this.lastID})`);
-            sendJson(res, 201, { id: this.lastID, success: true });
-          }
-        );
-      } catch (e) {
-        sendJson(res, 400, { message: 'Невалидный JSON' });
-      }
-    } 
-    else if (method === 'PUT') {
-      try {
-        const id = parsedUrl.searchParams.get('id');
-        if (!id) return sendJson(res, 400, { message: 'ID не указан' });
-
-        const body = await getJsonBody(req);
-        const keys = Object.keys(body);
-        const values = Object.values(body);
-        const assignments = keys.map(k => `${k} = ?`).join(', ');
-
-        db.run(
-          `UPDATE ${table} SET ${assignments} WHERE id = ?`,
-          [...values, id],
-          function(err) {
-            if (err) return sendJson(res, 500, { message: 'Ошибка обновления' });
-            logAction(user.username, `Обновлена запись в ${table} (ID: ${id})`);
-            sendJson(res, 200, { success: true });
-          }
-        );
-      } catch (e) {
-        sendJson(res, 400, { message: 'Невалидный JSON' });
-      }
-    } 
-    else if (method === 'DELETE') {
-      const id = parsedUrl.searchParams.get('id');
-      if (!id) return sendJson(res, 400, { message: 'ID не указан' });
-
-      db.run(`DELETE FROM ${table} WHERE id = ?`, [id], function(err) {
-        if (err) return sendJson(res, 500, { message: 'Ошибка удаления' });
-        logAction(user.username, `Удалена запись из ${table} (ID: ${id})`);
-        sendJson(res, 200, { success: true });
-      });
-    }
-    return;
-  }
-
-  // 6. API: Системные настройки
+  // Settings
   if (pathname === '/api/settings') {
     if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
@@ -711,141 +599,288 @@ const server = http.createServer(async (req, res) => {
         if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
         sendJson(res, 200, rows);
       });
-    } 
-    else if (method === 'POST') {
+    } else if (method === 'POST') {
       try {
         const settings = await getJsonBody(req);
-        const stmt = db.prepare("UPDATE settings SET value = ? WHERE key = ?");
-        
+        const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
         db.serialize(() => {
           for (const [key, value] of Object.entries(settings)) {
-            stmt.run(value, key);
+            stmt.run(key, value);
           }
           stmt.finalize();
           sendJson(res, 200, { success: true });
         });
       } catch (e) {
-        sendJson(res, 500, { message: 'Ошибка сохранения настроек' });
+        sendJson(res, 500, { message: 'Ошибка сохранения' });
       }
     }
     return;
   }
 
-  // 7. API: Медиафайлы (Загрузка / Просмотр / Удаление)
-  if (pathname === '/api/media') {
+  // Support (tickets, messages, reply, etc.)
+  if (pathname.startsWith('/api/support/')) {
     if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
-    if (method === 'GET') {
-      db.all("SELECT * FROM media ORDER BY id DESC", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка БД' });
-        
-        // Преобразуем пути
-        const formatted = rows.map(r => ({
-          id: r.id,
-          filename: r.filename,
-          file_url: r.file_path, // отдаем URL
-          mime_type: r.mime_type,
-          file_size: r.file_size
-        }));
-        sendJson(res, 200, formatted);
-      });
-    } 
-    else if (method === 'POST') {
-      try {
-        const files = await handleMultipartUpload(req);
-        if (files.length === 0) {
-          return sendJson(res, 400, { message: 'Файлы не найдены' });
-        }
-
-        const stmt = db.prepare("INSERT INTO media (filename, file_path, file_size, mime_type) VALUES (?, ?, ?, ?)");
-        
-        db.serialize(() => {
-          files.forEach(f => {
-            stmt.run(f.filename, f.fileUrl, f.fileSize, f.mimeType);
-            logAction(user.username, `Загружен файл ${f.filename}`);
-          });
-          stmt.finalize();
-          sendJson(res, 201, { success: true, count: files.length });
-        });
-      } catch (err) {
-        console.error(err);
-        sendJson(res, 500, { message: 'Ошибка обработки загрузки' });
+    if (pathname === '/api/support/tickets' && method === 'GET') {
+      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
+        return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
       }
-    } 
-    else if (method === 'DELETE') {
-      const id = parsedUrl.searchParams.get('id');
-      if (!id) return sendJson(res, 400, { message: 'ID не указан' });
+      const query = `
+        SELECT ticket_id, name, email, MAX(created_at) as last_activity,
+               SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count
+        FROM support_messages 
+        GROUP BY ticket_id 
+        ORDER BY last_activity DESC
+      `;
+      db.all(query, [], (err, rows) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, tickets: rows });
+      });
+      return;
+    }
 
-      db.get("SELECT * FROM media WHERE id = ?", [id], (err, file) => {
-        if (err || !file) return sendJson(res, 404, { message: 'Файл не найден' });
-        
-        // Удаляем физический файл с диска
-        const filename = path.basename(file.file_path);
-        const fullPath = path.join(UPLOADS_DIR, filename);
-        
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
+    if (pathname === '/api/support/messages' && method === 'GET') {
+      let tId = parsedUrl.searchParams.get('ticketId');
+      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
+        tId = 'user_' + user.id;
+      }
+      if (!tId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
+      db.all("SELECT * FROM support_messages WHERE ticket_id = ? ORDER BY id ASC", [tId], (err, rows) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, messages: rows });
+      });
+      return;
+    }
+
+    if (pathname === '/api/support/reply' && method === 'POST') {
+      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
+        return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
+      }
+      try {
+        const { ticketId, message } = await getJsonBody(req);
+        db.run(
+          "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+          [ticketId, user.id, user.username, message, user.role, 0],
+          function(err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
+            sendJson(res, 201, { success: true, messageId: this.lastID });
+          }
+        );
+      } catch(e) {
+        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+      }
+      return;
+    }
+
+    if (pathname === '/api/support/send' && method === 'POST') {
+      try {
+        const body = await getJsonBody(req);
+        const { message, ticketId } = body;
+        if (!message) return sendJson(res, 400, { success: false, message: 'Сообщение не может быть пустым' });
+        let tId = ticketId || (user ? 'user_' + user.id : 'guest_' + Date.now());
+        let senderName = user ? user.username : (body.name || 'Гость');
+        let role = user ? user.role : 'Guest';
+        db.run(
+          "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+          [tId, user ? user.id : null, senderName, message, role, 0],
+          function(err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
+            sendJson(res, 201, { success: true, ticketId: tId, messageId: this.lastID });
+          }
+        );
+      } catch(e) {
+        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+      }
+      return;
+    }
+
+    // Отметить сообщения тикета как прочитанные (для пользователя и для админа)
+    if (pathname === '/api/support/read' && method === 'POST') {
+      try {
+        const { ticketId } = await getJsonBody(req);
+        if (!ticketId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
+
+        // Админ может читать любой, обычный пользователь — только свой
+        let targetTicket = ticketId;
+        if (user.role !== 'Admin' && user.role !== 'Superadmin') {
+          targetTicket = 'user_' + user.id;
         }
 
-        db.run("DELETE FROM media WHERE id = ?", [id], function(err) {
-          if (err) return sendJson(res, 500, { message: 'Ошибка удаления из БД' });
-          logAction(user.username, `Удален файл ${filename}`);
-          sendJson(res, 200, { success: true });
-        });
+        db.run(
+          `UPDATE support_messages 
+           SET is_read = 1 
+           WHERE ticket_id = ? AND sender_role NOT IN ('Admin', 'Superadmin')`,
+          [targetTicket],
+          function (err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
+            sendJson(res, 200, { success: true });
+          }
+        );
+      } catch (e) {
+        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+      }
+      return;
+    }
+
+    // Лёгкий "ensure ticket" — используется adminStartChat, чтобы не было 404
+    if (pathname === '/api/support/create' && method === 'POST') {
+      // Просто возвращаем успех. Реальный тикет создаётся при первой отправке сообщения.
+      try {
+        const { targetUserId } = await getJsonBody(req);
+        const ticketId = targetUserId ? 'user_' + targetUserId : null;
+        sendJson(res, 200, { success: true, ticketId: ticketId || 'ok' });
+      } catch (e) {
+        sendJson(res, 200, { success: true }); // всё равно не падаем
+      }
+      return;
+    }
+
+    return sendJson(res, 404, { success: false, message: 'Support endpoint не реализован полностью' });
+  }
+
+  // Users (superadmin) — полный CRUD
+  if (pathname === '/api/users') {
+    if (!user || user.role !== 'Superadmin') {
+      return sendJson(res, 403, { success: false, message: 'Только Superadmin' });
+    }
+
+    if (method === 'GET') {
+      db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC", [], (err, rows) => {
+        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
+        sendJson(res, 200, rows);
       });
+      return;
+    }
+
+    if (method === 'POST') {
+      (async () => {
+        try {
+          const body = await getJsonBody(req);
+          const { username, email, password, role = 'User' } = body;
+
+          if (!username || !email || !password) {
+            return sendJson(res, 400, { success: false, message: 'username, email и password обязательны' });
+          }
+          if (!['User', 'Admin', 'Superadmin'].includes(role)) {
+            return sendJson(res, 400, { success: false, message: 'Недопустимая роль' });
+          }
+
+          const password_hash = hashPassword(password);
+          db.run(
+            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            [username, email, password_hash, role],
+            function (err) {
+              if (err) {
+                const msg = err.message.includes('UNIQUE') ? 'Пользователь с таким логином или email уже существует' : 'Ошибка создания пользователя';
+                return sendJson(res, 400, { success: false, message: msg });
+              }
+              logAction(user.username, `Создан пользователь ${username} (${role})`);
+              sendJson(res, 201, { success: true, id: this.lastID });
+            }
+          );
+        } catch (e) {
+          sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+        }
+      })();
+      return;
+    }
+
+    if (method === 'PUT') {
+      (async () => {
+        try {
+          const id = parsedUrl.searchParams.get('id');
+          const body = await getJsonBody(req);
+          const { username, email, password, role } = body;
+
+          if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+          // Собираем динамический UPDATE
+          const fields = [];
+          const values = [];
+
+          if (username) { fields.push('username = ?'); values.push(username); }
+          if (email)    { fields.push('email = ?');    values.push(email); }
+          if (role && ['User','Admin','Superadmin'].includes(role)) {
+            fields.push('role = ?'); values.push(role);
+          }
+          if (password) {
+            fields.push('password_hash = ?');
+            values.push(hashPassword(password));
+          }
+
+          if (fields.length === 0) {
+            return sendJson(res, 400, { success: false, message: 'Нет данных для обновления' });
+          }
+
+          values.push(id);
+
+          db.run(
+            `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+            values,
+            function (err) {
+              if (err) {
+                const msg = err.message.includes('UNIQUE') ? 'Логин или email уже заняты' : 'Ошибка обновления';
+                return sendJson(res, 400, { success: false, message: msg });
+              }
+              logAction(user.username, `Обновлён пользователь id=${id}`);
+              sendJson(res, 200, { success: true });
+            }
+          );
+        } catch (e) {
+          sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+        }
+      })();
+      return;
+    }
+
+    if (method === 'DELETE') {
+      const id = parsedUrl.searchParams.get('id');
+      if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+      if (parseInt(id, 10) === user.id) {
+        return sendJson(res, 400, { success: false, message: 'Нельзя удалить самого себя' });
+      }
+
+      db.run("DELETE FROM users WHERE id = ?", [id], function (err) {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
+        logAction(user.username, `Удалён пользователь id=${id}`);
+        sendJson(res, 200, { success: true });
+      });
+      return;
+    }
+
+    return sendJson(res, 405, { success: false, message: 'Метод не поддерживается' });
+  }
+
+  // Logs
+  if (pathname === '/api/logs') {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    if (method === 'GET') {
+      const limit = parsedUrl.searchParams.get('limit') || '500';
+      db.all("SELECT * FROM logs ORDER BY id DESC LIMIT ?", [limit], (err, rows) => {
+        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
+        sendJson(res, 200, rows);
+      });
+    } else if (method === 'DELETE' && user.role === 'Superadmin') {
+      db.run("DELETE FROM logs", [], () => sendJson(res, 200, { success: true }));
     }
     return;
   }
 
-  // --- ПУБЛИЧНЫЕ ЭНДПОИНТЫ ---
-  if (pathname === '/api/public/articles' && method === 'GET') {
-    db.all("SELECT id, title, content, created_at FROM articles WHERE status = 'published' ORDER BY id DESC", [], (err, rows) => {
-      if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-      sendJson(res, 200, rows);
-    });
-    return;
+  // Other API fall to 404 for now
+  if (pathname.startsWith('/api/')) {
+    return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });
   }
 
-  if (pathname === '/api/public/settings' && method === 'GET') {
-    db.all("SELECT key, value FROM settings", [], (err, rows) => {
-      if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-      sendJson(res, 200, rows);
-    });
-    return;
-  }
-
-  // --- РАЗДАЧА СТАТИЧЕСКИХ ФАЙЛОВ ---
-  
-  // Маршрут к загруженным картинкам (/uploads/*)
-  if (pathname.startsWith('/uploads/')) {
-    const filename = pathname.replace('/uploads/', '');
-    const safePath = path.join(UPLOADS_DIR, path.basename(filename));
-    
-    fs.access(safePath, fs.constants.F_OK, (err) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('File not found');
-        return;
-      }
-      const ext = path.extname(safePath);
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType });
-      fs.createReadStream(safePath).pipe(res);
-    });
-    return;
-  }
-
-  // Раздача статики (Клиент и Админка)
+  // Static files
   let fullStaticPath;
   let staticPath = pathname;
 
   if (pathname.startsWith('/admin')) {
-    // Раздаем админку из папки public
     staticPath = pathname.replace('/admin', '') || '/index.html';
     if (staticPath === '/') staticPath = '/index.html';
     fullStaticPath = path.join(PUBLIC_DIR, staticPath);
 
-    // Редиректы авторизации для страниц HTML
     if (staticPath.endsWith('.html') || staticPath === '/index.html') {
       if (!user && staticPath !== '/login.html') {
         res.writeHead(302, { 'Location': '/admin/login.html' });
@@ -859,7 +894,6 @@ const server = http.createServer(async (req, res) => {
       }
     }
   } else {
-    // Раздаем клиентский сайт из папки client
     staticPath = pathname === '/' ? '/index.html' : pathname;
     fullStaticPath = path.join(CLIENT_DIR, staticPath);
   }
@@ -880,10 +914,6 @@ const server = http.createServer(async (req, res) => {
 
 });
 
-// Запуск сервера
 server.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(`Админка успешно запущена!`);
-  console.log(`Перейдите по ссылке: http://localhost:${PORT}`);
-  console.log(`==================================================`);
+  console.log(`Админка успешно запущена на http://localhost:${PORT}`);
 });

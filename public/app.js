@@ -95,6 +95,10 @@ function setupNavigation() {
 
     // Load section data
     loadSectionData(hash);
+
+    if (hash === 'articles') {
+      loadDashboardStats();
+    }
   };
 
   window.addEventListener('hashchange', handleHashChange);
@@ -139,10 +143,16 @@ function initApp() {
   });
 
   // Articles Search
-  document.getElementById('crudSearch').addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase();
-    renderArticles(query);
-  });
+  const crudSearch = document.getElementById('crudSearch');
+  if (crudSearch) {
+    crudSearch.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      renderArticles(query);
+    });
+  }
+
+  // Загружаем статистику для "дашборда" на главной странице статей
+  loadDashboardStats();
 
   // Modal Setup
   const modal = document.getElementById('articleModalOverlay');
@@ -205,6 +215,40 @@ function initApp() {
     }
   });
 
+  // Preview button
+  const previewBtn = document.getElementById('previewArticleBtn');
+  if (previewBtn) {
+    previewBtn.addEventListener('click', () => {
+      const title = document.getElementById('articleTitle').value || 'Без названия';
+      const content = quill ? quill.root.innerHTML : (document.getElementById('articleContent')?.value || '');
+      const status = document.getElementById('articleStatus').value;
+
+      const previewWindow = window.open('', '_blank', 'width=900,height=700');
+      previewWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Предпросмотр: ${escapeHtml(title)}</title>
+          <style>
+            body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.7; }
+            h1 { border-bottom: 1px solid #eee; padding-bottom: 10px; }
+            .meta { color: #666; font-size: 14px; margin-bottom: 30px; }
+            .content { font-size: 16px; }
+            .content img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>
+          <div class="meta">Статус: <strong>${status}</strong> • Предпросмотр</div>
+          <h1>${escapeHtml(title)}</h1>
+          <div class="content">${content}</div>
+        </body>
+        </html>
+      `);
+      previewWindow.document.close();
+    });
+  }
+
   // Media File Manager Upload Setup
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
@@ -234,13 +278,20 @@ function initApp() {
     }
   });
 
-  // Settings Save handler
+  // Settings Save handler (поддерживает input, textarea, checkbox)
   document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const inputs = document.querySelectorAll('#settingsContainer input');
+    const container = document.getElementById('settingsContainer');
     const settings = {};
-    inputs.forEach(input => {
-      settings[input.name] = input.value;
+
+    // Собираем обычные input и textarea
+    container.querySelectorAll('input[type="text"], input[type="email"], textarea').forEach(el => {
+      settings[el.name] = el.value;
+    });
+
+    // Чекбоксы (boolean настройки)
+    container.querySelectorAll('input[type="checkbox"]').forEach(el => {
+      settings[el.name] = el.checked ? 'true' : 'false';
     });
 
     try {
@@ -385,19 +436,21 @@ function loadSectionData(hash) {
   }
 }
 
-// API: Dashboard stats loader
+// API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {
   try {
     const res = await fetch('/api/dashboard/stats');
     if (res.ok) {
       const data = await res.json();
-      document.getElementById('stat-users').textContent = data.users;
-      document.getElementById('stat-articles').textContent = data.articles;
-      document.getElementById('stat-media').textContent = data.mediaFiles;
+      const u = document.getElementById('stat-users');
+      const a = document.getElementById('stat-articles');
+      const m = document.getElementById('stat-media');
+      if (u) u.textContent = data.users || 0;
+      if (a) a.textContent = data.articles || 0;
+      if (m) m.textContent = data.mediaFiles || 0;
     }
-    await loadLogs();
   } catch (err) {
-    console.error('Failed to load stats:', err);
+    console.error('Failed to load dashboard stats:', err);
   }
 }
 
@@ -514,66 +567,120 @@ window.deleteArticle = async (id) => {
   }
 };
 
-// API: Media library loader & Uploader
-async function loadMedia() {
+// API: Media library loader & Uploader (улучшено: поиск + копирование URL)
+let mediaFilesCache = [];
+
+async function loadMedia(filter = '') {
   const grid = document.getElementById('mediaGrid');
   grid.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка файлов...</div>';
 
   try {
     const res = await fetch('/api/media');
     if (res.ok) {
-      const files = await res.json();
-      grid.innerHTML = '';
-      
-      if (files.length === 0) {
-        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: hsl(var(--text-muted)); padding: 40px;">Медиатека пуста. Загрузите файлы перетаскиванием выше.</div>';
-        return;
-      }
-
-      files.forEach(file => {
-        const item = document.createElement('div');
-        item.className = 'media-item';
-        
-        const isImage = file.mime_type.startsWith('image/');
-        const previewEl = isImage 
-          ? `<img src="${file.file_url}" alt="${escapeHtml(file.filename)}">`
-          : `<i data-lucide="file" style="width: 48px; height: 48px; color: hsl(var(--text-secondary));"></i>`;
-
-        const sizeMB = (file.file_size / (1024 * 1024)).toFixed(2);
-
-        item.innerHTML = `
-          <div class="media-preview">${previewEl}</div>
-          <div class="media-info">
-            <div class="media-title" title="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
-            <div class="media-meta">
-              <span>${sizeMB} MB</span>
-              <a href="${file.file_url}" target="_blank" style="color: hsl(var(--accent-cyan)); text-decoration: none;">Открыть</a>
-            </div>
-          </div>
-          <button class="media-delete" onclick="deleteMedia(${file.id})"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
-        `;
-        grid.appendChild(item);
-      });
-      
-      lucide.createIcons();
+      mediaFilesCache = await res.json();
+      renderMediaGrid(filter);
     }
   } catch (err) {
     showToast('Ошибка загрузки медиатеки', 'error');
   }
 }
 
-async function uploadFiles(filesList) {
-  const formData = new FormData();
-  for (let i = 0; i < filesList.length; i++) {
-    formData.append('files', filesList[i]);
+function renderMediaGrid(filter = '') {
+  const grid = document.getElementById('mediaGrid');
+  grid.innerHTML = '';
+
+  const filtered = mediaFilesCache.filter(f => 
+    f.filename.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: hsl(var(--text-muted)); padding: 40px;">Ничего не найдено.</div>';
+    return;
   }
 
+  filtered.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'media-item';
+    
+    const isImage = file.mime_type.startsWith('image/');
+    const previewEl = isImage 
+      ? `<img src="${file.file_url}" alt="${escapeHtml(file.filename)}">`
+      : `<i data-lucide="file" style="width: 48px; height: 48px; color: hsl(var(--text-secondary));"></i>`;
+
+    const sizeMB = (file.file_size / (1024 * 1024)).toFixed(2);
+
+    item.innerHTML = `
+      <div class="media-preview">${previewEl}</div>
+      <div class="media-info">
+        <div class="media-title" title="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
+        <div class="media-meta">
+          <span>${sizeMB} MB</span>
+          <a href="${file.file_url}" target="_blank" style="color: hsl(var(--accent-cyan)); text-decoration: none;">Открыть</a>
+          <button onclick="copyMediaUrl('${file.file_url}', event)" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:2px 6px;font-size:11px;border-radius:4px;cursor:pointer;">Копировать URL</button>
+        </div>
+      </div>
+      <button class="media-delete" onclick="deleteMedia(${file.id}, event)"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+    `;
+    grid.appendChild(item);
+  });
+  
+  lucide.createIcons();
+}
+
+// Поиск в медиатеке
+const mediaSearchInput = document.getElementById('mediaSearch');
+if (mediaSearchInput) {
+  mediaSearchInput.addEventListener('input', (e) => {
+    renderMediaGrid(e.target.value);
+  });
+}
+
+window.copyMediaUrl = async (url, e) => {
+  e.stopImmediatePropagation();
+  try {
+    await navigator.clipboard.writeText(window.location.origin + url);
+    showToast('URL скопирован в буфер обмена', 'success');
+  } catch {
+    // fallback
+    prompt('Скопируйте URL:', window.location.origin + url);
+  }
+};
+
+window.deleteMedia = async (id, e) => {
+  if (e) e.stopImmediatePropagation();
+  if (!confirm('Вы уверены, что хотите удалить этот файл?')) return;
+
+  try {
+    const res = await fetch(`/api/media?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Файл удален', 'success');
+      await loadMedia(document.getElementById('mediaSearch')?.value || '');
+    } else {
+      showToast('Не удалось удалить файл', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка при удалении', 'error');
+  }
+};
+
+async function uploadFiles(filesList) {
   showToast('Загрузка файлов...', 'info');
 
   try {
+    const filesPayload = [];
+    for (const file of filesList) {
+      const data = await fileToBase64(file);
+      filesPayload.push({
+        filename: file.name,
+        data,
+        mimeType: file.type
+      });
+    }
+
     const res = await fetch('/api/media', {
       method: 'POST',
-      body: formData
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: filesPayload })
     });
 
     if (res.ok) {
@@ -588,44 +695,93 @@ async function uploadFiles(filesList) {
   }
 }
 
-window.deleteMedia = async (id) => {
-  if (confirm('Вы уверены, что хотите удалить этот файл?')) {
-    try {
-      const res = await fetch(`/api/media?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast('Файл удален', 'success');
-        await loadMedia();
-      } else {
-        showToast('Не удалось удалить файл', 'error');
-      }
-    } catch (err) {
-      showToast('Ошибка удаления файла', 'error');
-    }
-  }
-};
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1]; // убираем data:...;base64,
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
-// API: Settings loader
+// API: Settings loader с типами полей и группировкой
 async function loadSettings() {
   const container = document.getElementById('settingsContainer');
   container.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка настроек...</div>';
 
+  // Группировка настроек (для удобства)
+  const GROUPS = {
+    'Общие': ['site_name', 'maintenance_mode', 'allow_registration'],
+    'Главная страница': ['hero_title', 'site_description'],
+    'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
+    'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
+  };
+
+  // Определяем тип контрола по ключу
+  function getFieldType(key) {
+    if (['maintenance_mode', 'allow_registration'].includes(key)) return 'boolean';
+    if (['site_description', 'about_subtitle', 'about_card1_text', 'about_card2_text', 'contact_subtitle'].includes(key)) return 'textarea';
+    if (key === 'contact_email') return 'email';
+    return 'text';
+  }
+
   try {
     const res = await fetch('/api/settings');
-    if (res.ok) {
-      const settings = await res.json();
-      container.innerHTML = '';
-      
-      settings.forEach(set => {
-        const group = document.createElement('div');
-        group.className = 'form-group';
-        group.innerHTML = `
-          <label>${escapeHtml(set.description || set.key)}</label>
-          <input type="text" name="${escapeHtml(set.key)}" value="${escapeHtml(set.value || '')}" class="form-control">
-        `;
-        container.appendChild(group);
+    if (!res.ok) throw new Error('Failed to load');
+    const allSettings = await res.json();
+
+    // Преобразуем в map для быстрого доступа
+    const settingsMap = {};
+    allSettings.forEach(s => { settingsMap[s.key] = s; });
+
+    container.innerHTML = '';
+
+    Object.entries(GROUPS).forEach(([groupTitle, keys]) => {
+      // Заголовок группы
+      const groupHeader = document.createElement('div');
+      groupHeader.style.cssText = 'margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;';
+      groupHeader.textContent = groupTitle;
+      container.appendChild(groupHeader);
+
+      keys.forEach(key => {
+        const set = settingsMap[key];
+        if (!set) return;
+
+        const fieldType = getFieldType(key);
+        const div = document.createElement('div');
+        div.className = 'form-group';
+
+        const labelText = escapeHtml(set.description || set.key);
+
+        if (fieldType === 'boolean') {
+          const checked = set.value === 'true' ? 'checked' : '';
+          div.innerHTML = `
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+              <input type="checkbox" name="${escapeHtml(key)}" ${checked} style="width:18px; height:18px; accent-color: var(--accent-purple);">
+              <span>${labelText}</span>
+            </label>
+          `;
+        } else if (fieldType === 'textarea') {
+          div.innerHTML = `
+            <label>${labelText}</label>
+            <textarea name="${escapeHtml(key)}" class="form-control" rows="3" style="resize: vertical; min-height: 70px;">${escapeHtml(set.value || '')}</textarea>
+          `;
+        } else {
+          const inputType = fieldType === 'email' ? 'email' : 'text';
+          div.innerHTML = `
+            <label>${labelText}</label>
+            <input type="${inputType}" name="${escapeHtml(key)}" value="${escapeHtml(set.value || '')}" class="form-control">
+          `;
+        }
+
+        container.appendChild(div);
       });
-    }
+    });
   } catch (err) {
+    container.innerHTML = '<div style="color: #ff6b6b;">Не удалось загрузить настройки</div>';
     showToast('Ошибка загрузки настроек', 'error');
   }
 }
@@ -733,6 +889,7 @@ function renderUsers(filterQuery = '') {
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editUser(${u.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteUser(${u.id})"><i data-lucide="trash-2"></i></button>
+          <button class="action-btn chat" onclick="adminStartChat(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.email)}')"><i data-lucide="message-circle"></i></button>
         </div>
       </td>
     `;
@@ -898,6 +1055,36 @@ window.openSupportChat = (ticketId, name, email) => {
   loadSupportTickets();
   loadSupportMessages(ticketId);
 };
+
+// Admin-initiated chat function
+function adminStartChat(userId, name, email) {
+  const ticketId = 'user_' + userId;
+  activeTicketId = ticketId;
+  // Ensure the ticket exists by creating it (admin only)
+  (async () => {
+    try {
+      await fetch('/api/support/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserId: userId })
+      });
+    } catch (e) {
+      console.error('Failed to create admin chat ticket', e);
+    }
+    // Update UI
+    document.getElementById('chatEmptyState').style.display = 'none';
+    document.getElementById('chatHeader').style.display = 'flex';
+    document.getElementById('chatMessages').style.display = 'flex';
+    document.getElementById('chatInputArea').style.display = 'block';
+    document.getElementById('chatHeaderName').textContent = name;
+    document.getElementById('chatHeaderEmail').textContent = email || 'Гость';
+    document.getElementById('chatHeaderAvatar').textContent = name.charAt(0).toUpperCase();
+    // Load messages (likely empty) and start polling for this ticket
+    loadSupportMessages(ticketId);
+    // Ensure the ticket appears in the list (refresh)
+    loadSupportTickets();
+  })();
+}
 
 async function loadSupportMessages(ticketId, isPolling = false) {
   try {

@@ -76,19 +76,28 @@
     <!-- Main Content Area -->
     <main class="main-content">
       
-      <!-- ARTICLES (CRUD) SECTION -->
+      <!-- ARTICLES (CRUD) SECTION - теперь с дашборд-элементами -->
       <section id="section-articles" class="app-section active">
         <div class="page-header">
           <div class="page-title">
             <h2>Менеджер статей</h2>
             <p>Управление записями в базе данных (CRUD операции)</p>
           </div>
-          <div style="display: flex; gap: 10px;">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <!-- Быстрые действия дашборда -->
+            <div id="dashboardQuickStats" style="display:flex; gap:12px; margin-right:16px; font-size:13px;">
+              <span class="stat-pill">👥 <span id="stat-users">—</span></span>
+              <span class="stat-pill">📄 <span id="stat-articles">—</span></span>
+              <span class="stat-pill">🖼️ <span id="stat-media">—</span></span>
+            </div>
+
+            <button class="btn btn-secondary" onclick="window.open('/', '_blank')">Открыть сайт</button>
+            <button class="btn btn-secondary" onclick="document.querySelector('[data-section=media]').click()">Медиатека</button>
             <button class="btn btn-secondary" onclick="exportCSV('articles')">Экспорт CSV</button>
             <button class="btn btn-secondary" onclick="exportJSON('articles')">Экспорт JSON</button>
             <button class="btn" id="addArticleBtn">
               <i data-lucide="plus"></i>
-              <span>Добавить</span>
+              <span>Добавить статью</span>
             </button>
           </div>
         </div>
@@ -135,6 +144,12 @@
           <i data-lucide="cloud-upload" style="width: 48px; height: 48px;"></i>
           <h3>Перетащите файлы сюда или кликните для выбора</h3>
           <p style="color: hsl(var(--text-muted)); font-size: 13px; margin-top: 8px;">Максимальный размер файла: 10MB (Изображения, документы)</p>
+        </div>
+
+        <div class="table-toolbar" style="margin-bottom: 12px;">
+          <div class="table-search">
+            <input type="text" id="mediaSearch" class="form-control" placeholder="Поиск по имени файла...">
+          </div>
         </div>
         
         <div class="media-grid" id="mediaGrid">
@@ -321,6 +336,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="cancelModalBtn">Отмена</button>
+          <button type="button" class="btn btn-secondary" id="previewArticleBtn">Предпросмотр</button>
           <button type="submit" class="btn">Сохранить</button>
         </div>
       </form>
