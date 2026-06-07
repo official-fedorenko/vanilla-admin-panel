@@ -156,7 +156,7 @@ db.serialize(() => {
               if (err) {
                 console.error(`Не удалось создать пользователя ${u.username}:`, err);
               } else {
-                console.log(`Создан аккаунт по умолчанию: ${u.username} (${u.role}) с паролем: ${defaultPass}`);
+                console.log(`Создан аккаунт по умолчанию: ${u.username} (${u.role})`);
               }
             }
           );

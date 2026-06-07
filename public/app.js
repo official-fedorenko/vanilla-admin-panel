@@ -64,10 +64,12 @@ async function checkSession() {
       document.querySelectorAll('.superadmin-only').forEach(el => {
         el.style.display = 'block';
       });
+      const resetBox = document.getElementById('resetDemoBox');
+      if (resetBox) resetBox.style.display = 'block';
     }
   } catch (err) {
     console.error('Session check error:', err);
-    window.location.href = '/login.html';
+    window.location.href = '/admin/login.html';
   }
 }
 
@@ -311,6 +313,30 @@ function initApp() {
     }
   });
 
+  // Demo reset button (superadmin only)
+  const resetBox = document.getElementById('resetDemoBox');
+  const resetBtn = document.getElementById('resetDemoBtn');
+  if (resetBox && resetBtn) {
+    // Will be shown by checkSession for Superadmin (we toggle here too for safety)
+    resetBtn.addEventListener('click', async () => {
+      if (!confirm('Сбросить все демо-данные? Это действие необратимо.')) return;
+      try {
+        const res = await fetch('/api/admin/reset-demo', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('Демо-данные сброшены. Обновляю...', 'success');
+          setTimeout(() => {
+            window.location.reload();
+          }, 800);
+        } else {
+          showToast(data.message || 'Не удалось сбросить', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети при сбросе', 'error');
+      }
+    });
+  }
+
   // Users Search
   const usersSearch = document.getElementById('usersSearch');
   if (usersSearch) {
@@ -545,8 +571,15 @@ window.editArticle = (id) => {
     document.getElementById('modalTitle').textContent = 'Редактировать статью';
     document.getElementById('articleId').value = art.id;
     document.getElementById('articleTitle').value = art.title;
-    document.getElementById('articleContent').value = art.content || '';
     document.getElementById('articleStatus').value = art.status;
+
+    // Properly populate Quill (or fallback hidden input)
+    if (quill) {
+      quill.root.innerHTML = art.content || '';
+    } else {
+      document.getElementById('articleContent').value = art.content || '';
+    }
+
     modal.classList.add('active');
   }
 };

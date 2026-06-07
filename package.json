@@ -1,13 +1,38 @@
 {
-  "name": "mypersonaladminpanel",
-  "version": "1.0.0",
-  "description": "Vanilla JS & Node.js Zero-Framework Admin Panel Template with SQLite",
+  "name": "vanilla-admin-panel",
+  "version": "0.3.0-beta",
+  "description": "Лёгкая админ-панель + CMS + личный кабинет на чистом Node.js (без фреймворков) + SQLite. Сильная защита от ботов при регистрации.",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "admin-panel",
+    "cms",
+    "vanilla-js",
+    "node-js",
+    "sqlite",
+    "no-framework",
+    "self-hosted",
+    "blog",
+    "personal-cabinet"
+  ],
+  "author": "Your Name <you@example.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/vanilla-admin-panel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/vanilla-admin-panel/issues"
+  },
+  "homepage": "https://github.com/yourusername/vanilla-admin-panel#readme",
+  "license": "MIT",
   "dependencies": {
     "sqlite3": "^5.1.7"
   }

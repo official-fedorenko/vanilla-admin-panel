@@ -4,7 +4,18 @@ const path = require('path');
 const crypto = require('crypto');
 const { db, verifyPassword, hashPassword, saveSession, loadSessionsIntoMap, deleteSession, cleanupExpiredSessions } = require('./db');
 
-const PORT = 3080;
+// === Modular route handlers (light split from monolithic server.js) ===
+const { sendJson, getJsonBody, logAction } = require('./src/utils');
+const handleDashboard = require('./src/routes/dashboard');
+const handleArticles = require('./src/routes/articles');
+const handleMedia = require('./src/routes/media');
+const handleSettings = require('./src/routes/settings');
+const handleSupport = require('./src/routes/support');
+const handleUsers = require('./src/routes/users');
+const handleLogs = require('./src/routes/logs');
+const handleResetDemo = require('./src/routes/resetDemo');
+
+const PORT = parseInt(process.env.PORT, 10) || 3080;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CLIENT_DIR = path.join(__dirname, 'client');
@@ -24,55 +35,13 @@ const MIME_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.gif': 'image/gif',
+  '.pdf': 'application/pdf',
+  '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8'
 };
-
-// === Загрузка файлов через base64 (то, что уже использует фронтенд) ===
-async function handleBase64Upload(req) {
-  const body = await getJsonBody(req);
-  const inputFiles = Array.isArray(body.files) ? body.files : [];
-  const result = [];
-
-  const MAX_FILES = 6;
-  const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 МБ после декодирования
-
-  if (inputFiles.length > MAX_FILES) {
-    throw new Error('Слишком много файлов за раз (макс. ' + MAX_FILES + ')');
-  }
-
-  for (const f of inputFiles) {
-    if (!f || !f.data || !f.filename) continue;
-
-    let buffer;
-    try {
-      buffer = Buffer.from(f.data, 'base64');
-    } catch (e) {
-      continue;
-    }
-
-    if (buffer.length === 0 || buffer.length > MAX_SIZE_BYTES) {
-      throw new Error(`Файл "${f.filename}" слишком большой (макс 8 МБ)`);
-    }
-
-    // Простая защита имени файла
-    const safeOriginal = String(f.filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
-    const uniqueName = Date.now() + '-' + Math.floor(Math.random() * 1e10) + '-' + safeOriginal;
-    const fullPath = path.join(UPLOADS_DIR, uniqueName);
-
-    await fs.promises.writeFile(fullPath, buffer);
-
-    result.push({
-      filename: f.filename,
-      fileUrl: '/uploads/' + uniqueName,
-      fileSize: buffer.length,
-      mimeType: f.mimeType || 'application/octet-stream'
-    });
-  }
-
-  return result;
-}
 
 function parseCookies(request) {
   const list = {};
@@ -93,33 +62,6 @@ function getSessionUser(req) {
     return sessions.get(sessionToken);
   }
   return null;
-}
-
-function getJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch (err) {
-        reject(new Error('Invalid JSON'));
-      }
-    });
-  });
-}
-
-function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(data));
-}
-
-function logAction(user, action) {
-  db.run("INSERT INTO logs (user, action) VALUES (?, ?)", [user, action], (err) => {
-    if (err) console.error("Ошибка записи лога:", err);
-  });
 }
 
 // === Простая защита от ботов (rate limit + honeypot) ===
@@ -169,10 +111,31 @@ function isRateLimited(ip, action = 'register', maxAttempts = 5, minIntervalMs =
   return { limited: false };
 }
 
+// === Settings cache (for maintenance_mode etc) + helpers ===
+let cachedSettings = {};
+
+function reloadSettingsCache() {
+  db.all("SELECT key, value FROM settings", [], (err, rows) => {
+    if (!err && rows) {
+      cachedSettings = {};
+      rows.forEach(r => { cachedSettings[r.key] = r.value; });
+    }
+  });
+}
+reloadSettingsCache();
+
+function sendHtml404(res) {
+  res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404 — Страница не найдена</title><style>body{font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{text-align:center;padding:48px 32px;background:rgba(20,20,28,.85);border:1px solid rgba(255,255,255,.08);border-radius:20px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.5)}.code{font-size:96px;font-weight:800;line-height:1;margin:0 0 8px;background:linear-gradient(135deg,#8a2be2,#00d2ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.msg{color:#a0a0ab;margin-bottom:28px;font-size:15px} .links a{color:#00d2ff;text-decoration:none;margin:0 8px} .links a:hover{text-decoration:underline}</style></head><body><div class="box"><div class="code">404</div><div class="msg">Страница не найдена или была перемещена</div><div class="links"><a href="/">На главную</a><a href="/admin/">В админ-панель</a></div></div></body></html>`);
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
   const method = req.method;
+
+  // Basic global error boundary for uncaught errors in handlers
+  try {
 
   // Логируем только важное (или включи DEBUG=true для всех запросов)
   if (process.env.DEBUG || pathname.startsWith('/api/')) {
@@ -180,6 +143,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   const user = getSessionUser(req);
+
+  // Maintenance mode — affects public visitors (admins always have access)
+  const isMaintenance = cachedSettings['maintenance_mode'] === 'true';
+  const isPublicNonApi = !pathname.startsWith('/admin') &&
+                         !pathname.startsWith('/api/') &&
+                         !pathname.startsWith('/uploads/') &&
+                         pathname !== '/favicon.ico';
+
+  if (isMaintenance && !user && isPublicNonApi) {
+    res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>На обслуживании</title><style>body{font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.m{padding:48px 40px;background:rgba(20,20,28,.85);border:1px solid rgba(255,255,255,.08);border-radius:20px;text-align:center;max-width:420px}.icon{font-size:48px;margin-bottom:12px}.title{font-size:22px;font-weight:700;margin-bottom:8px;color:#ff6b6b}.desc{color:#a0a0ab;font-size:14px;line-height:1.5} .admin-link{color:#00d2ff;text-decoration:none} .admin-link:hover{text-decoration:underline}</style></head><body><div class="m"><div class="icon">🛠️</div><div class="title">Технические работы</div><div class="desc">Сайт временно недоступен для посетителей.<br>Администраторы могут войти через панель управления.</div><div style="margin-top:20px"><a class="admin-link" href="/admin/">Перейти в админ-панель →</a></div></div></body></html>`);
+    return;
+  }
 
   // Public articles
   if (pathname === '/api/public/articles' && method === 'GET') {
@@ -230,11 +206,20 @@ const server = http.createServer(async (req, res) => {
 
         logAction(userRow.username, 'Вход в систему');
 
+        const isDefaultAccount = ['superadmin', 'admin', 'user'].includes(userRow.username.toLowerCase());
+        const securityNote = isDefaultAccount 
+          ? '⚠️ This is a default account. Change the password immediately via the Users section (Superadmin) or profile.' 
+          : null;
+
         res.writeHead(200, {
           'Set-Cookie': `session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`,
           'Content-Type': 'application/json; charset=utf-8'
         });
-        res.end(JSON.stringify({ success: true, user: { username: userRow.username, role: userRow.role } }));
+        res.end(JSON.stringify({ 
+          success: true, 
+          user: { username: userRow.username, role: userRow.role },
+          securityWarning: securityNote 
+        }));
       });
     } catch (e) {
       sendJson(res, 500, { success: false, message: 'Внутренняя ошибка сервера' });
@@ -479,397 +464,72 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Dashboard stats (параллельно вместо вложенных колбэков)
+  // Dashboard stats
   if (pathname === '/api/dashboard/stats' && method === 'GET') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-
-    Promise.all([
-      new Promise(res => db.get("SELECT COUNT(*) as count FROM users", (e, r) => res(r ? r.count : 0))),
-      new Promise(res => db.get("SELECT COUNT(*) as count FROM articles", (e, r) => res(r ? r.count : 0))),
-      new Promise(res => db.get("SELECT COUNT(*) as count FROM media", (e, r) => res(r ? r.count : 0)))
-    ]).then(([users, articles, mediaFiles]) => {
-      sendJson(res, 200, { users, articles, mediaFiles });
-    }).catch(() => sendJson(res, 200, { users: 0, articles: 0, mediaFiles: 0 }));
-
-    return;
+    return handleDashboard(req, res, user);
   }
 
-  // CRUD articles (used heavily in admin)
+  // CRUD articles
   if (pathname.startsWith('/api/crud/articles')) {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-
-    if (method === 'GET') {
-      db.all("SELECT * FROM articles ORDER BY id DESC", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    } else if (method === 'POST') {
-      try {
-        const body = await getJsonBody(req);
-        db.run("INSERT INTO articles (title, content, status) VALUES (?, ?, ?)", 
-          [body.title, body.content, body.status || 'draft'], function(err) {
-          if (err) return sendJson(res, 500, { message: 'Ошибка создания' });
-          sendJson(res, 201, { id: this.lastID, success: true });
-        });
-      } catch (e) {
-        sendJson(res, 400, { message: 'Невалидный JSON' });
-      }
-    } else if (method === 'PUT') {
-      try {
-        const id = parsedUrl.searchParams.get('id');
-        const body = await getJsonBody(req);
-        db.run("UPDATE articles SET title = ?, content = ?, status = ? WHERE id = ?", 
-          [body.title, body.content, body.status, id], function(err) {
-          if (err) return sendJson(res, 500, { message: 'Ошибка обновления' });
-          sendJson(res, 200, { success: true });
-        });
-      } catch (e) {
-        sendJson(res, 400, { message: 'Невалидный JSON' });
-      }
-    } else if (method === 'DELETE') {
-      const id = parsedUrl.searchParams.get('id');
-      db.run("DELETE FROM articles WHERE id = ?", [id], function(err) {
-        if (err) return sendJson(res, 500, { message: 'Ошибка удаления' });
-        sendJson(res, 200, { success: true });
-      });
-    }
-    return;
+    return handleArticles(req, res, user, parsedUrl, method);
   }
 
   // Media
   if (pathname === '/api/media') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-
-    if (method === 'GET') {
-      db.all("SELECT * FROM media ORDER BY id DESC", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка БД' });
-        const formatted = rows.map(r => ({
-          id: r.id, filename: r.filename, file_url: r.file_path,
-          mime_type: r.mime_type, file_size: r.file_size
-        }));
-        sendJson(res, 200, formatted);
-      });
-    } else if (method === 'POST') {
-      try {
-        const files = await handleBase64Upload(req);
-        if (files.length === 0) return sendJson(res, 400, { message: 'Файлы не найдены' });
-
-        const stmt = db.prepare("INSERT INTO media (filename, file_path, file_size, mime_type) VALUES (?, ?, ?, ?)");
-        db.serialize(() => {
-          files.forEach(f => {
-            stmt.run(f.filename, f.fileUrl, f.fileSize, f.mimeType);
-          });
-          stmt.finalize();
-
-          // Возвращаем и count, и urls — чтобы работало и в админке, и в кабинете (аватар)
-          sendJson(res, 201, {
-            success: true,
-            count: files.length,
-            urls: files.map(f => f.fileUrl)
-          });
-        });
-      } catch (err) {
-        sendJson(res, 500, { message: err.message || 'Ошибка загрузки' });
-      }
-    } else if (method === 'DELETE') {
-      const id = parsedUrl.searchParams.get('id');
-      db.get("SELECT * FROM media WHERE id = ?", [id], async (err, file) => {
-        if (err || !file) return sendJson(res, 404, { message: 'Файл не найден' });
-
-        try {
-          const filename = path.basename(file.file_path);
-          const fullPath = path.join(UPLOADS_DIR, filename);
-          await fs.promises.unlink(fullPath).catch(() => {}); // не падаем, если файла уже нет
-        } catch (e) { /* ignore */ }
-
-        db.run("DELETE FROM media WHERE id = ?", [id], () => {
-          sendJson(res, 200, { success: true });
-        });
-      });
-    }
-    return;
+    return handleMedia(req, res, user, parsedUrl, method, { UPLOADS_DIR });
   }
 
   // Settings
   if (pathname === '/api/settings') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-
-    if (method === 'GET') {
-      db.all("SELECT * FROM settings", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    } else if (method === 'POST') {
-      try {
-        const settings = await getJsonBody(req);
-        const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-        db.serialize(() => {
-          for (const [key, value] of Object.entries(settings)) {
-            stmt.run(key, value);
-          }
-          stmt.finalize();
-          sendJson(res, 200, { success: true });
-        });
-      } catch (e) {
-        sendJson(res, 500, { message: 'Ошибка сохранения' });
-      }
-    }
-    return;
+    return handleSettings(req, res, user, parsedUrl, method, { reloadSettingsCache });
   }
 
-  // Support (tickets, messages, reply, etc.)
+  // Support
   if (pathname.startsWith('/api/support/')) {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-
-    if (pathname === '/api/support/tickets' && method === 'GET') {
-      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
-        return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
-      }
-      const query = `
-        SELECT ticket_id, name, email, MAX(created_at) as last_activity,
-               SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count
-        FROM support_messages 
-        GROUP BY ticket_id 
-        ORDER BY last_activity DESC
-      `;
-      db.all(query, [], (err, rows) => {
-        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-        sendJson(res, 200, { success: true, tickets: rows });
-      });
-      return;
-    }
-
-    if (pathname === '/api/support/messages' && method === 'GET') {
-      let tId = parsedUrl.searchParams.get('ticketId');
-      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
-        tId = 'user_' + user.id;
-      }
-      if (!tId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
-      db.all("SELECT * FROM support_messages WHERE ticket_id = ? ORDER BY id ASC", [tId], (err, rows) => {
-        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-        sendJson(res, 200, { success: true, messages: rows });
-      });
-      return;
-    }
-
-    if (pathname === '/api/support/reply' && method === 'POST') {
-      if (user.role !== 'Admin' && user.role !== 'Superadmin') {
-        return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
-      }
-      try {
-        const { ticketId, message } = await getJsonBody(req);
-        db.run(
-          "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?)",
-          [ticketId, user.id, user.username, message, user.role, 0],
-          function(err) {
-            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
-            sendJson(res, 201, { success: true, messageId: this.lastID });
-          }
-        );
-      } catch(e) {
-        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-      }
-      return;
-    }
-
-    if (pathname === '/api/support/send' && method === 'POST') {
-      try {
-        const body = await getJsonBody(req);
-        const { message, ticketId } = body;
-        if (!message) return sendJson(res, 400, { success: false, message: 'Сообщение не может быть пустым' });
-        let tId = ticketId || (user ? 'user_' + user.id : 'guest_' + Date.now());
-        let senderName = user ? user.username : (body.name || 'Гость');
-        let role = user ? user.role : 'Guest';
-        db.run(
-          "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read) VALUES (?, ?, ?, ?, ?, ?)",
-          [tId, user ? user.id : null, senderName, message, role, 0],
-          function(err) {
-            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
-            sendJson(res, 201, { success: true, ticketId: tId, messageId: this.lastID });
-          }
-        );
-      } catch(e) {
-        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-      }
-      return;
-    }
-
-    // Отметить сообщения тикета как прочитанные (для пользователя и для админа)
-    if (pathname === '/api/support/read' && method === 'POST') {
-      try {
-        const { ticketId } = await getJsonBody(req);
-        if (!ticketId) return sendJson(res, 400, { success: false, message: 'Не указан ticketId' });
-
-        // Админ может читать любой, обычный пользователь — только свой
-        let targetTicket = ticketId;
-        if (user.role !== 'Admin' && user.role !== 'Superadmin') {
-          targetTicket = 'user_' + user.id;
-        }
-
-        db.run(
-          `UPDATE support_messages 
-           SET is_read = 1 
-           WHERE ticket_id = ? AND sender_role NOT IN ('Admin', 'Superadmin')`,
-          [targetTicket],
-          function (err) {
-            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка' });
-            sendJson(res, 200, { success: true });
-          }
-        );
-      } catch (e) {
-        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-      }
-      return;
-    }
-
-    // Лёгкий "ensure ticket" — используется adminStartChat, чтобы не было 404
-    if (pathname === '/api/support/create' && method === 'POST') {
-      // Просто возвращаем успех. Реальный тикет создаётся при первой отправке сообщения.
-      try {
-        const { targetUserId } = await getJsonBody(req);
-        const ticketId = targetUserId ? 'user_' + targetUserId : null;
-        sendJson(res, 200, { success: true, ticketId: ticketId || 'ok' });
-      } catch (e) {
-        sendJson(res, 200, { success: true }); // всё равно не падаем
-      }
-      return;
-    }
-
-    return sendJson(res, 404, { success: false, message: 'Support endpoint не реализован полностью' });
+    return handleSupport(req, res, user, parsedUrl, method);
   }
 
-  // Users (superadmin) — полный CRUD
+  // Users (superadmin only)
   if (pathname === '/api/users') {
-    if (!user || user.role !== 'Superadmin') {
-      return sendJson(res, 403, { success: false, message: 'Только Superadmin' });
-    }
-
-    if (method === 'GET') {
-      db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC", [], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-      return;
-    }
-
-    if (method === 'POST') {
-      (async () => {
-        try {
-          const body = await getJsonBody(req);
-          const { username, email, password, role = 'User' } = body;
-
-          if (!username || !email || !password) {
-            return sendJson(res, 400, { success: false, message: 'username, email и password обязательны' });
-          }
-          if (!['User', 'Admin', 'Superadmin'].includes(role)) {
-            return sendJson(res, 400, { success: false, message: 'Недопустимая роль' });
-          }
-
-          const password_hash = hashPassword(password);
-          db.run(
-            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)",
-            [username, email, password_hash, role],
-            function (err) {
-              if (err) {
-                const msg = err.message.includes('UNIQUE') ? 'Пользователь с таким логином или email уже существует' : 'Ошибка создания пользователя';
-                return sendJson(res, 400, { success: false, message: msg });
-              }
-              logAction(user.username, `Создан пользователь ${username} (${role})`);
-              sendJson(res, 201, { success: true, id: this.lastID });
-            }
-          );
-        } catch (e) {
-          sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-        }
-      })();
-      return;
-    }
-
-    if (method === 'PUT') {
-      (async () => {
-        try {
-          const id = parsedUrl.searchParams.get('id');
-          const body = await getJsonBody(req);
-          const { username, email, password, role } = body;
-
-          if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
-
-          // Собираем динамический UPDATE
-          const fields = [];
-          const values = [];
-
-          if (username) { fields.push('username = ?'); values.push(username); }
-          if (email)    { fields.push('email = ?');    values.push(email); }
-          if (role && ['User','Admin','Superadmin'].includes(role)) {
-            fields.push('role = ?'); values.push(role);
-          }
-          if (password) {
-            fields.push('password_hash = ?');
-            values.push(hashPassword(password));
-          }
-
-          if (fields.length === 0) {
-            return sendJson(res, 400, { success: false, message: 'Нет данных для обновления' });
-          }
-
-          values.push(id);
-
-          db.run(
-            `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
-            values,
-            function (err) {
-              if (err) {
-                const msg = err.message.includes('UNIQUE') ? 'Логин или email уже заняты' : 'Ошибка обновления';
-                return sendJson(res, 400, { success: false, message: msg });
-              }
-              logAction(user.username, `Обновлён пользователь id=${id}`);
-              sendJson(res, 200, { success: true });
-            }
-          );
-        } catch (e) {
-          sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
-        }
-      })();
-      return;
-    }
-
-    if (method === 'DELETE') {
-      const id = parsedUrl.searchParams.get('id');
-      if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
-
-      if (parseInt(id, 10) === user.id) {
-        return sendJson(res, 400, { success: false, message: 'Нельзя удалить самого себя' });
-      }
-
-      db.run("DELETE FROM users WHERE id = ?", [id], function (err) {
-        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
-        logAction(user.username, `Удалён пользователь id=${id}`);
-        sendJson(res, 200, { success: true });
-      });
-      return;
-    }
-
-    return sendJson(res, 405, { success: false, message: 'Метод не поддерживается' });
+    return handleUsers(req, res, user, parsedUrl, method);
   }
 
   // Logs
   if (pathname === '/api/logs') {
-    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
-    if (method === 'GET') {
-      const limit = parsedUrl.searchParams.get('limit') || '500';
-      db.all("SELECT * FROM logs ORDER BY id DESC LIMIT ?", [limit], (err, rows) => {
-        if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-        sendJson(res, 200, rows);
-      });
-    } else if (method === 'DELETE' && user.role === 'Superadmin') {
-      db.run("DELETE FROM logs", [], () => sendJson(res, 200, { success: true }));
-    }
-    return;
+    return handleLogs(req, res, user, parsedUrl, method);
+  }
+
+  // Superadmin-only: reset demo data
+  if (pathname === '/api/admin/reset-demo' && method === 'POST') {
+    return handleResetDemo(req, res, user, parsedUrl, method, { UPLOADS_DIR, reloadSettingsCache });
   }
 
   // Other API fall to 404 for now
   if (pathname.startsWith('/api/')) {
     return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });
+  }
+
+  // Serve uploaded media files (avatars, article images, media library URLs)
+  // This was missing — files were saved but 404 on direct access
+  if (pathname.startsWith('/uploads/')) {
+    const rel = pathname.replace(/^\/uploads\//, '');
+    const fullPath = path.join(UPLOADS_DIR, rel);
+
+    fs.access(fullPath, fs.constants.F_OK, (err) => {
+      if (err) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Файл не найден (404)');
+        return;
+      }
+      const ext = path.extname(fullPath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=31536000, immutable'
+      });
+      fs.createReadStream(fullPath).pipe(res);
+    });
+    return;
   }
 
   // Static files
@@ -900,8 +560,7 @@ const server = http.createServer(async (req, res) => {
 
   fs.access(fullStaticPath, fs.constants.F_OK, (err) => {
     if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Страница не найдена (404)');
+      sendHtml404(res);
       return;
     }
 
@@ -912,8 +571,40 @@ const server = http.createServer(async (req, res) => {
     fs.createReadStream(fullStaticPath).pipe(res);
   });
 
+  } catch (err) {
+    console.error('Unhandled error in request handler:', err);
+    try {
+      sendJson(res, 500, { success: false, message: 'Internal server error' });
+    } catch (_) {
+      // last resort
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'Internal server error' }));
+      }
+    }
+  }
 });
 
 server.listen(PORT, () => {
   console.log(`Админка успешно запущена на http://localhost:${PORT}`);
+  console.log('='.repeat(70));
+  console.log('🚨  BETA RELEASE — SECURITY WARNING');
+  console.log('   Default accounts are EXTREMELY insecure. Change passwords IMMEDIATELY:');
+  console.log('');
+  console.log('     superadmin / 1234qwer   (Superadmin — полный доступ)');
+  console.log('     admin      / 1234qwer   (Admin)');
+  console.log('     user       / 1234qwer   (User)');
+  console.log('');
+  console.log('   Recommended first actions:');
+  console.log('     1. Login as superadmin');
+  console.log('     2. Go to "Пользователи" (Users) and change ALL passwords');
+  console.log('     3. (Optional) Disable registration in Settings');
+  console.log('');
+  console.log('   To completely reset demo data:');
+  console.log('     1. Stop the server');
+  console.log('     2. Delete db.sqlite');
+  console.log('     3. Restart (fresh DB + demo data will be created)');
+  console.log('');
+  console.log('   Never expose this directly to the internet without a reverse proxy + HTTPS.');
+  console.log('='.repeat(70));
 });

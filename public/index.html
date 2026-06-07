@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Панель Управления</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%238a2be2'/%3E%3Cstop offset='100%25' stop-color='%2300d2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='42' fill='url(%23g)'/%3E%3Ctext x='50' y='63' font-size='46' text-anchor='middle' fill='white' font-family='system-ui,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Quill Editor -->
@@ -176,6 +177,16 @@
               <span>Сохранить настройки</span>
             </button>
           </form>
+
+          <!-- Superadmin-only demo reset (very handy when presenting the project) -->
+          <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
+            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
+            <button type="button" id="resetDemoBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+              <i data-lucide="refresh-cw"></i>
+              <span>Сбросить демо-данные</span>
+            </button>
+            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Удалит статьи, медиа, логи, обращения и пересоздаст тестовые данные.</div>
+          </div>
         </div>
       </section>
 

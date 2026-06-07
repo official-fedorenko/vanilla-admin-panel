@@ -151,6 +151,7 @@ async function loadArticles() {
     articles.forEach(art => {
       const card = document.createElement('article');
       card.className = 'article-card';
+      card.style.cursor = 'pointer';
       
       const dateFormatted = new Date(art.created_at).toLocaleDateString('ru-RU', {
         day: 'numeric', month: 'long', year: 'numeric'
@@ -160,9 +161,10 @@ async function loadArticles() {
         <span class="article-date">${dateFormatted}</span>
         <h2 class="article-title">${escapeHtml(art.title)}</h2>
         <div class="article-content">${art.content || 'Нет описания'}</div>
-        <a href="#" class="read-more">Читать далее <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i></a>
+        <a href="#" class="read-more" style="pointer-events:none">Читать далее <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i></a>
       `;
       
+      card.onclick = () => openArticleModal(art);
       grid.appendChild(card);
     });
 
@@ -186,3 +188,35 @@ function escapeHtml(text) {
   };
   return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
+
+// Article modal (public site)
+function openArticleModal(art) {
+  const modal = document.getElementById('articleModal');
+  if (!modal) return;
+
+  document.getElementById('articleModalTitle').textContent = art.title || 'Статья';
+  const contentEl = document.getElementById('articleModalContent');
+  contentEl.innerHTML = art.content || '<em>Нет содержимого</em>';
+
+  modal.style.display = 'flex';
+
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) closeArticleModal();
+  };
+}
+
+function closeArticleModal() {
+  const modal = document.getElementById('articleModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Keyboard escape support for the article modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('articleModal');
+    if (modal && modal.style.display === 'flex') {
+      modal.style.display = 'none';
+    }
+  }
+});
