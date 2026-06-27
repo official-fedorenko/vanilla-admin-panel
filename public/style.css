@@ -477,6 +477,22 @@ main.main-content {
   margin-top: 20px;
 }
 
+/* Wraps the <table> itself so wide tables scroll horizontally on narrow
+   screens instead of being clipped by .table-container's overflow:hidden
+   (which exists only to clip the thead background to the rounded corners). */
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* Replaces the inline-styled button rows in page headers (Articles/Media
+   sections) so they can wrap instead of overflowing on narrow screens. */
+.page-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .table-toolbar {
   padding: 20px 24px;
   border-bottom: 1px solid hsl(var(--border-color));
@@ -682,6 +698,33 @@ table.data-table tbody tr:hover {
   background-color: hsl(var(--accent-red));
 }
 
+/* Support / chat layout (replaces inline styles so it can be overridden
+   for narrow screens — see the media queries at the bottom of this file). */
+.support-container {
+  display: flex;
+  gap: 20px;
+  height: 600px;
+  background-color: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-color));
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.support-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  border-right: 1px solid hsl(var(--border-color));
+  display: flex;
+  flex-direction: column;
+}
+
+.support-chat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Modals / Overlays */
 .modal-overlay {
   position: fixed;
@@ -689,6 +732,7 @@ table.data-table tbody tr:hover {
   left: 0;
   right: 0;
   bottom: 0;
+  padding: 20px;
   background-color: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
@@ -710,11 +754,21 @@ table.data-table tbody tr:hover {
   border: 1px solid hsl(var(--border-color));
   width: 100%;
   max-width: 600px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--border-radius-lg);
   box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
   transform: translateY(20px);
   transition: var(--transition-smooth);
   overflow: hidden;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .modal-overlay.active .modal {
@@ -744,6 +798,9 @@ table.data-table tbody tr:hover {
 
 .modal-body {
   padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .modal-footer {
@@ -873,10 +930,97 @@ table.data-table tbody tr:hover {
   .nav-list {
     width: 100%;
     justify-content: space-around;
+    flex-wrap: wrap;
   }
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+  }
+  .page-header-actions {
+    width: 100%;
+  }
+
+  main.main-content {
+    padding: 16px;
+  }
+
+  /* Support/chat: two side-by-side panes don't fit — stack list above chat */
+  .support-container {
+    flex-direction: column;
+    height: auto;
+  }
+  .support-sidebar {
+    width: 100%;
+    max-height: 220px;
+    border-right: none;
+    border-bottom: 1px solid hsl(var(--border-color));
+  }
+  .support-chat {
+    height: 420px;
+  }
+
+  table.data-table th,
+  table.data-table td {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  aside.sidebar {
+    padding: 12px 16px;
+  }
+
+  .brand span {
+    display: none;
+  }
+
+  /* Icon-only nav: text labels would make 4-6 items unreadable at this
+     width. The <a title="..."> added in index.html keeps a hover/long-press
+     hint, and lucide icons stay legible at small sizes. */
+  .nav-item a span {
+    display: none;
+  }
+  .nav-item a {
+    padding: 10px;
+  }
+
+  .page-title h2 {
+    font-size: 22px;
+  }
+
+  .card-value {
+    font-size: 26px;
+  }
+
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+  }
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+  .modal-footer .btn,
+  .modal-footer .btn-secondary {
+    flex: 1;
+  }
+
+  .support-chat {
+    height: 360px;
+  }
+
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+  .toast {
+    min-width: 0;
+    width: 100%;
   }
 }
