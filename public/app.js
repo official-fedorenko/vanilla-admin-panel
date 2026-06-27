@@ -66,6 +66,8 @@ async function checkSession() {
       });
       const resetBox = document.getElementById('resetDemoBox');
       if (resetBox) resetBox.style.display = 'block';
+      const backupBox = document.getElementById('backupBox');
+      if (backupBox) backupBox.style.display = 'block';
     }
   } catch (err) {
     console.error('Session check error:', err);
@@ -116,19 +118,45 @@ function setupNavigation() {
 // Global App Event Listeners & Startup
 function initApp() {
   // Initialize Quill Editor
+  // Quill грузится с внешнего CDN — если он недоступен (блокировка, сбой
+  // сети, медленное соединение), новый Quill() бросает исключение. Без
+  // try/catch это необработанное исключение остановило бы выполнение всей
+  // initApp() и оставило бы без обработчиков всё, что настраивается ниже
+  // (модалку пользователей, поиск, drag&drop загрузку и т.д.) — поэтому
+  // ошибка отсюда не должна "ронять" остальную инициализацию.
   if (document.getElementById('quillEditor')) {
-    quill = new Quill('#quillEditor', {
-      theme: 'snow',
-      modules: {
-        toolbar: [
-          [{ 'header': [1, 2, 3, false] }],
-          ['bold', 'italic', 'underline', 'strike'],
-          ['blockquote', 'code-block'],
-          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-          ['clean']
-        ]
+    try {
+      if (typeof Quill === 'undefined') throw new Error('Quill script failed to load');
+      quill = new Quill('#quillEditor', {
+        theme: 'snow',
+        modules: {
+          toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            ['blockquote', 'code-block'],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            ['clean']
+          ]
+        }
+      });
+    } catch (e) {
+      console.warn('Не удалось инициализировать редактор Quill, используется обычное текстовое поле:', e);
+      quill = null;
+
+      // Делаем скрытое поле контента видимым textarea, чтобы статьи
+      // всё равно можно было редактировать без rich-текстового редактора.
+      const editorDiv = document.getElementById('quillEditor');
+      const hiddenInput = document.getElementById('articleContent');
+      if (editorDiv && hiddenInput) {
+        const textarea = document.createElement('textarea');
+        textarea.id = 'articleContent';
+        textarea.className = 'form-control';
+        textarea.rows = 8;
+        textarea.value = hiddenInput.value || '';
+        editorDiv.replaceWith(textarea);
+        hiddenInput.remove();
       }
-    });
+    }
   }
 
   // Logout Button

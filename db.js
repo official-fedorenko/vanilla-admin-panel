@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const crypto = require('crypto');
+const logger = require('./src/logger');
 
 const dbPath = path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(dbPath);
@@ -21,6 +22,14 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE support_messages ADD COLUMN image_url TEXT", () => {});
     }
+  },
+  {
+    version: 3,
+    description: 'Add two-factor auth columns to users',
+    up: () => {
+      db.run("ALTER TABLE users ADD COLUMN two_factor_secret TEXT", () => {});
+      db.run("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0", () => {});
+    }
   }
 ];
 
@@ -39,7 +48,7 @@ function runMigrations() {
 
       MIGRATIONS.forEach(migration => {
         if (migration.version > currentVersion) {
-          console.log(`[db] Running migration ${migration.version}: ${migration.description}`);
+          logger.info(`[db] Running migration ${migration.version}: ${migration.description}`);
           migration.up();
           db.run(
             "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
@@ -84,6 +93,8 @@ db.serialize(() => {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'User',
       avatar_url TEXT,
+      two_factor_secret TEXT,
+      two_factor_enabled INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -133,7 +144,7 @@ db.serialize(() => {
   // Создаем администраторов и пользователя по умолчанию, если таблица пуста
   db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
     if (err) {
-      console.error("Ошибка при проверке пользователей:", err);
+      logger.error("Ошибка при проверке пользователей:", err);
       return;
     }
 
@@ -154,9 +165,9 @@ db.serialize(() => {
             [u.username, u.email, hashedPassword, u.role],
             (err) => {
               if (err) {
-                console.error(`Не удалось создать пользователя ${u.username}:`, err);
+                logger.error(`Не удалось создать пользователя ${u.username}:`, err);
               } else {
-                console.log(`Создан аккаунт по умолчанию: ${u.username} (${u.role})`);
+                logger.info(`Создан аккаунт по умолчанию: ${u.username} (${u.role})`);
               }
             }
           );
@@ -247,7 +258,7 @@ function loadSessionsIntoMap(sessionsMap) {
         role: row.role
       });
     });
-    if (rows.length) console.log(`[sessions] Восстановлено ${rows.length} сессий из БД`);
+    if (rows.length) logger.info(`[sessions] Восстановлено ${rows.length} сессий из БД`);
   });
 }
 
@@ -261,6 +272,7 @@ function cleanupExpiredSessions() {
 
 module.exports = {
   db,
+  dbPath,
   hashPassword,
   verifyPassword,
   saveSession,

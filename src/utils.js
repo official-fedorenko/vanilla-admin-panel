@@ -1,24 +1,47 @@
 const fs = require('fs');
 const path = require('path');
 const { db } = require('../db');
+const logger = require('./logger');
 
 /**
  * Shared utilities extracted from the monolithic server.js
  * These are used by the route handlers.
  */
 
-function getJsonBody(req) {
+const MAX_JSON_BODY_BYTES = 2 * 1024 * 1024; // 2 МБ — достаточно для обычных форм/статей
+
+function getJsonBody(req, maxBytes = MAX_JSON_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let body = '';
+    let size = 0;
+    let aborted = false;
+
     req.on('data', chunk => {
+      if (aborted) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        aborted = true;
+        // Не вызываем req.destroy() — обрыв соединения мешает дочитать
+        // запрос и отправить клиенту корректный ответ об ошибке.
+        const err = new Error('Тело запроса слишком большое');
+        err.expected = true;
+        reject(err);
+        return;
+      }
       body += chunk.toString();
     });
     req.on('end', () => {
+      if (aborted) return;
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch (err) {
         reject(new Error('Invalid JSON'));
       }
+    });
+    req.on('error', err => {
+      if (aborted) return;
+      aborted = true;
+      reject(err);
     });
   });
 }
@@ -30,7 +53,7 @@ function sendJson(res, statusCode, data) {
 
 function logAction(user, action) {
   db.run("INSERT INTO logs (user, action) VALUES (?, ?)", [user, action], (err) => {
-    if (err) console.error("Ошибка записи лога:", err);
+    if (err) logger.error("Ошибка записи лога:", err);
   });
 }
 
@@ -39,15 +62,19 @@ function logAction(user, action) {
  * UPLOADS_DIR is passed in so the route doesn't need to know project layout.
  */
 async function handleBase64Upload(req, UPLOADS_DIR) {
-  const body = await getJsonBody(req);
+  const MAX_FILES = 6;
+  const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 МБ после декодирования
+  // base64 раздувает размер на ~33% + запас под JSON-обёртку и метаданные файлов
+  const MAX_UPLOAD_BODY_BYTES = Math.ceil(MAX_FILES * MAX_SIZE_BYTES * 1.4);
+
+  const body = await getJsonBody(req, MAX_UPLOAD_BODY_BYTES);
   const inputFiles = Array.isArray(body.files) ? body.files : [];
   const result = [];
 
-  const MAX_FILES = 6;
-  const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 МБ после декодирования
-
   if (inputFiles.length > MAX_FILES) {
-    throw new Error('Слишком много файлов за раз (макс. ' + MAX_FILES + ')');
+    const err = new Error('Слишком много файлов за раз (макс. ' + MAX_FILES + ')');
+    err.expected = true;
+    throw err;
   }
 
   for (const f of inputFiles) {
@@ -61,7 +88,9 @@ async function handleBase64Upload(req, UPLOADS_DIR) {
     }
 
     if (buffer.length === 0 || buffer.length > MAX_SIZE_BYTES) {
-      throw new Error(`Файл "${f.filename}" слишком большой (макс 8 МБ)`);
+      const err = new Error(`Файл "${f.filename}" слишком большой (макс 8 МБ)`);
+      err.expected = true;
+      throw err;
     }
 
     // Простая защита имени файла

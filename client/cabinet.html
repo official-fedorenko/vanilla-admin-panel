@@ -356,11 +356,53 @@
             </div>
             <div class="form-group">
               <label for="newPassword">Новый пароль</label>
-              <input type="password" id="newPassword" placeholder="Минимум 6 символов...">
+              <input type="password" id="newPassword" placeholder="Минимум 8 символов...">
             </div>
 
             <button type="submit" class="btn-save" id="saveBtn">Сохранить изменения</button>
           </form>
+        </div>
+
+        <div class="card" id="twoFactorCard" style="margin-top: 28px;">
+          <div class="card-title">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Двухфакторная аутентификация
+          </div>
+
+          <div id="twoFactorStatusBox" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Проверка статуса...</div>
+
+          <!-- Шаг 1: запрос пароля и генерация секрета -->
+          <div id="twoFactorEnableStep" style="display: none;">
+            <div class="form-group">
+              <label for="twoFactorSetupPassword">Текущий пароль</label>
+              <input type="password" id="twoFactorSetupPassword" placeholder="Подтвердите пароль...">
+            </div>
+            <button type="button" class="btn-save" id="twoFactorStartBtn" style="margin-top: 4px;">Начать настройку</button>
+          </div>
+
+          <!-- Шаг 2: показ секрета + подтверждение кодом -->
+          <div id="twoFactorSetupStep" style="display: none;">
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Добавьте этот ключ в приложение-аутентификатор (Google Authenticator, Authy и т.п.) вручную, затем введите 6-значный код:</p>
+            <div class="input-readonly" id="twoFactorSecretBox" style="word-break: break-all; margin-bottom: 12px;">...</div>
+            <div class="form-group">
+              <label for="twoFactorVerifyCode">Код подтверждения</label>
+              <input type="text" id="twoFactorVerifyCode" placeholder="000000" inputmode="numeric" maxlength="6">
+            </div>
+            <button type="button" class="btn-save" id="twoFactorVerifyBtn">Подтвердить и включить</button>
+          </div>
+
+          <!-- Отключение -->
+          <div id="twoFactorDisableStep" style="display: none;">
+            <div class="form-group">
+              <label for="twoFactorDisablePassword">Текущий пароль</label>
+              <input type="password" id="twoFactorDisablePassword" placeholder="Подтвердите пароль...">
+            </div>
+            <div class="form-group">
+              <label for="twoFactorDisableCode">Код из приложения</label>
+              <input type="text" id="twoFactorDisableCode" placeholder="000000" inputmode="numeric" maxlength="6">
+            </div>
+            <button type="button" class="btn-save" id="twoFactorDisableBtn" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">Отключить 2FA</button>
+          </div>
         </div>
       </div>
 
@@ -959,6 +1001,117 @@
       } catch(e) {}
     }
 
+    // === Двухфакторная аутентификация ===
+    let twoFactorEnabled = false;
+
+    async function loadTwoFactorStatus() {
+      try {
+        const res = await fetch('/api/cabinet/2fa/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        twoFactorEnabled = !!data.enabled;
+        renderTwoFactorUI();
+      } catch (e) { /* оставляем текущий вид */ }
+    }
+
+    function renderTwoFactorUI() {
+      const statusBox = document.getElementById('twoFactorStatusBox');
+      const enableStep = document.getElementById('twoFactorEnableStep');
+      const setupStep = document.getElementById('twoFactorSetupStep');
+      const disableStep = document.getElementById('twoFactorDisableStep');
+
+      setupStep.style.display = 'none';
+
+      if (twoFactorEnabled) {
+        statusBox.textContent = 'Включена — при входе будет запрашиваться код из приложения-аутентификатора.';
+        statusBox.style.color = 'var(--green)';
+        enableStep.style.display = 'none';
+        disableStep.style.display = 'block';
+      } else {
+        statusBox.textContent = 'Отключена.';
+        statusBox.style.color = 'var(--text-secondary)';
+        enableStep.style.display = 'block';
+        disableStep.style.display = 'none';
+      }
+    }
+
+    document.getElementById('twoFactorStartBtn').addEventListener('click', async () => {
+      const currentPassword = document.getElementById('twoFactorSetupPassword').value;
+      if (!currentPassword) {
+        showToast('Введите текущий пароль', 'error');
+        return;
+      }
+      try {
+        const res = await fetch('/api/cabinet/2fa/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          document.getElementById('twoFactorSecretBox').textContent = `Ключ: ${data.secret}`;
+          document.getElementById('twoFactorSetupStep').style.display = 'block';
+          document.getElementById('twoFactorSetupPassword').value = '';
+        } else {
+          showToast(data.message || 'Не удалось начать настройку 2FA', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+
+    document.getElementById('twoFactorVerifyBtn').addEventListener('click', async () => {
+      const code = document.getElementById('twoFactorVerifyCode').value;
+      try {
+        const res = await fetch('/api/cabinet/2fa/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('Двухфакторная аутентификация включена', 'success');
+          twoFactorEnabled = true;
+          document.getElementById('twoFactorVerifyCode').value = '';
+          renderTwoFactorUI();
+        } else {
+          showToast(data.message || 'Неверный код', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+
+    document.getElementById('twoFactorDisableBtn').addEventListener('click', async () => {
+      const currentPassword = document.getElementById('twoFactorDisablePassword').value;
+      const code = document.getElementById('twoFactorDisableCode').value;
+      if (!currentPassword || !code) {
+        showToast('Укажите пароль и код из приложения', 'error');
+        return;
+      }
+      if (!confirm('Отключить двухфакторную аутентификацию?')) return;
+
+      try {
+        const res = await fetch('/api/cabinet/2fa/disable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPassword, code })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast('Двухфакторная аутентификация отключена', 'success');
+          twoFactorEnabled = false;
+          document.getElementById('twoFactorDisablePassword').value = '';
+          document.getElementById('twoFactorDisableCode').value = '';
+          renderTwoFactorUI();
+        } else {
+          showToast(data.message || 'Не удалось отключить 2FA', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
       const backBtn = document.getElementById('adminBackBtn');
       if (backBtn) {
@@ -968,6 +1121,7 @@
       // Init
       (async () => {
         await Promise.all([loadProfile(), loadArticles(), loadSettings()]);
+        loadTwoFactorStatus();
         if (currentUserData) {
           if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
             await loadAdminTickets();

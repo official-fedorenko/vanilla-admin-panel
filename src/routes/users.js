@@ -7,7 +7,9 @@ module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
   }
 
   if (method === 'GET') {
-    db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC", [], (err, rows) => {
+    // Пока без полноценной пагинации в UI — жёсткий потолок защищает от
+    // отдачи всей таблицы целиком при большом количестве пользователей.
+    db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
       sendJson(res, 200, rows);
     });
@@ -22,6 +24,9 @@ module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
 
         if (!username || !email || !password) {
           return sendJson(res, 400, { success: false, message: 'username, email и password обязательны' });
+        }
+        if (password.length < 8) {
+          return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 8 символов' });
         }
         if (!['User', 'Admin', 'Superadmin'].includes(role)) {
           return sendJson(res, 400, { success: false, message: 'Недопустимая роль' });
@@ -65,6 +70,9 @@ module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
           fields.push('role = ?'); values.push(role);
         }
         if (password) {
+          if (password.length < 8) {
+            return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 8 символов' });
+          }
           fields.push('password_hash = ?');
           values.push(hashPassword(password));
         }

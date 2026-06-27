@@ -232,6 +232,17 @@
         <div class="error-box" id="errorBox"></div>
       </form>
 
+      <form id="twoFactorForm" style="display: none;">
+        <div class="form-group">
+          <label for="twoFactorCode">Код из приложения-аутентификатора</label>
+          <input type="text" id="twoFactorCode" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+        </div>
+        <button type="submit" class="btn" id="twoFactorSubmitBtn">
+          <span class="btn-text">Подтвердить</span>
+        </button>
+        <div class="error-box" id="twoFactorErrorBox"></div>
+      </form>
+
       <div class="footer-link">
         Нет аккаунта? <a href="/register.html">Зарегистрироваться</a>
       </div>
@@ -266,6 +277,8 @@
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3500);
     }
 
+    let pendingTwoFactorToken = null;
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const btn = document.getElementById('submitBtn');
@@ -285,7 +298,12 @@
         });
         const data = await res.json();
 
-        if (res.ok && data.success) {
+        if (res.ok && data.success && data.requires2FA) {
+          pendingTwoFactorToken = data.pendingToken;
+          document.getElementById('loginForm').style.display = 'none';
+          document.getElementById('twoFactorForm').style.display = 'block';
+          showToast('Введите код из приложения-аутентификатора', 'success');
+        } else if (res.ok && data.success) {
           showToast('Добро пожаловать, ' + data.user.username + '!', 'success');
           setTimeout(() => redirectByRole(data.user.role), 700);
         } else {
@@ -299,6 +317,38 @@
         errorBox.style.display = 'block';
         btn.disabled = false;
         btn.classList.remove('loading');
+      }
+    });
+
+    document.getElementById('twoFactorForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('twoFactorSubmitBtn');
+      const errorBox = document.getElementById('twoFactorErrorBox');
+      const code = document.getElementById('twoFactorCode').value;
+
+      btn.disabled = true;
+      errorBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/login-2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingToken: pendingTwoFactorToken, code })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          showToast('Добро пожаловать, ' + data.user.username + '!', 'success');
+          setTimeout(() => redirectByRole(data.user.role), 700);
+        } else {
+          errorBox.textContent = data.message || 'Неверный код';
+          errorBox.style.display = 'block';
+          btn.disabled = false;
+        }
+      } catch (err) {
+        errorBox.textContent = 'Ошибка сети. Попробуйте позже.';
+        errorBox.style.display = 'block';
+        btn.disabled = false;
       }
     });
 

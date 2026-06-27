@@ -8,7 +8,21 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
+const { Readable } = require('stream');
 const { once } = require('events');
+
+// Минимальный мок req для getJsonBody: обычный поток, который эмитит
+// 'data'/'end' так же, как настоящий http.IncomingMessage.
+function mockRequestWithBody(bodyString) {
+  const req = new Readable({
+    read() {}
+  });
+  process.nextTick(() => {
+    req.push(Buffer.from(bodyString));
+    req.push(null);
+  });
+  return req;
+}
 
 let server;
 let PORT;
@@ -44,6 +58,71 @@ test('articles validation rejects empty title (via route module)', async () => {
 
   // Very lightweight: we don't have full req/res here, but we can at least ensure the module loads
   assert.strictEqual(typeof handleArticles, 'function', 'articles route handler should be a function');
+});
+
+test('sanitizeContent strips script tags and event handler attributes', () => {
+  const { sanitizeContent } = require('../src/routes/articles');
+  const dirty = '<p>hello</p><script>alert(1)</script><img src="x" onerror="alert(2)">';
+  const clean = sanitizeContent(dirty);
+
+  assert.ok(!clean.includes('<script'), 'script tag should be stripped');
+  assert.ok(!clean.includes('onerror'), 'event handler attribute should be stripped');
+  assert.ok(clean.includes('<p>hello</p>'), 'safe tags should be preserved');
+});
+
+test('sanitizeContent handles empty/undefined content', () => {
+  const { sanitizeContent } = require('../src/routes/articles');
+  assert.strictEqual(sanitizeContent(undefined), '');
+  assert.strictEqual(sanitizeContent(''), '');
+});
+
+test('getJsonBody resolves valid JSON within size limit', async () => {
+  const { getJsonBody } = require('../src/utils');
+  const req = mockRequestWithBody(JSON.stringify({ username: 'a', password: 'b' }));
+  const body = await getJsonBody(req);
+  assert.deepStrictEqual(body, { username: 'a', password: 'b' });
+});
+
+test('getJsonBody rejects bodies larger than maxBytes', async () => {
+  const { getJsonBody } = require('../src/utils');
+  const oversized = JSON.stringify({ password: 'a'.repeat(1000) });
+  const req = mockRequestWithBody(oversized);
+
+  await assert.rejects(
+    () => getJsonBody(req, 100), // лимит намеренно меньше тела запроса
+    /слишком большое/i
+  );
+});
+
+test('totp: generated code verifies successfully', () => {
+  const { generateSecret, totp, verifyTotp } = require('../src/totp');
+  const secret = generateSecret();
+  const code = totp(secret);
+  assert.strictEqual(verifyTotp(secret, code), true);
+});
+
+test('totp: wrong code is rejected', () => {
+  const { generateSecret, totp, verifyTotp } = require('../src/totp');
+  const secret = generateSecret();
+  const code = totp(secret);
+  const wrongCode = code === '000000' ? '111111' : '000000';
+  assert.strictEqual(verifyTotp(secret, wrongCode), false);
+});
+
+test('totp: code for a different secret does not verify', () => {
+  const { generateSecret, totp, verifyTotp } = require('../src/totp');
+  const secretA = generateSecret();
+  const secretB = generateSecret();
+  const codeForA = totp(secretA);
+  assert.strictEqual(verifyTotp(secretB, codeForA), false);
+});
+
+test('totp: rejects malformed codes without throwing', () => {
+  const { generateSecret, verifyTotp } = require('../src/totp');
+  const secret = generateSecret();
+  assert.strictEqual(verifyTotp(secret, ''), false);
+  assert.strictEqual(verifyTotp(secret, 'abcdef'), false);
+  assert.strictEqual(verifyTotp(secret, null), false);
 });
 
 after(async () => {

@@ -33,7 +33,18 @@
           <i data-lucide="arrow-right"></i>
         </button>
       </form>
-      
+
+      <form id="twoFactorForm" style="display: none;">
+        <div class="form-group">
+          <label for="twoFactorCode">Код из приложения-аутентификатора</label>
+          <input type="text" id="twoFactorCode" class="form-control" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%; margin-top: 10px;">
+          <span>Подтвердить</span>
+          <i data-lucide="shield-check"></i>
+        </button>
+      </form>
+
       <div id="loginError" style="margin-top: 15px; color: hsl(var(--accent-red)); font-size: 13px; text-align: center; display: none;">
         Неверное имя пользователя или пароль
       </div>
@@ -75,16 +86,18 @@
       }, 3000);
     }
 
+    let pendingTwoFactorToken = null;
+
     // Login Form Handler
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const usernameInput = document.getElementById('username').value;
       const passwordInput = document.getElementById('password').value;
       const errorDiv = document.getElementById('loginError');
-      
+
       errorDiv.style.display = 'none';
-      
+
       try {
         const response = await fetch('/api/auth/login', {
           method: 'POST',
@@ -96,10 +109,15 @@
             password: passwordInput
           })
         });
-        
+
         const data = await response.json();
-        
-        if (response.ok && data.success) {
+
+        if (response.ok && data.success && data.requires2FA) {
+          pendingTwoFactorToken = data.pendingToken;
+          document.getElementById('loginForm').style.display = 'none';
+          document.getElementById('twoFactorForm').style.display = 'block';
+          showToast('Введите код из приложения-аутентификатора', 'success');
+        } else if (response.ok && data.success) {
           showToast('Успешный вход! Перенаправление...', 'success');
           setTimeout(() => {
             window.location.href = '/admin/';
@@ -114,6 +132,37 @@
         errorDiv.textContent = 'Ошибка сети. Попробуйте позже.';
         errorDiv.style.display = 'block';
         showToast('Ошибка сети при попытке входа', 'error');
+      }
+    });
+
+    // Two-Factor Code Form Handler
+    document.getElementById('twoFactorForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('twoFactorCode').value;
+      const errorDiv = document.getElementById('loginError');
+      errorDiv.style.display = 'none';
+
+      try {
+        const response = await fetch('/api/auth/login-2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingToken: pendingTwoFactorToken, code })
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          showToast('Успешный вход! Перенаправление...', 'success');
+          setTimeout(() => {
+            window.location.href = '/admin/';
+          }, 800);
+        } else {
+          errorDiv.textContent = data.message || 'Неверный код';
+          errorDiv.style.display = 'block';
+          showToast(data.message || 'Неверный код', 'error');
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Ошибка сети. Попробуйте позже.';
+        errorDiv.style.display = 'block';
       }
     });
   </script>

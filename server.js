@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { db, verifyPassword, hashPassword, saveSession, loadSessionsIntoMap, deleteSession, cleanupExpiredSessions } = require('./db');
+const logger = require('./src/logger');
 
 // === Modular route handlers (light split from monolithic server.js) ===
 const { sendJson, getJsonBody, logAction } = require('./src/utils');
@@ -14,11 +15,15 @@ const handleSupport = require('./src/routes/support');
 const handleUsers = require('./src/routes/users');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
+const handleBackup = require('./src/routes/backup');
+const handleTwoFactor = require('./src/routes/twoFactor');
+const { verifyTotp } = require('./src/totp');
 
 const PORT = parseInt(process.env.PORT, 10) || 3080;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const CLIENT_DIR = path.join(__dirname, 'client');
+const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60; // сутки
 
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -27,6 +32,35 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 const sessions = new Map();
 loadSessionsIntoMap(sessions);
 cleanupExpiredSessions();
+
+// Короткоживущие токены между "пароль принят" и "код 2FA подтверждён".
+// Полноценную сессию не выдаём, пока не введён код.
+const pendingTwoFactorLogins = new Map(); // pendingToken -> { userId, expires }
+const PENDING_2FA_TTL_MS = 5 * 60 * 1000;
+
+function issueSession(req, res, userRow) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const sessionUser = { id: userRow.id, username: userRow.username, role: userRow.role };
+  sessions.set(token, sessionUser);
+  saveSession(token, sessionUser);
+
+  logAction(userRow.username, 'Вход в систему');
+
+  const isDefaultAccount = ['superadmin', 'admin', 'user'].includes(userRow.username.toLowerCase());
+  const securityNote = isDefaultAccount
+    ? '⚠️ This is a default account. Change the password immediately via the Users section (Superadmin) or profile.'
+    : null;
+
+  res.writeHead(200, {
+    'Set-Cookie': buildSessionCookie(token, req, { maxAgeSeconds: SESSION_MAX_AGE_SECONDS }),
+    'Content-Type': 'application/json; charset=utf-8'
+  });
+  res.end(JSON.stringify({
+    success: true,
+    user: { username: userRow.username, role: userRow.role },
+    securityWarning: securityNote
+  }));
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +76,17 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8'
 };
+
+// HTML отдаём без кэша (доступ зависит от сессии: логин/редиректы),
+// статичные ассеты — с умеренным кэшем и обязательной ревалидацией,
+// т.к. у файлов нет версионирования в имени (cache-busting).
+const NO_CACHE_EXTENSIONS = new Set(['.html']);
+const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=3600, must-revalidate';
+const NO_CACHE_CONTROL = 'no-cache';
+
+function getStaticCacheControl(ext) {
+  return NO_CACHE_EXTENSIONS.has(ext) ? NO_CACHE_CONTROL : STATIC_ASSET_CACHE_CONTROL;
+}
 
 function parseCookies(request) {
   const list = {};
@@ -64,12 +109,63 @@ function getSessionUser(req) {
   return null;
 }
 
+// Сервер сам по себе работает по HTTP — HTTPS обычно терминируется на
+// reverse-proxy (nginx и т.п.). Доверяем заголовку X-Forwarded-Proto только
+// если оператор явно включил TRUST_PROXY=true в .env (иначе заголовок легко
+// подделать и он не дает реальной гарантии шифрования соединения).
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+
+function isHttpsRequest(req) {
+  if (req.socket && req.socket.encrypted) return true;
+  if (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https') return true;
+  return false;
+}
+
+function buildSessionCookie(token, req, { maxAgeSeconds, clear = false } = {}) {
+  const parts = [`session=${token}`, 'HttpOnly', 'Path=/', 'SameSite=Strict'];
+  if (isHttpsRequest(req)) parts.push('Secure');
+  if (clear) {
+    parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+  } else {
+    parts.push(`Max-Age=${maxAgeSeconds}`);
+  }
+  return parts.join('; ');
+}
+
+// === Необязательный IP allowlist для входа в админку ===
+// Если переменная задана, вход (и регистрация) разрешён только с этих IP.
+// Полезно для приватных/внутренних установок. Пусто/не задано — без ограничений.
+const ADMIN_IP_ALLOWLIST = (process.env.ADMIN_IP_ALLOWLIST || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+function isIpAllowed(ip) {
+  if (ADMIN_IP_ALLOWLIST.length === 0) return true;
+  return ADMIN_IP_ALLOWLIST.includes(ip);
+}
+
 // === Простая защита от ботов (rate limit + honeypot) ===
 const rateLimits = new Map(); // key -> { attempts, first, last }
 
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // окно, через которое счётчик попыток сбрасывается
+const RATE_LIMIT_ENTRY_TTL_MS = 2 * 60 * 60 * 1000; // возраст записи, после которого её можно удалить
+const RATE_LIMIT_CLEANUP_PROBABILITY = 0.03; // шанс запуска очистки старых записей на каждый вызов
+
+// Параметры конкретных rate-limit'ов (попыток / минимальный интервал между ними, мс)
+const LOGIN_RATE_LIMIT = { maxAttempts: 8, minIntervalMs: 1800 };
+const REGISTER_RATE_LIMIT = { maxAttempts: 3, minIntervalMs: 40000 };
+const CHECK_USERNAME_RATE_LIMIT = { maxAttempts: 20, minIntervalMs: 1200 };
+
 function getClientIP(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) return forwarded.split(',')[0].trim();
+  // X-Forwarded-For подделывается клиентом сколь угодно легко — доверяем ему
+  // только когда оператор подтвердил (TRUST_PROXY=true), что сервер стоит за
+  // reverse-proxy, который сам устанавливает этот заголовок. Иначе rate-limit
+  // и IP allowlist можно было бы обойти одним заголовком в запросе.
+  if (TRUST_PROXY) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (forwarded) return forwarded.split(',')[0].trim();
+  }
   return req.socket.remoteAddress || 'unknown';
 }
 
@@ -83,8 +179,7 @@ function isRateLimited(ip, action = 'register', maxAttempts = 5, minIntervalMs =
     rateLimits.set(key, entry);
   }
 
-  // Сбрасываем счётчик через 1 час
-  if (now - entry.first > 60 * 60 * 1000) {
+  if (now - entry.first > RATE_LIMIT_WINDOW_MS) {
     entry.attempts = 0;
     entry.first = now;
   }
@@ -102,9 +197,9 @@ function isRateLimited(ip, action = 'register', maxAttempts = 5, minIntervalMs =
   entry.last = now;
 
   // Редкая очистка
-  if (Math.random() < 0.03) {
+  if (Math.random() < RATE_LIMIT_CLEANUP_PROBABILITY) {
     for (const [k, e] of rateLimits) {
-      if (now - e.first > 2 * 60 * 60 * 1000) rateLimits.delete(k);
+      if (now - e.first > RATE_LIMIT_ENTRY_TTL_MS) rateLimits.delete(k);
     }
   }
 
@@ -124,6 +219,30 @@ function reloadSettingsCache() {
 }
 reloadSettingsCache();
 
+// === Базовые security-заголовки (применяются ко всем ответам) ===
+// Внимание: страницы используют инлайн onclick="" и style="", а также
+// подключают Quill/Lucide с CDN, поэтому 'unsafe-inline' для script/style
+// оставлен осознанно — полностью убрать его можно только после рефакторинга
+// фронтенда на addEventListener и внешние стили.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://unpkg.com https://cdn.quilljs.com 'unsafe-inline'",
+  "style-src 'self' https://cdn.quilljs.com 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
+function applySecurityHeaders(res) {
+  res.setHeader('Content-Security-Policy', CSP);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer-when-downgrade');
+}
+
 function sendHtml404(res) {
   res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>404 — Страница не найдена</title><style>body{font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.box{text-align:center;padding:48px 32px;background:rgba(20,20,28,.85);border:1px solid rgba(255,255,255,.08);border-radius:20px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.5)}.code{font-size:96px;font-weight:800;line-height:1;margin:0 0 8px;background:linear-gradient(135deg,#8a2be2,#00d2ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.msg{color:#a0a0ab;margin-bottom:28px;font-size:15px} .links a{color:#00d2ff;text-decoration:none;margin:0 8px} .links a:hover{text-decoration:underline}</style></head><body><div class="box"><div class="code">404</div><div class="msg">Страница не найдена или была перемещена</div><div class="links"><a href="/">На главную</a><a href="/admin/">В админ-панель</a></div></div></body></html>`);
@@ -133,6 +252,16 @@ const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
   const method = req.method;
+
+  applySecurityHeaders(res);
+
+  // Страницы сами объявляют свою иконку через <link rel="icon" data:...>,
+  // отдельного favicon.ico в проекте нет — отвечаем тихо, без шумных 404 в логах.
+  if (pathname === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   // Basic global error boundary for uncaught errors in handlers
   try {
@@ -159,7 +288,7 @@ const server = http.createServer(async (req, res) => {
 
   // Public articles
   if (pathname === '/api/public/articles' && method === 'GET') {
-    db.all("SELECT id, title, content, created_at FROM articles WHERE status = 'published' ORDER BY id DESC", [], (err, rows) => {
+    db.all("SELECT id, title, content, created_at FROM articles WHERE status = 'published' ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
       sendJson(res, 200, rows);
     });
@@ -179,7 +308,10 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/auth/login' && method === 'POST') {
     try {
       const ip = getClientIP(req);
-      const loginLimit = isRateLimited(ip, 'login', 8, 1800); // max 8 попыток, 1.8 сек между
+      if (!isIpAllowed(ip)) {
+        return sendJson(res, 403, { success: false, message: 'Вход с этого IP-адреса запрещён' });
+      }
+      const loginLimit = isRateLimited(ip, 'login', LOGIN_RATE_LIMIT.maxAttempts, LOGIN_RATE_LIMIT.minIntervalMs);
       if (loginLimit.limited) {
         return sendJson(res, 429, { success: false, message: 'Слишком много попыток входа. Подождите немного.' });
       }
@@ -199,27 +331,50 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 401, { success: false, message: 'Неверное имя пользователя или пароль' });
         }
 
-        const token = crypto.randomBytes(32).toString('hex');
-        const sessionUser = { id: userRow.id, username: userRow.username, role: userRow.role };
-        sessions.set(token, sessionUser);
-        saveSession(token, sessionUser);
+        if (userRow.two_factor_enabled) {
+          // Заодно выметаем просроченные записи — карта живёт долго, а
+          // отдельного таймера для неё нет смысла заводить.
+          const now = Date.now();
+          for (const [k, v] of pendingTwoFactorLogins) {
+            if (v.expires < now) pendingTwoFactorLogins.delete(k);
+          }
 
-        logAction(userRow.username, 'Вход в систему');
+          const pendingToken = crypto.randomBytes(32).toString('hex');
+          pendingTwoFactorLogins.set(pendingToken, { userId: userRow.id, expires: now + PENDING_2FA_TTL_MS });
+          return sendJson(res, 200, { success: true, requires2FA: true, pendingToken });
+        }
 
-        const isDefaultAccount = ['superadmin', 'admin', 'user'].includes(userRow.username.toLowerCase());
-        const securityNote = isDefaultAccount 
-          ? '⚠️ This is a default account. Change the password immediately via the Users section (Superadmin) or profile.' 
-          : null;
+        issueSession(req, res, userRow);
+      });
+    } catch (e) {
+      sendJson(res, 500, { success: false, message: 'Внутренняя ошибка сервера' });
+    }
+    return;
+  }
 
-        res.writeHead(200, {
-          'Set-Cookie': `session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`,
-          'Content-Type': 'application/json; charset=utf-8'
-        });
-        res.end(JSON.stringify({ 
-          success: true, 
-          user: { username: userRow.username, role: userRow.role },
-          securityWarning: securityNote 
-        }));
+  // Завершение входа вторым фактором (TOTP-код из приложения-аутентификатора)
+  if (pathname === '/api/auth/login-2fa' && method === 'POST') {
+    try {
+      const { pendingToken, code } = await getJsonBody(req);
+      const pending = pendingToken && pendingTwoFactorLogins.get(pendingToken);
+
+      if (!pending || pending.expires < Date.now()) {
+        if (pendingToken) pendingTwoFactorLogins.delete(pendingToken);
+        return sendJson(res, 400, { success: false, message: 'Сессия подтверждения истекла, войдите заново' });
+      }
+
+      db.get("SELECT * FROM users WHERE id = ?", [pending.userId], (err, userRow) => {
+        if (err || !userRow || !userRow.two_factor_enabled) {
+          pendingTwoFactorLogins.delete(pendingToken);
+          return sendJson(res, 400, { success: false, message: 'Сессия подтверждения истекла, войдите заново' });
+        }
+
+        if (!verifyTotp(userRow.two_factor_secret, code)) {
+          return sendJson(res, 400, { success: false, message: 'Неверный код подтверждения' });
+        }
+
+        pendingTwoFactorLogins.delete(pendingToken);
+        issueSession(req, res, userRow);
       });
     } catch (e) {
       sendJson(res, 500, { success: false, message: 'Внутренняя ошибка сервера' });
@@ -240,7 +395,7 @@ const server = http.createServer(async (req, res) => {
 
       // 2. Rate limiting (усилено)
       const ip = getClientIP(req);
-      const limitCheck = isRateLimited(ip, 'register', 3, 40000); // max 3 попытки, минимум 40 сек между
+      const limitCheck = isRateLimited(ip, 'register', REGISTER_RATE_LIMIT.maxAttempts, REGISTER_RATE_LIMIT.minIntervalMs);
       if (limitCheck.limited) {
         return sendJson(res, 429, { 
           success: false, 
@@ -274,8 +429,8 @@ const server = http.createServer(async (req, res) => {
         if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
           return sendJson(res, 400, { success: false, message: 'Имя пользователя: 3-20 символов, только буквы, цифры и _' });
         }
-        if (password.length < 6) {
-          return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 6 символов' });
+        if (password.length < 8) {
+          return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 8 символов' });
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           return sendJson(res, 400, { success: false, message: 'Некорректный email' });
@@ -297,7 +452,7 @@ const server = http.createServer(async (req, res) => {
               [username, email, password_hash],
               function (err3) {
                 if (err3) {
-                  console.error('Register error:', err3);
+                  logger.error('Register error:', err3);
                   return sendJson(res, 500, { success: false, message: 'Не удалось создать аккаунт' });
                 }
 
@@ -311,12 +466,12 @@ const server = http.createServer(async (req, res) => {
                 saveSession(token, sessionUser);
 
                 res.writeHead(200, {
-                  'Set-Cookie': `session=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Strict`,
+                  'Set-Cookie': buildSessionCookie(token, req, { maxAgeSeconds: SESSION_MAX_AGE_SECONDS }),
                   'Content-Type': 'application/json; charset=utf-8'
                 });
-                res.end(JSON.stringify({ 
-                  success: true, 
-                  user: { username, role: 'User' } 
+                res.end(JSON.stringify({
+                  success: true,
+                  user: { username, role: 'User' }
                 }));
               }
             );
@@ -335,7 +490,7 @@ const server = http.createServer(async (req, res) => {
     const ip = getClientIP(req);
 
     // Лёгкий rate limit на проверку имён (чтобы не спамили)
-    const limitCheck = isRateLimited(ip, 'check-username', 20, 1200);
+    const limitCheck = isRateLimited(ip, 'check-username', CHECK_USERNAME_RATE_LIMIT.maxAttempts, CHECK_USERNAME_RATE_LIMIT.minIntervalMs);
     if (limitCheck.limited) {
       return sendJson(res, 429, { success: false, available: false });
     }
@@ -409,6 +564,9 @@ const server = http.createServer(async (req, res) => {
             if (!currentPassword) {
               return sendJson(res, 400, { success: false, message: 'Для смены пароля укажите текущий пароль' });
             }
+            if (password.length < 8) {
+              return sendJson(res, 400, { success: false, message: 'Пароль должен быть минимум 8 символов' });
+            }
             const ok = verifyPassword(currentPassword, dbUser.password_hash);
             if (!ok) {
               return sendJson(res, 400, { success: false, message: 'Неверный текущий пароль' });
@@ -457,7 +615,7 @@ const server = http.createServer(async (req, res) => {
       deleteSession(token);
     }
     res.writeHead(200, {
-      'Set-Cookie': 'session=; HttpOnly; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+      'Set-Cookie': buildSessionCookie('', req, { clear: true }),
       'Content-Type': 'application/json; charset=utf-8'
     });
     res.end(JSON.stringify({ success: true }));
@@ -489,6 +647,11 @@ const server = http.createServer(async (req, res) => {
     return handleSupport(req, res, user, parsedUrl, method);
   }
 
+  // Two-factor authentication (setup/verify/disable/status)
+  if (pathname.startsWith('/api/cabinet/2fa/')) {
+    return handleTwoFactor(req, res, user, parsedUrl, method);
+  }
+
   // Users (superadmin only)
   if (pathname === '/api/users') {
     return handleUsers(req, res, user, parsedUrl, method);
@@ -502,6 +665,11 @@ const server = http.createServer(async (req, res) => {
   // Superadmin-only: reset demo data
   if (pathname === '/api/admin/reset-demo' && method === 'POST') {
     return handleResetDemo(req, res, user, parsedUrl, method, { UPLOADS_DIR, reloadSettingsCache });
+  }
+
+  // Superadmin-only: download a full backup of the SQLite database
+  if (pathname === '/api/admin/backup' && method === 'GET') {
+    return handleBackup(req, res, user, parsedUrl, method);
   }
 
   // Other API fall to 404 for now
@@ -566,13 +734,16 @@ const server = http.createServer(async (req, res) => {
 
     const ext = path.extname(fullStaticPath);
     const contentType = MIME_TYPES[ext] || 'text/plain';
-    
-    res.writeHead(200, { 'Content-Type': contentType });
+
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Cache-Control': getStaticCacheControl(ext)
+    });
     fs.createReadStream(fullStaticPath).pipe(res);
   });
 
   } catch (err) {
-    console.error('Unhandled error in request handler:', err);
+    logger.error('Unhandled error in request handler:', err);
     try {
       sendJson(res, 500, { success: false, message: 'Internal server error' });
     } catch (_) {

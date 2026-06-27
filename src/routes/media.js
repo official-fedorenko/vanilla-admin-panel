@@ -2,12 +2,15 @@ const { sendJson, getJsonBody, handleBase64Upload } = require('../utils');
 const { db } = require('../../db');
 const path = require('path');
 const fs = require('fs');
+const logger = require('../logger');
 
 module.exports = async function handleMedia(req, res, user, parsedUrl, method, { UPLOADS_DIR }) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
   if (method === 'GET') {
-    db.all("SELECT * FROM media ORDER BY id DESC", [], (err, rows) => {
+    // Пока без полноценной пагинации в UI — жёсткий потолок защищает от
+    // отдачи всей таблицы целиком при большом количестве файлов.
+    db.all("SELECT * FROM media ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка БД' });
       const formatted = rows.map(r => ({
         id: r.id, filename: r.filename, file_url: r.file_path,
@@ -34,7 +37,14 @@ module.exports = async function handleMedia(req, res, user, parsedUrl, method, {
         });
       });
     } catch (err) {
-      sendJson(res, 500, { message: err.message || 'Ошибка загрузки' });
+      // Только ожидаемые (валидационные) ошибки можно показывать клиенту —
+      // иначе можно случайно утечь путь на диске или другие детали ФС.
+      if (err.expected) {
+        sendJson(res, 400, { message: err.message });
+      } else {
+        logger.error('Ошибка загрузки файла:', err);
+        sendJson(res, 500, { message: 'Ошибка загрузки' });
+      }
     }
   } else if (method === 'DELETE') {
     const id = parsedUrl.searchParams.get('id');

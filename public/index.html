@@ -178,6 +178,16 @@
             </button>
           </form>
 
+          <!-- Superadmin-only backup download -->
+          <div id="backupBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Резервная копия (только Superadmin)</div>
+            <a href="/api/admin/backup" id="backupBtn" class="btn btn-secondary" download>
+              <i data-lucide="download"></i>
+              <span>Скачать копию базы данных</span>
+            </a>
+            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Скачивает файл db.sqlite целиком. Восстановление: остановите сервер, замените db.sqlite этим файлом, перезапустите.</div>
+          </div>
+
           <!-- Superadmin-only demo reset (very handy when presenting the project) -->
           <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
             <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
