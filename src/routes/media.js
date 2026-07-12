@@ -1,4 +1,4 @@
-const { sendJson, getJsonBody, handleBase64Upload } = require('../utils');
+const { sendJson, getJsonBody, handleBase64Upload, parsePagination } = require('../utils');
 const { db } = require('../../db');
 const path = require('path');
 const fs = require('fs');
@@ -8,15 +8,20 @@ module.exports = async function handleMedia(req, res, user, parsedUrl, method, {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
   if (method === 'GET') {
-    // Пока без полноценной пагинации в UI — жёсткий потолок защищает от
-    // отдачи всей таблицы целиком при большом количестве файлов.
-    db.all("SELECT * FROM media ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
+    // limit/offset — без параметров ведёт себя как раньше (до 1000 файлов).
+    // Указав offset, можно достать записи за пределами этого потолка, пока
+    // в UI не появится полноценная пагинация.
+    const { limit, offset } = parsePagination(parsedUrl);
+    db.all("SELECT * FROM media ORDER BY id DESC LIMIT ? OFFSET ?", [limit, offset], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка БД' });
       const formatted = rows.map(r => ({
         id: r.id, filename: r.filename, file_url: r.file_path,
         mime_type: r.mime_type, file_size: r.file_size
       }));
-      sendJson(res, 200, formatted);
+      db.get("SELECT COUNT(*) as count FROM media", [], (err2, countRow) => {
+        res.setHeader('X-Total-Count', String((countRow && countRow.count) || 0));
+        sendJson(res, 200, formatted);
+      });
     });
   } else if (method === 'POST') {
     try {

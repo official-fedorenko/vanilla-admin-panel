@@ -3,8 +3,17 @@ const path = require('path');
 const crypto = require('crypto');
 const logger = require('./src/logger');
 
-const dbPath = path.join(__dirname, 'db.sqlite');
+// Allows tests to point at an isolated, disposable database file instead of
+// the real db.sqlite (which would otherwise get seeded/mutated by every test run).
+const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(dbPath);
+
+// Resolves once schema creation + default-data seeding below has finished.
+// server.js doesn't wait on this (by the time a real request arrives it's
+// long done), but tests that fire requests immediately after startup need it
+// to avoid racing the initial seed.
+let resolveDbReady;
+const dbReady = new Promise((resolve) => { resolveDbReady = resolve; });
 
 // === Простая система миграций (для надёжности) ===
 const MIGRATIONS = [
@@ -234,7 +243,9 @@ db.serialize(() => {
       const stmt = db.prepare("INSERT INTO articles (title, content, status) VALUES (?, ?, ?)");
       stmt.run("Добро пожаловать в новую админку!", "Это демонстрационная статья, созданная автоматически для проверки работы CRUD панели.", "published");
       stmt.run("Черновик важной публикации", "Контент этой статьи еще не готов для публикации.", "draft");
-      stmt.finalize();
+      stmt.finalize(resolveDbReady);
+    } else {
+      resolveDbReady();
     }
   });
 });
@@ -273,6 +284,7 @@ function cleanupExpiredSessions() {
 module.exports = {
   db,
   dbPath,
+  dbReady,
   hashPassword,
   verifyPassword,
   saveSession,
