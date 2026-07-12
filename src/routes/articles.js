@@ -1,5 +1,5 @@
 const sanitizeHtml = require('sanitize-html');
-const { sendJson, getJsonBody } = require('../utils');
+const { sendJson, getJsonBody, parsePagination } = require('../utils');
 const { db } = require('../../db');
 
 const ALLOWED_STATUSES = ['draft', 'published'];
@@ -35,11 +35,16 @@ async function handleArticles(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
   if (method === 'GET') {
-    // Пока без полноценной пагинации в UI — жёсткий потолок защищает от
-    // отдачи всей таблицы целиком при большом количестве статей.
-    db.all("SELECT * FROM articles ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
+    // limit/offset — без параметров ведёт себя как раньше (до 1000 статей).
+    // Указав offset, можно достать записи за пределами этого потолка, пока
+    // в UI не появится полноценная пагинация.
+    const { limit, offset } = parsePagination(parsedUrl);
+    db.all("SELECT * FROM articles ORDER BY id DESC LIMIT ? OFFSET ?", [limit, offset], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-      sendJson(res, 200, rows);
+      db.get("SELECT COUNT(*) as count FROM articles", [], (err2, countRow) => {
+        res.setHeader('X-Total-Count', String((countRow && countRow.count) || 0));
+        sendJson(res, 200, rows);
+      });
     });
   } else if (method === 'POST') {
     try {

@@ -1,4 +1,4 @@
-const { sendJson, getJsonBody, logAction } = require('../utils');
+const { sendJson, getJsonBody, logAction, parsePagination } = require('../utils');
 const { db, hashPassword } = require('../../db');
 
 module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
@@ -7,11 +7,16 @@ module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
   }
 
   if (method === 'GET') {
-    // Пока без полноценной пагинации в UI — жёсткий потолок защищает от
-    // отдачи всей таблицы целиком при большом количестве пользователей.
-    db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC LIMIT 1000", [], (err, rows) => {
+    // limit/offset — без параметров ведёт себя как раньше (до 1000 пользователей).
+    // Указав offset, можно достать записи за пределами этого потолка, пока
+    // в UI не появится полноценная пагинация.
+    const { limit, offset } = parsePagination(parsedUrl);
+    db.all("SELECT id, username, email, role, avatar_url, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?", [limit, offset], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
-      sendJson(res, 200, rows);
+      db.get("SELECT COUNT(*) as count FROM users", [], (err2, countRow) => {
+        res.setHeader('X-Total-Count', String((countRow && countRow.count) || 0));
+        sendJson(res, 200, rows);
+      });
     });
     return;
   }

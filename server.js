@@ -1,3 +1,8 @@
+// Must run before any other require — modules like src/config.js and
+// src/routes/auth.js read process.env at load time, so .env has to be
+// populated first or those reads silently see undefined.
+require('dotenv').config({ quiet: true });
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -282,26 +287,33 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Админка успешно запущена на http://localhost:${PORT}`);
-  console.log('='.repeat(70));
-  console.log('🚨  BETA RELEASE — SECURITY WARNING');
-  console.log('   Default accounts are EXTREMELY insecure. Change passwords IMMEDIATELY:');
-  console.log('');
-  console.log('     superadmin / 1234qwer   (Superadmin — полный доступ)');
-  console.log('     admin      / 1234qwer   (Admin)');
-  console.log('     user       / 1234qwer   (User)');
-  console.log('');
-  console.log('   Recommended first actions:');
-  console.log('     1. Login as superadmin');
-  console.log('     2. Go to "Пользователи" (Users) and change ALL passwords');
-  console.log('     3. (Optional) Disable registration in Settings');
-  console.log('');
-  console.log('   To completely reset demo data:');
-  console.log('     1. Stop the server');
-  console.log('     2. Delete db.sqlite');
-  console.log('     3. Restart (fresh DB + demo data will be created)');
-  console.log('');
-  console.log('   Never expose this directly to the internet without a reverse proxy + HTTPS.');
-  console.log('='.repeat(70));
-});
+// Only auto-listen when run directly (`node server.js` / npm start). When
+// required from a test file, require.main !== module, so tests can bind
+// their own ephemeral port via server.listen(0) instead.
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Админка успешно запущена на http://localhost:${PORT}`);
+    console.log('='.repeat(70));
+    console.log('🚨  BETA RELEASE — SECURITY WARNING');
+    console.log('   Default accounts are EXTREMELY insecure. Change passwords IMMEDIATELY:');
+    console.log('');
+    console.log('     superadmin / 1234qwer   (Superadmin — полный доступ)');
+    console.log('     admin      / 1234qwer   (Admin)');
+    console.log('     user       / 1234qwer   (User)');
+    console.log('');
+    console.log('   Recommended first actions:');
+    console.log('     1. Login as superadmin');
+    console.log('     2. Go to "Пользователи" (Users) and change ALL passwords');
+    console.log('     3. (Optional) Disable registration in Settings');
+    console.log('');
+    console.log('   To completely reset demo data:');
+    console.log('     1. Stop the server');
+    console.log('     2. Delete db.sqlite');
+    console.log('     3. Restart (fresh DB + demo data will be created)');
+    console.log('');
+    console.log('   Never expose this directly to the internet without a reverse proxy + HTTPS.');
+    console.log('='.repeat(70));
+  });
+}
+
+module.exports = server;

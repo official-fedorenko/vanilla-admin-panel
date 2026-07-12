@@ -51,6 +51,22 @@ function sendJson(res, statusCode, data) {
   res.end(JSON.stringify(data));
 }
 
+/**
+ * limit/offset for list endpoints. Defaults match the previous hardcoded
+ * "LIMIT 1000" behavior exactly, so calling without query params is a no-op
+ * change — offset just makes rows beyond the cap reachable on request.
+ */
+function parsePagination(parsedUrl, { defaultLimit = 1000, maxLimit = 1000 } = {}) {
+  let limit = parseInt(parsedUrl.searchParams.get('limit'), 10);
+  if (!Number.isInteger(limit) || limit <= 0) limit = defaultLimit;
+  limit = Math.min(limit, maxLimit);
+
+  let offset = parseInt(parsedUrl.searchParams.get('offset'), 10);
+  if (!Number.isInteger(offset) || offset < 0) offset = 0;
+
+  return { limit, offset };
+}
+
 function logAction(user, action) {
   db.run("INSERT INTO logs (user, action) VALUES (?, ?)", [user, action], (err) => {
     if (err) logger.error("Ошибка записи лога:", err);
@@ -115,5 +131,6 @@ module.exports = {
   getJsonBody,
   sendJson,
   logAction,
-  handleBase64Upload
+  handleBase64Upload,
+  parsePagination
 };

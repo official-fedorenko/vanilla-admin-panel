@@ -23,17 +23,18 @@
     "blog",
     "personal-cabinet"
   ],
-  "author": "Your Name <you@example.com>",
+  "author": "official-fedorenko",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/vanilla-admin-panel.git"
+    "url": "https://github.com/official-fedorenko/vanilla-admin-panel.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/vanilla-admin-panel/issues"
+    "url": "https://github.com/official-fedorenko/vanilla-admin-panel/issues"
   },
-  "homepage": "https://github.com/yourusername/vanilla-admin-panel#readme",
+  "homepage": "https://github.com/official-fedorenko/vanilla-admin-panel#readme",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "sanitize-html": "2.17.5",
     "sqlite3": "5.1.7"
   }
