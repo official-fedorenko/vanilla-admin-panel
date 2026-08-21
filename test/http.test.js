@@ -80,6 +80,24 @@ test('public settings endpoint returns key/value pairs without auth', async () =
   assert.ok(json.some(s => s.key === 'site_name'));
 });
 
+test('public tool card endpoint returns identification fields without auth and hides service data', async () => {
+  const { status, json } = await api('/api/public/tool?id=1');
+  assert.strictEqual(status, 200);
+  assert.strictEqual(json.success, true);
+  assert.ok(json.tool);
+  assert.strictEqual(json.tool.id, 1);
+  assert.ok(json.tool.name);
+  // Служебные данные не должны утекать в публичную карточку.
+  assert.strictEqual(json.tool.notes, undefined);
+  assert.strictEqual(json.history, undefined);
+  assert.strictEqual(json.stats, undefined);
+});
+
+test('public tool card endpoint returns 404 for a missing tool', async () => {
+  const { status } = await api('/api/public/tool?id=999999');
+  assert.strictEqual(status, 404);
+});
+
 test('login rejects a wrong password', async () => {
   const { status, json } = await api('/api/auth/login', {
     method: 'POST', ip: '10.0.1.1',

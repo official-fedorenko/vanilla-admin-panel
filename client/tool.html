@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Карточка инструмента</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔧%3C/text%3E%3C/svg%3E">
+  <style>
+    :root{
+      --bg:#050505; --card:rgba(20,20,28,.85); --border:rgba(255,255,255,.08);
+      --text:#f2f2f7; --muted:#a0a0ab; --accent:#00d2ff; --accent2:#8a2be2;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; font-family:Inter,system-ui,-apple-system,sans-serif;
+      background:radial-gradient(1200px 600px at 50% -10%,rgba(138,43,226,.18),transparent),var(--bg);
+      color:var(--text); display:flex; align-items:flex-start; justify-content:center;
+      padding:32px 16px;
+    }
+    .wrap{width:100%; max-width:460px}
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:22px;
+      box-shadow:0 24px 60px rgba(0,0,0,.5); overflow:hidden;
+      backdrop-filter:blur(12px);
+    }
+    .photo{
+      width:100%; aspect-ratio:4/3; background:#0d0d14; display:flex;
+      align-items:center; justify-content:center; overflow:hidden;
+      border-bottom:1px solid var(--border);
+    }
+    .photo img{width:100%; height:100%; object-fit:cover; display:block}
+    .photo .ph{font-size:72px; opacity:.35}
+    .body{padding:24px 24px 28px}
+    h1{margin:0 0 6px; font-size:22px; font-weight:800; line-height:1.25}
+    .cat{color:var(--accent); font-size:14px; font-weight:600; margin-bottom:18px}
+    .badge{
+      display:inline-block; padding:5px 12px; border-radius:999px; font-size:13px;
+      font-weight:600; margin-bottom:18px; border:1px solid var(--border);
+    }
+    .b-success{background:rgba(46,204,113,.14); color:#5ee5a0}
+    .b-warning{background:rgba(241,196,15,.14); color:#ffd65a}
+    .b-danger{background:rgba(231,76,60,.14); color:#ff7a6b}
+    .b-muted{background:rgba(160,160,171,.12); color:var(--muted)}
+    dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:12px 16px}
+    dt{color:var(--muted); font-size:14px}
+    dd{margin:0; font-size:14px; font-weight:600; text-align:right; word-break:break-word}
+    .divider{height:1px; background:var(--border); margin:20px 0}
+    .foot{margin-top:22px; text-align:center; color:var(--muted); font-size:12px; line-height:1.6}
+    .state{padding:60px 24px; text-align:center; color:var(--muted)}
+    .state .code{
+      font-size:64px; font-weight:800; margin-bottom:8px; line-height:1;
+      background:linear-gradient(135deg,var(--accent2),var(--accent));
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div id="loading" class="state">Загрузка…</div>
+
+      <div id="notfound" class="state hidden">
+        <div class="code">404</div>
+        <div>Инструмент не найден</div>
+      </div>
+
+      <div id="content" class="hidden">
+        <div class="photo" id="photoBox"><div class="ph">🔧</div></div>
+        <div class="body">
+          <h1 id="name"></h1>
+          <div class="cat" id="cat"></div>
+          <span class="badge" id="status"></span>
+          <div class="divider"></div>
+          <dl id="specs"></dl>
+          <div class="foot">
+            Карточка для идентификации электроинструмента.<br>
+            Отсканировано по QR-коду.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STATUS = {
+      available:   { label: 'На складе', cls: 'b-success' },
+      assigned:    { label: 'Выдан',     cls: 'b-warning' },
+      repair:      { label: 'В ремонте', cls: 'b-warning' },
+      written_off: { label: 'Списан',    cls: 'b-danger'  }
+    };
+
+    function esc(s){
+      return String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+      ));
+    }
+
+    function show(id){
+      ['loading','notfound','content'].forEach(x =>
+        document.getElementById(x).classList.toggle('hidden', x !== id));
+    }
+
+    function render(t){
+      document.getElementById('name').textContent = t.name || 'Без названия';
+      document.getElementById('cat').textContent = t.category || '';
+
+      const st = STATUS[t.status] || { label: t.status || '—', cls: 'b-muted' };
+      const badge = document.getElementById('status');
+      badge.textContent = st.label;
+      badge.className = 'badge ' + st.cls;
+
+      if (t.photo_url) {
+        document.getElementById('photoBox').innerHTML =
+          '<img src="' + esc(t.photo_url) + '" alt="' + esc(t.name || '') +
+          '" onerror="this.parentNode.innerHTML=\'&lt;div class=&quot;ph&quot;&gt;🔧&lt;/div&gt;\'">';
+      }
+
+      const rows = [
+        ['Бренд', t.brand],
+        ['Модель', t.model],
+        ['Серийный №', t.serial_number],
+        ['Инвентарный №', t.inventory_number]
+      ].filter(r => r[1]);
+
+      document.getElementById('specs').innerHTML = rows.map(r =>
+        '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'
+      ).join('');
+    }
+
+    (function(){
+      const id = new URLSearchParams(location.search).get('id');
+      if (!id) { show('notfound'); return; }
+      fetch('/api/public/tool?id=' + encodeURIComponent(id))
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => { if (d && d.tool) { render(d.tool); show('content'); } else { show('notfound'); } })
+        .catch(() => show('notfound'));
+    })();
+  </script>
+</body>
+</html>

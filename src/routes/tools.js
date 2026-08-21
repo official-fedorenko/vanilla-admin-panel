@@ -500,7 +500,10 @@ function handleQr(req, res, user, parsedUrl) {
 
   const host = req.headers.host || 'localhost';
   const proto = (req.headers['x-forwarded-proto'] || 'http').split(',')[0];
-  const link = `${proto}://${host}/admin/?tool=${toolId}`;
+  // QR ведёт на ПУБЛИЧНУЮ карточку (без авторизации): любой, кто отсканирует
+  // наклейку, увидит только данные для идентификации инструмента. Полная
+  // карточка с историей и статистикой доступна админам через /admin/?tool=.
+  const link = `${proto}://${host}/tool.html?id=${toolId}`;
 
   QRCode.toString(link, { type: 'svg', margin: 1, width: 220,
     color: { dark: '#111111', light: '#ffffff' } }, (err, svg) => {
