@@ -382,25 +382,6 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
-  // Публичные (урезанные) карточки инструмента — то, что открывается по
-  // QR-коду любым человеком без авторизации. Одна запись на инструмент.
-  // enabled=1 — карточка доступна; поля show_* управляют тем, какие данные
-  // видны на публичной странице. Если записи нет — действуют дефолты
-  // (карточка включена, показываются все поля).
-  db.run(`
-    CREATE TABLE IF NOT EXISTS tool_public_cards (
-      tool_id INTEGER PRIMARY KEY REFERENCES tools(id) ON DELETE CASCADE,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      show_brand INTEGER NOT NULL DEFAULT 1,
-      show_model INTEGER NOT NULL DEFAULT 1,
-      show_serial INTEGER NOT NULL DEFAULT 1,
-      show_inventory INTEGER NOT NULL DEFAULT 1,
-      show_status INTEGER NOT NULL DEFAULT 1,
-      show_photo INTEGER NOT NULL DEFAULT 1,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
   // 6. Таблица сообщений техподдержки / обратной связи (Чат)
   db.run(`
     CREATE TABLE IF NOT EXISTS support_messages (
@@ -451,6 +432,14 @@ db.serialize(() => {
   stmt.run("contact_subtitle", "Остались вопросы или хотите предложить сотрудничество?", "Контакты: Подзаголовок");
   stmt.run("contact_email", "info@example.com", "Контакты: Электронная почта");
   stmt.run("contact_address", "г. Вильнюс, ул. Разработчиков, д. 42", "Контакты: Адрес");
+  // Публичная карточка инструмента (общие настройки для всех QR-карточек)
+  stmt.run("public_card_enabled", "true", "Публичная карточка: доступна всем по QR");
+  stmt.run("public_card_show_photo", "true", "Публичная карточка: показывать фото");
+  stmt.run("public_card_show_brand", "true", "Публичная карточка: показывать бренд");
+  stmt.run("public_card_show_model", "true", "Публичная карточка: показывать модель");
+  stmt.run("public_card_show_serial", "true", "Публичная карточка: показывать серийный №");
+  stmt.run("public_card_show_inventory", "true", "Публичная карточка: показывать инвентарный №");
+  stmt.run("public_card_show_status", "true", "Публичная карточка: показывать статус");
   stmt.finalize();
 
   // Заполняем тестовые статьи
