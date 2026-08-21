@@ -409,6 +409,33 @@
       <!-- Правая колонка: статьи -->
       <div style="display: flex; flex-direction: column; gap: 28px;">
 
+        <!-- Моя карточка сотрудника (read-only, только для сотрудников) -->
+        <div class="card" id="myEmployeeCard" style="display: none;">
+          <div class="card-title">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V4a2 2 0 114 0v2m-4 0a2 2 0 104 0"/></svg>
+            Моя карточка сотрудника
+          </div>
+          <div id="myEmployeeCardBody" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Загрузка...</div>
+          </div>
+          <div style="margin-top:14px; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Данные заполняет администратор. Если что-то неверно — сообщите руководителю.
+          </div>
+        </div>
+
+        <!-- Мой закреплённый инструмент (только для сотрудников) -->
+        <div class="card" id="myToolsCard" style="display: none;">
+          <div class="card-title">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            Мой инструмент
+          </div>
+          <div id="myToolsList" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+          </div>
+          <input type="file" id="myToolPhotoInput" accept="image/*" style="display:none;">
+        </div>
+
         <!-- Чат поддержки -->
         <div class="card" style="display: flex; flex-direction: column; height: 500px;">
           <div class="card-title" style="display: flex; flex-direction: column; gap: 4px;">
@@ -480,10 +507,144 @@
         const data = await res.json();
         currentUserData = data.user;
         populateUI(data.user);
+        // Карточку сотрудника и инструмент показываем только сотрудникам
+        if (data.user.account_type === 'employee') {
+          document.getElementById('myEmployeeCard').style.display = '';
+          loadMyCard();
+          document.getElementById('myToolsCard').style.display = '';
+          loadMyTools();
+        }
       } catch (e) {
         window.location.href = '/login.html';
       }
     }
+
+    // === Моя карточка сотрудника (read-only) ===
+    const EMP_STATUS = {
+      active:   { label: 'Работает',  color: 'var(--green)' },
+      vacation: { label: 'В отпуске', color: 'var(--accent-cyan)' },
+      inactive: { label: 'Неактивен', color: 'var(--text-muted)' },
+      fired:    { label: 'Уволен',    color: 'var(--red)' }
+    };
+
+    async function loadMyCard() {
+      const body = document.getElementById('myEmployeeCardBody');
+      try {
+        const res = await fetch('/api/cabinet/my-card');
+        const data = res.ok ? await res.json() : { card: null };
+        const c = data.card;
+        if (!c) {
+          body.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Карточка сотрудника ещё не создана администратором.</div>';
+          return;
+        }
+        const st = EMP_STATUS[c.status] || EMP_STATUS.active;
+        const fio = [c.last_name, c.first_name].filter(Boolean).join(' ') || '—';
+        const hire = c.hire_date ? new Date(c.hire_date).toLocaleDateString('ru-RU') : '—';
+        const field = (label, value) => `
+          <div>
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin-bottom:3px;">${label}</div>
+            <div style="font-size:14px; color:var(--text-primary);">${value}</div>
+          </div>`;
+        body.innerHTML =
+          field('ФИО', escapeHtml(fio)) +
+          field('Статус', `<span style="color:${st.color}; font-weight:600;">${st.label}</span>`) +
+          field('Должность', escapeHtml(c.position || '—')) +
+          field('Отдел', escapeHtml(c.department || '—')) +
+          field('Телефон', escapeHtml(c.phone || '—')) +
+          field('Дата приёма', hire) +
+          (c.notes ? `<div style="grid-column:1/-1;">${field('Заметки', escapeHtml(c.notes))}</div>` : '');
+      } catch (e) {
+        body.innerHTML = '<div style="color: var(--red); font-size: 13px; grid-column:1/-1;">Не удалось загрузить карточку.</div>';
+      }
+    }
+
+    // === Мой закреплённый инструмент ===
+    let myToolPhotoTargetId = null;
+
+    async function loadMyTools() {
+      const list = document.getElementById('myToolsList');
+      try {
+        const res = await fetch('/api/cabinet/my-tools');
+        const data = res.ok ? await res.json() : { tools: [] };
+        const tools = data.tools || [];
+        if (!tools.length) {
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплён инструмент.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        tools.forEach(t => {
+          const issued = t.issued_at ? new Date(t.issued_at).toLocaleDateString('ru-RU') : '';
+          const photo = t.photo_url
+            ? `<img src="${t.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
+            : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const sub = [t.brand, t.model].filter(Boolean).join(' · ');
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-color);border-radius:12px;background:rgba(255,255,255,0.01);';
+          item.innerHTML = `
+            ${photo}
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(t.name)}</div>
+              ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
+              ${t.serial_number ? `<div style="font-size:12px;color:var(--text-muted);">S/N: ${escapeHtml(t.serial_number)}</div>` : ''}
+              ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+            </div>
+            <button type="button" onclick="startMyToolPhoto(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">${t.photo_url ? 'Заменить фото' : 'Добавить фото'}</button>
+          `;
+          list.appendChild(item);
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить инструмент.</div>';
+      }
+    }
+
+    window.startMyToolPhoto = (toolId) => {
+      myToolPhotoTargetId = toolId;
+      document.getElementById('myToolPhotoInput').click();
+    };
+
+    (function initMyToolPhotoUpload() {
+      const input = document.getElementById('myToolPhotoInput');
+      if (!input) return;
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file || !myToolPhotoTargetId) return;
+        try {
+          // 1) загружаем файл, получаем URL
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const base64 = ev.target.result.split(',')[1];
+            const upRes = await fetch('/api/media', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+            });
+            if (!upRes.ok) { showToast('Ошибка загрузки фото', 'error'); return; }
+            const upData = await upRes.json();
+            const url = upData.urls && upData.urls[0];
+            if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
+            // 2) привязываем URL к инструменту (сервер проверит, что он закреплён за вами)
+            const linkRes = await fetch('/api/cabinet/tool-photo', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tool_id: myToolPhotoTargetId, photo_url: url })
+            });
+            const linkData = await linkRes.json().catch(() => ({}));
+            if (linkRes.ok) {
+              showToast('Фото инструмента сохранено', 'success');
+              loadMyTools();
+            } else {
+              showToast(linkData.message || 'Не удалось сохранить фото', 'error');
+            }
+          };
+          reader.readAsDataURL(file);
+        } catch (e) {
+          showToast('Ошибка при загрузке', 'error');
+        } finally {
+          input.value = '';
+          myToolPhotoTargetId = null;
+        }
+      });
+    })();
 
     function populateUI(user) {
       const letter = user.username.charAt(0).toUpperCase();

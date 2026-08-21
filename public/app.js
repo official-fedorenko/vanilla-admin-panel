@@ -4,6 +4,12 @@ let articles = [];
 let quill = null;
 let usersList = [];
 let fullLogsList = [];
+let employeesList = [];
+let toolsList = [];
+let toolCategories = [];
+let catalogData = null;        // {categories:[{category, models:[...]}]}
+let catalogFlat = [];          // плоский список моделей для рендера/выбора
+let catalogActiveFilter = '*'; // текущий фильтр категории в пикере
 
 // DOM Elements
 const sections = document.querySelectorAll('.app-section');
@@ -390,17 +396,18 @@ function initApp() {
   const closeUserBtn = document.getElementById('closeUserModalBtn');
   const userForm = document.getElementById('userForm');
 
-  const openUserModal = (title = 'Добавить пользователя', id = '', username = '', email = '', role = 'User') => {
+  const openUserModal = (title = 'Добавить пользователя', id = '', username = '', email = '', role = 'User', accountType = 'client') => {
     document.getElementById('userModalTitle').textContent = title;
     document.getElementById('userId').value = id;
     document.getElementById('userUsername').value = username;
     document.getElementById('userEmail').value = email;
     document.getElementById('userPassword').value = '';
     document.getElementById('userPassword').required = !id; // required only for new user
-    document.getElementById('passwordHelp').textContent = id 
-      ? 'Оставьте пустым, чтобы не менять пароль.' 
+    document.getElementById('passwordHelp').textContent = id
+      ? 'Оставьте пустым, чтобы не менять пароль.'
       : 'Пароль обязателен для создания нового пользователя.';
     document.getElementById('userRole').value = role;
+    document.getElementById('userAccountType').value = accountType || 'client';
     userModal.classList.add('active');
   };
 
@@ -422,8 +429,9 @@ function initApp() {
       const email = document.getElementById('userEmail').value;
       const password = document.getElementById('userPassword').value;
       const role = document.getElementById('userRole').value;
+      const accountType = document.getElementById('userAccountType').value;
 
-      const payload = { username, email, role };
+      const payload = { username, email, role, account_type: accountType };
       if (password) payload.password = password;
 
       const method = id ? 'PUT' : 'POST';
@@ -469,12 +477,19 @@ function initApp() {
       }
     });
   }
+
+  setupEmployees();
+  setupTools();
 }
 
 // Load data specifically for selected route
 function loadSectionData(hash) {
   if (hash === 'dashboard') {
     loadDashboardStats();
+  } else if (hash === 'employees') {
+    loadEmployees();
+  } else if (hash === 'tools') {
+    loadTools();
   } else if (hash === 'articles') {
     loadArticles();
   } else if (hash === 'media') {
@@ -936,6 +951,9 @@ function renderUsers(filterQuery = '') {
     let roleBadge = `<span class="badge badge-warning">User</span>`;
     if (u.role === 'Admin') roleBadge = `<span class="badge badge-success">Admin</span>`;
     if (u.role === 'Superadmin') roleBadge = `<span class="badge badge-success" style="background:var(--accent-purple)">Superadmin</span>`;
+    const typeBadge = u.account_type === 'employee'
+      ? `<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Сотрудник</span>`
+      : `<span class="badge" style="background:hsl(var(--accent-cyan) / 0.15);color:hsl(var(--accent-cyan))">Клиент</span>`;
     const dateFormatted = new Date(u.created_at).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric'
     });
@@ -944,7 +962,7 @@ function renderUsers(filterQuery = '') {
       <td>${u.id}</td>
       <td><strong>${escapeHtml(u.username)}</strong></td>
       <td>${escapeHtml(u.email)}</td>
-      <td>${roleBadge}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${roleBadge}${typeBadge}</td>
       <td>${dateFormatted}</td>
       <td style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
@@ -1013,6 +1031,7 @@ window.editUser = (id) => {
     document.getElementById('userPassword').required = false;
     document.getElementById('passwordHelp').textContent = 'Оставьте пустым, чтобы не менять пароль.';
     document.getElementById('userRole').value = u.role;
+    document.getElementById('userAccountType').value = u.account_type || 'client';
     modal.classList.add('active');
   }
 };
@@ -1231,4 +1250,914 @@ if (replyForm) {
     }
   });
 }
+
+// =====================================================================
+//  EMPLOYEES (Сотрудники) — CRUD модуль учёта персонала
+// =====================================================================
+
+const EMPLOYEE_STATUS = {
+  active:   { label: 'Работает',   badge: 'badge-success' },
+  vacation: { label: 'В отпуске',  badge: 'badge-warning' },
+  inactive: { label: 'Неактивен',  badge: 'badge-warning' },
+  fired:    { label: 'Уволен',     badge: 'badge-danger' }
+};
+
+async function loadEmployees() {
+  try {
+    const res = await fetch('/api/crud/employees');
+    if (res.ok) {
+      employeesList = await res.json();
+      renderEmployees();
+    } else if (res.status === 401) {
+      showToast('Сессия истекла, войдите заново', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка загрузки сотрудников', 'error');
+  }
+}
+
+function renderEmployees(filterQuery = '') {
+  const tbody = document.getElementById('employeesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const q = filterQuery.toLowerCase();
+  const filtered = employeesList.filter(e => {
+    const hay = `${e.first_name} ${e.last_name} ${e.position || ''} ${e.department || ''} ${e.phone || ''} ${e.email || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Сотрудники не найдены</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(e => {
+    const st = EMPLOYEE_STATUS[e.status] || EMPLOYEE_STATUS.active;
+    const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const hire = e.hire_date ? new Date(e.hire_date).toLocaleDateString('ru-RU') : '—';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${e.id}</td>
+      <td><strong>${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</strong></td>
+      <td>${escapeHtml(e.position || '—')}</td>
+      <td>${escapeHtml(e.department || '—')}</td>
+      <td>${escapeHtml(e.phone || '—')}</td>
+      <td>${hire}</td>
+      <td>${statusBadge}</td>
+      <td style="text-align: right;">
+        <div class="action-btns" style="justify-content: flex-end;">
+          <button class="action-btn edit" onclick="editEmployee(${e.id})"><i data-lucide="edit-3"></i></button>
+          <button class="action-btn delete" onclick="deleteEmployee(${e.id})"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function setupEmployees() {
+  const modal = document.getElementById('employeeModalOverlay');
+  if (!modal) return;
+
+  const addBtn = document.getElementById('addEmployeeBtn');
+  const cancelBtn = document.getElementById('cancelEmployeeModalBtn');
+  const closeBtn = document.getElementById('closeEmployeeModalBtn');
+  const form = document.getElementById('employeeForm');
+  const search = document.getElementById('employeesSearch');
+
+  const closeModal = () => modal.classList.remove('active');
+
+  if (addBtn) addBtn.addEventListener('click', () => openEmployeeModal());
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  if (search) {
+    search.addEventListener('input', (e) => renderEmployees(e.target.value));
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('employeeId').value;
+      const payload = {
+        first_name: document.getElementById('empFirstName').value,
+        last_name: document.getElementById('empLastName').value,
+        position: document.getElementById('empPosition').value,
+        department: document.getElementById('empDepartment').value,
+        phone: document.getElementById('empPhone').value,
+        email: document.getElementById('empEmail').value,
+        hire_date: document.getElementById('empHireDate').value,
+        status: document.getElementById('empStatus').value,
+        notes: document.getElementById('empNotes').value
+      };
+
+      const url = id ? `/api/crud/employees?id=${id}` : '/api/crud/employees';
+      const httpMethod = id ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method: httpMethod,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(id ? 'Сотрудник обновлён' : 'Сотрудник добавлен', 'success');
+          closeModal();
+          await loadEmployees();
+        } else {
+          showToast(data.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+}
+
+function openEmployeeModal(emp = null) {
+  const modal = document.getElementById('employeeModalOverlay');
+  document.getElementById('employeeModalTitle').textContent = emp ? 'Редактировать сотрудника' : 'Добавить сотрудника';
+  document.getElementById('employeeId').value = emp ? emp.id : '';
+  document.getElementById('empFirstName').value = emp ? emp.first_name : '';
+  document.getElementById('empLastName').value = emp ? emp.last_name : '';
+  document.getElementById('empPosition').value = emp ? (emp.position || '') : '';
+  document.getElementById('empDepartment').value = emp ? (emp.department || '') : '';
+  document.getElementById('empPhone').value = emp ? (emp.phone || '') : '';
+  document.getElementById('empEmail').value = emp ? (emp.email || '') : '';
+  document.getElementById('empHireDate').value = emp && emp.hire_date ? String(emp.hire_date).slice(0, 10) : '';
+  document.getElementById('empStatus').value = emp ? emp.status : 'active';
+  document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
+  modal.classList.add('active');
+}
+
+window.editEmployee = (id) => {
+  const emp = employeesList.find(e => e.id === id);
+  if (emp) openEmployeeModal(emp);
+};
+
+window.deleteEmployee = async (id) => {
+  const emp = employeesList.find(e => e.id === id);
+  const name = emp ? `${emp.last_name} ${emp.first_name}` : `id=${id}`;
+  if (!confirm(`Удалить сотрудника «${name}»? Это действие необратимо.`)) return;
+  try {
+    const res = await fetch(`/api/crud/employees?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Сотрудник удалён', 'success');
+      await loadEmployees();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.message || 'Не удалось удалить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+// =====================================================================
+//  TOOLS (Инструмент) — инвентарь + выдача/возврат/история
+// =====================================================================
+
+const TOOL_STATUS = {
+  available:   { label: 'На складе',  badge: 'badge-success' },
+  assigned:    { label: 'Выдан',      badge: 'badge-warning' },
+  repair:      { label: 'В ремонте',  badge: 'badge-warning' },
+  written_off: { label: 'Списан',     badge: 'badge-danger' }
+};
+
+async function loadTools() {
+  try {
+    const res = await fetch('/api/crud/tools');
+    if (res.ok) {
+      toolsList = await res.json();
+      renderTools();
+    } else if (res.status === 401) {
+      showToast('Сессия истекла, войдите заново', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка загрузки инструмента', 'error');
+  }
+}
+
+function renderTools(filterQuery = '') {
+  const tbody = document.getElementById('toolsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const q = filterQuery.toLowerCase();
+  const filtered = toolsList.filter(t => {
+    const hay = `${t.name} ${t.category || ''} ${t.brand || ''} ${t.model || ''} ${t.serial_number || ''} ${t.inventory_number || ''} ${t.current_holder || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Инструмент не найден</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(t => {
+    const st = TOOL_STATUS[t.status] || TOOL_STATUS.available;
+    const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const holder = t.current_holder
+      ? `<strong>${escapeHtml(t.current_holder)}</strong>`
+      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+
+    // Кнопка выдать/вернуть в зависимости от того, на руках ли инструмент
+    const isHeld = !!t.current_employee_id;
+    const canWriteOff = t.status === 'written_off';
+    const issueReturnBtn = isHeld
+      ? `<button class="action-btn" title="Вернуть / передать" onclick="openReturnModal(${t.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : (canWriteOff ? '' : `<button class="action-btn" title="Выдать" onclick="openIssueModal(${t.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
+
+    const thumb = t.photo_url
+      ? `<img src="${t.photo_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:40px;height:40px;border-radius:8px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i data-lucide="wrench" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i></div>`;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.id}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${thumb}
+          <div><strong>${escapeHtml(t.name)}</strong>${t.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(t.brand)}${t.model ? ' · ' + escapeHtml(t.model) : ''}</div>` : ''}</div>
+        </div>
+      </td>
+      <td>${escapeHtml(t.category || '—')}</td>
+      <td>${escapeHtml(t.serial_number || '—')}</td>
+      <td>${escapeHtml(t.inventory_number || '—')}</td>
+      <td>${statusBadge}</td>
+      <td>${holder}</td>
+      <td style="text-align: right;">
+        <div class="action-btns" style="justify-content: flex-end;">
+          ${issueReturnBtn}
+          <button class="action-btn" title="История" onclick="openToolHistory(${t.id})"><i data-lucide="history"></i></button>
+          <button class="action-btn edit" title="Изменить" onclick="editTool(${t.id})"><i data-lucide="edit-3"></i></button>
+          <button class="action-btn delete" title="Удалить" onclick="deleteTool(${t.id})"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Загружает изображение через /api/media и возвращает его URL (/uploads/...)
+function uploadImageToMedia(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const base64 = ev.target.result.split(',')[1];
+        const res = await fetch('/api/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+        });
+        if (!res.ok) return resolve(null);
+        const data = await res.json();
+        resolve(data.urls && data.urls[0] ? data.urls[0] : null);
+      } catch (e) { reject(e); }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadToolCategories() {
+  try {
+    const res = await fetch('/api/crud/tool-categories');
+    if (res.ok) toolCategories = await res.json();
+  } catch (e) { /* тихо — список просто будет пустым */ }
+}
+
+// Заполняет <select id="toolCategory"> категориями и выставляет выбранное
+// значение. Если у инструмента категория, которой нет в справочнике
+// (например, удалили), она всё равно добавляется опцией, чтобы не потерять.
+function populateCategorySelect(selectedValue = '') {
+  const select = document.getElementById('toolCategory');
+  if (!select) return;
+  const names = toolCategories.map(c => c.name);
+  let html = '<option value="">— выберите —</option>';
+  names.forEach(n => {
+    html += `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`;
+  });
+  if (selectedValue && !names.includes(selectedValue)) {
+    html += `<option value="${escapeHtml(selectedValue)}">${escapeHtml(selectedValue)} (своя)</option>`;
+  }
+  select.innerHTML = html;
+  select.value = selectedValue || '';
+}
+
+function setToolPhotoPreview(url) {
+  document.getElementById('toolPhotoUrl').value = url || '';
+  const preview = document.getElementById('toolPhotoPreview');
+  const clearBtn = document.getElementById('toolPhotoClearBtn');
+  if (url) {
+    preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    preview.innerHTML = `<i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>`;
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+// Загружает справочник моделей (один раз) и открывает пикер поверх модалки инструмента
+async function openCatalogPicker() {
+  const list = document.getElementById('catalogList');
+  document.getElementById('catalogModalOverlay').classList.add('active');
+  if (!catalogData) {
+    list.innerHTML = '<div style="grid-column:1/-1;color:hsl(var(--text-muted));text-align:center;padding:20px;">Загрузка каталога...</div>';
+    try {
+      const res = await fetch('/api/tool-catalog');
+      catalogData = res.ok ? await res.json() : { categories: [] };
+      catalogFlat = (catalogData.categories || []).flatMap(c =>
+        c.models.map(m => ({ category: c.category, ...m }))
+      );
+    } catch (e) {
+      list.innerHTML = '<div style="grid-column:1/-1;color:hsl(var(--accent-red));text-align:center;padding:20px;">Не удалось загрузить каталог</div>';
+      return;
+    }
+  }
+  renderCatalogFilters();
+  renderCatalogList();
+}
+
+function renderCatalogFilters() {
+  const box = document.getElementById('catalogFilters');
+  const cats = (catalogData.categories || []).map(c => c.category);
+  const mk = (val, label) =>
+    `<button type="button" class="btn ${catalogActiveFilter === val ? '' : 'btn-secondary'}" style="padding:6px 12px;font-size:13px;" onclick="setCatalogFilter('${val.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
+  box.innerHTML = mk('*', 'Все') + cats.map(c => mk(c, c)).join('');
+}
+
+window.setCatalogFilter = (val) => {
+  catalogActiveFilter = val;
+  renderCatalogFilters();
+  renderCatalogList();
+};
+
+function renderCatalogList() {
+  const list = document.getElementById('catalogList');
+  const items = catalogActiveFilter === '*'
+    ? catalogFlat
+    : catalogFlat.filter(m => m.category === catalogActiveFilter);
+
+  list.innerHTML = items.map((m, i) => {
+    const idx = catalogFlat.indexOf(m);
+    const specs = [];
+    if (m.powerType === 'cordless' && m.voltageV) specs.push(m.voltageV + ' В');
+    if (m.powerType === 'corded' && m.powerW) specs.push(m.powerW + ' Вт');
+    if (m.brushless) specs.push('бесщёт.');
+    if (m.discMm) specs.push('⌀' + m.discMm);
+    if (m.chuck) specs.push(m.chuck);
+    return `
+      <div onclick="pickCatalogModel(${idx})" style="display:flex;gap:12px;align-items:center;padding:12px;border:1px solid hsl(var(--border-color));border-radius:12px;cursor:pointer;background:hsl(var(--bg-main));transition:border-color .15s;" onmouseover="this.style.borderColor='hsl(var(--accent-purple))'" onmouseout="this.style.borderColor='hsl(var(--border-color))'">
+        <img src="${m.image}" style="width:48px;height:40px;object-fit:contain;flex-shrink:0;">
+        <div style="min-width:0;">
+          <div style="font-weight:600;font-size:14px;">${escapeHtml(m.name)}</div>
+          <div style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(m.category)}${specs.length ? ' · ' + escapeHtml(specs.join(' · ')) : ''}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.pickCatalogModel = (idx) => {
+  const m = catalogFlat[idx];
+  if (!m) return;
+  document.getElementById('toolName').value = m.name;
+  document.getElementById('toolBrand').value = m.brand;
+  document.getElementById('toolModel').value = m.model;
+  populateCategorySelect(m.category);
+  setToolPhotoPreview(m.image);
+  document.getElementById('catalogModalOverlay').classList.remove('active');
+  showToast('Модель подставлена — впишите серийный № и сохраните', 'success');
+};
+
+// Проверка дублей серийного/инвентарного номера в реальном времени
+let dupCheckTimer = null;
+
+function clearDupWarnings() {
+  ['toolSerialWarn', 'toolInventoryWarn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  ['toolSerial', 'toolInventory'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('input-dup');
+  });
+}
+
+async function checkToolDuplicates() {
+  const serial = document.getElementById('toolSerial').value.trim();
+  const inventory = document.getElementById('toolInventory').value.trim();
+  const excludeId = document.getElementById('toolId').value || '';
+
+  const apply = (warnEl, input, hit, label) => {
+    if (hit) {
+      warnEl.textContent = `⚠ Такой ${label} уже у «${hit.name}» (ID ${hit.id})`;
+      warnEl.style.display = 'block';
+      input.classList.add('input-dup');
+    } else {
+      warnEl.style.display = 'none';
+      input.classList.remove('input-dup');
+    }
+  };
+
+  if (!serial && !inventory) return clearDupWarnings();
+
+  try {
+    const params = new URLSearchParams({ serial, inventory, exclude_id: excludeId });
+    const res = await fetch('/api/tools/check-dup?' + params.toString());
+    if (!res.ok) return;
+    const data = await res.json();
+    apply(document.getElementById('toolSerialWarn'), document.getElementById('toolSerial'),
+          serial ? data.serial : null, 'серийный №');
+    apply(document.getElementById('toolInventoryWarn'), document.getElementById('toolInventory'),
+          inventory ? data.inventory : null, 'инвентарный №');
+  } catch (e) { /* тихо — проверка вспомогательная, сохранение всё равно защищено на сервере */ }
+}
+
+function scheduleDupCheck() {
+  clearTimeout(dupCheckTimer);
+  dupCheckTimer = setTimeout(checkToolDuplicates, 350);
+}
+
+function setupTools() {
+  const modal = document.getElementById('toolModalOverlay');
+  if (!modal) return;
+
+  const addBtn = document.getElementById('addToolBtn');
+  const cancelBtn = document.getElementById('cancelToolModalBtn');
+  const closeBtn = document.getElementById('closeToolModalBtn');
+  const form = document.getElementById('toolForm');
+  const search = document.getElementById('toolsSearch');
+
+  const closeModal = () => modal.classList.remove('active');
+  if (addBtn) addBtn.addEventListener('click', () => openToolModal());
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  if (search) search.addEventListener('input', (e) => renderTools(e.target.value));
+
+  // Проверка дублей серийного/инвентарного номера в реальном времени
+  const serialInput = document.getElementById('toolSerial');
+  const inventoryInput = document.getElementById('toolInventory');
+  if (serialInput) serialInput.addEventListener('input', scheduleDupCheck);
+  if (inventoryInput) inventoryInput.addEventListener('input', scheduleDupCheck);
+
+  // Подгружаем справочник категорий один раз при инициализации
+  loadToolCategories();
+
+  // Добавление своей категории (только Superadmin)
+  const addCategoryBtn = document.getElementById('addCategoryBtn');
+  if (addCategoryBtn) {
+    addCategoryBtn.addEventListener('click', async () => {
+      const name = prompt('Название новой категории инструмента:');
+      if (name === null) return;
+      const trimmed = name.trim();
+      if (trimmed.length < 2) return showToast('Название слишком короткое', 'error');
+      try {
+        const res = await fetch('/api/crud/tool-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: trimmed })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Категория добавлена', 'success');
+          await loadToolCategories();
+          populateCategorySelect(data.name || trimmed);
+        } else {
+          showToast(data.message || 'Не удалось добавить категорию', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('toolId').value;
+      const payload = {
+        name: document.getElementById('toolName').value,
+        category: document.getElementById('toolCategory').value,
+        brand: document.getElementById('toolBrand').value,
+        model: document.getElementById('toolModel').value,
+        serial_number: document.getElementById('toolSerial').value,
+        inventory_number: document.getElementById('toolInventory').value,
+        status: document.getElementById('toolStatus').value,
+        purchase_date: document.getElementById('toolPurchaseDate').value,
+        photo_url: document.getElementById('toolPhotoUrl').value,
+        notes: document.getElementById('toolNotes').value
+      };
+      const url = id ? `/api/crud/tools?id=${id}` : '/api/crud/tools';
+      try {
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(id ? 'Инструмент обновлён' : 'Инструмент добавлен', 'success');
+          closeModal();
+          await loadTools();
+        } else {
+          showToast(data.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  // --- Catalog picker (Bosch/DeWalt) ---
+  const catalogModal = document.getElementById('catalogModalOverlay');
+  const fromCatalogBtn = document.getElementById('fromCatalogBtn');
+  const closeCatalog = () => catalogModal.classList.remove('active');
+  if (fromCatalogBtn) fromCatalogBtn.addEventListener('click', openCatalogPicker);
+  document.getElementById('closeCatalogModalBtn').addEventListener('click', closeCatalog);
+  document.getElementById('cancelCatalogModalBtn').addEventListener('click', closeCatalog);
+  catalogModal.addEventListener('click', (e) => { if (e.target === catalogModal) closeCatalog(); });
+
+  // --- Photo upload inside tool modal ---
+  const photoBtn = document.getElementById('toolPhotoBtn');
+  const photoClearBtn = document.getElementById('toolPhotoClearBtn');
+  const photoInput = document.getElementById('toolPhotoInput');
+  if (photoBtn && photoInput) {
+    photoBtn.addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      photoBtn.disabled = true;
+      photoBtn.textContent = 'Загрузка...';
+      try {
+        const url = await uploadImageToMedia(file);
+        if (url) {
+          setToolPhotoPreview(url);
+          showToast('Фото загружено', 'success');
+        } else {
+          showToast('Не удалось загрузить фото', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        photoBtn.disabled = false;
+        photoBtn.textContent = 'Загрузить фото';
+        photoInput.value = '';
+      }
+    });
+  }
+  if (photoClearBtn) {
+    photoClearBtn.addEventListener('click', () => setToolPhotoPreview(''));
+  }
+
+  // --- Issue modal ---
+  const issueModal = document.getElementById('issueModalOverlay');
+  const closeIssueModal = () => issueModal.classList.remove('active');
+  document.getElementById('closeIssueModalBtn').addEventListener('click', closeIssueModal);
+  document.getElementById('cancelIssueModalBtn').addEventListener('click', closeIssueModal);
+  issueModal.addEventListener('click', (e) => { if (e.target === issueModal) closeIssueModal(); });
+
+  // Поиск сотрудников в реальном времени внутри модалки выдачи
+  const issueSearch = document.getElementById('issueEmployeeSearch');
+  if (issueSearch) {
+    issueSearch.addEventListener('input', (e) => renderIssueEmployeeList(e.target.value));
+    // Enter в поиске не должен отправлять форму (выбор — кликом по сотруднику)
+    issueSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  }
+
+  document.getElementById('issueForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const toolId = document.getElementById('issueToolId').value;
+    const employeeId = document.getElementById('issueEmployeeId').value;
+    const notes = document.getElementById('issueNotes').value;
+    if (!employeeId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/tools/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool_id: Number(toolId), employee_id: Number(employeeId), notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Инструмент выдан', 'success');
+        closeIssueModal();
+        await loadTools();
+      } else {
+        showToast(data.message || 'Не удалось выдать', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+
+  // --- History modal ---
+  const historyModal = document.getElementById('historyModalOverlay');
+  const closeHistoryModal = () => historyModal.classList.remove('active');
+  document.getElementById('closeHistoryModalBtn').addEventListener('click', closeHistoryModal);
+  document.getElementById('closeHistoryBtn2').addEventListener('click', closeHistoryModal);
+  historyModal.addEventListener('click', (e) => { if (e.target === historyModal) closeHistoryModal(); });
+
+  // --- Return / transfer modal ---
+  const returnModal = document.getElementById('returnModalOverlay');
+  const closeReturnModal = () => returnModal.classList.remove('active');
+  document.getElementById('closeReturnModalBtn').addEventListener('click', closeReturnModal);
+  document.getElementById('cancelReturnModalBtn').addEventListener('click', closeReturnModal);
+  returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
+
+  // «На склад» — обычный возврат
+  document.getElementById('returnToStockBtn').addEventListener('click', async () => {
+    await doReturnToStock(Number(returnModal.dataset.toolId));
+    closeReturnModal();
+  });
+
+  // «Передать другому» — показываем шаг выбора сотрудника
+  document.getElementById('goTransferBtn').addEventListener('click', () => {
+    document.getElementById('returnStep1').style.display = 'none';
+    document.getElementById('returnStep2').style.display = '';
+    document.getElementById('confirmTransferBtn').style.display = '';
+    renderTransferList('');
+    document.getElementById('transferSearch').focus();
+  });
+
+  const transferSearch = document.getElementById('transferSearch');
+  transferSearch.addEventListener('input', (e) => renderTransferList(e.target.value));
+  transferSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+
+  document.getElementById('confirmTransferBtn').addEventListener('click', async () => {
+    const toolId = Number(returnModal.dataset.toolId);
+    const empId = document.getElementById('transferEmployeeId').value;
+    if (!empId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/tools/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tool_id: toolId, employee_id: Number(empId) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Инструмент передан', 'success');
+        closeReturnModal();
+        await loadTools();
+      } else {
+        showToast(data.message || 'Не удалось передать', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+}
+
+function openToolModal(tool = null) {
+  const modal = document.getElementById('toolModalOverlay');
+  document.getElementById('toolModalTitle').textContent = tool ? 'Редактировать инструмент' : 'Добавить инструмент';
+  document.getElementById('toolId').value = tool ? tool.id : '';
+  document.getElementById('toolName').value = tool ? tool.name : '';
+  populateCategorySelect(tool ? (tool.category || '') : '');
+  document.getElementById('toolBrand').value = tool ? (tool.brand || '') : '';
+  document.getElementById('toolModel').value = tool ? (tool.model || '') : '';
+  document.getElementById('toolSerial').value = tool ? (tool.serial_number || '') : '';
+  document.getElementById('toolInventory').value = tool ? (tool.inventory_number || '') : '';
+  document.getElementById('toolStatus').value = tool ? tool.status : 'available';
+  document.getElementById('toolPurchaseDate').value = tool && tool.purchase_date ? String(tool.purchase_date).slice(0, 10) : '';
+  document.getElementById('toolNotes').value = tool ? (tool.notes || '') : '';
+  setToolPhotoPreview(tool ? (tool.photo_url || '') : '');
+  clearDupWarnings();
+  modal.classList.add('active');
+}
+
+window.editTool = (id) => {
+  const tool = toolsList.find(t => t.id === id);
+  if (tool) openToolModal(tool);
+};
+
+window.deleteTool = async (id) => {
+  const tool = toolsList.find(t => t.id === id);
+  const name = tool ? tool.name : `id=${id}`;
+  if (!confirm(`Удалить инструмент «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`)) return;
+  try {
+    const res = await fetch(`/api/crud/tools?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Инструмент удалён', 'success');
+      await loadTools();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.message || 'Не удалось удалить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+// Список сотрудников для пикера в модалке выдачи (кэш на открытие модалки)
+let issueEmployeesList = [];
+
+// Карточка инструмента для модалок выдачи/возврата (общий хелпер)
+function buildToolCard(tool) {
+  const st = TOOL_STATUS[tool.status] || TOOL_STATUS.available;
+  const thumb = tool.photo_url
+    ? `<img class="issue-tool-thumb" src="${tool.photo_url}">`
+    : `<div class="issue-tool-thumb placeholder"><i data-lucide="wrench"></i></div>`;
+  const sub = [tool.brand, tool.model].filter(Boolean).join(' · ');
+  const chips = [];
+  if (tool.category) chips.push(escapeHtml(tool.category));
+  if (tool.serial_number) chips.push('S/N: ' + escapeHtml(tool.serial_number));
+  if (tool.inventory_number) chips.push('Инв: ' + escapeHtml(tool.inventory_number));
+  return `
+    ${thumb}
+    <div class="issue-tool-meta">
+      <div class="t-name">${escapeHtml(tool.name)}</div>
+      ${sub ? `<div class="t-sub">${escapeHtml(sub)}</div>` : ''}
+      <div class="t-chips">
+        ${chips.map(c => `<span class="t-chip">${c}</span>`).join('')}
+        <span class="badge ${st.badge}">${st.label}</span>
+      </div>
+    </div>`;
+}
+
+// Общий рендер кастомного списка сотрудников с фильтром (реалтайм поиск).
+// handlerName — имя глобальной функции выбора (получает id).
+function renderEmpList(listEl, employees, filter, selectedId, handlerName) {
+  if (!listEl) return;
+  const q = (filter || '').trim().toLowerCase();
+  const items = employees.filter(e => {
+    const hay = `${e.last_name} ${e.first_name} ${e.position || ''} ${e.department || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!items.length) {
+    listEl.innerHTML = `<div class="emp-pick-empty">Сотрудники не найдены</div>`;
+    return;
+  }
+
+  listEl.innerHTML = items.map(e => {
+    const initials = ((e.last_name || ' ')[0] + (e.first_name || ' ')[0]).toUpperCase();
+    const sel = String(e.id) === String(selectedId);
+    const sub = [e.position, e.department].filter(Boolean).join(' · ');
+    return `
+      <div class="emp-pick-item ${sel ? 'selected' : ''}" onclick="${handlerName}(${e.id})">
+        <div class="emp-pick-avatar">${escapeHtml(initials)}</div>
+        <div class="emp-pick-info">
+          <div class="emp-pick-name">${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</div>
+          ${sub ? `<div class="emp-pick-sub">${escapeHtml(sub)}</div>` : ''}
+        </div>
+        ${sel ? '<i data-lucide="check" class="emp-pick-check"></i>' : ''}
+      </div>`;
+  }).join('');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function renderIssueEmployeeList(filter = '') {
+  renderEmpList(
+    document.getElementById('issueEmployeeList'),
+    issueEmployeesList, filter,
+    document.getElementById('issueEmployeeId').value,
+    'selectIssueEmployee'
+  );
+}
+
+window.selectIssueEmployee = (id) => {
+  document.getElementById('issueEmployeeId').value = id;
+  renderIssueEmployeeList(document.getElementById('issueEmployeeSearch').value);
+};
+
+window.openIssueModal = async (toolId) => {
+  const tool = toolsList.find(t => t.id === toolId);
+  if (!tool) return;
+  document.getElementById('issueToolId').value = toolId;
+  document.getElementById('issueEmployeeId').value = '';
+  document.getElementById('issueEmployeeSearch').value = '';
+  document.getElementById('issueNotes').value = '';
+
+  // Блок с подробной инфой об инструменте
+  document.getElementById('issueToolInfo').innerHTML = buildToolCard(tool);
+
+  const list = document.getElementById('issueEmployeeList');
+  list.innerHTML = `<div class="emp-pick-empty">Загрузка...</div>`;
+  document.getElementById('issueModalOverlay').classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    // Уволенных не показываем — им инструмент не выдают
+    issueEmployeesList = employees.filter(e => e.status !== 'fired');
+    renderIssueEmployeeList('');
+    document.getElementById('issueEmployeeSearch').focus();
+  } catch (err) {
+    list.innerHTML = `<div class="emp-pick-empty">Не удалось загрузить сотрудников</div>`;
+  }
+};
+
+// === Возврат / передача инструмента ===
+let transferEmployeesList = [];
+
+function renderTransferList(filter = '') {
+  renderEmpList(
+    document.getElementById('transferEmployeeList'),
+    transferEmployeesList, filter,
+    document.getElementById('transferEmployeeId').value,
+    'selectTransferEmployee'
+  );
+}
+
+window.selectTransferEmployee = (id) => {
+  document.getElementById('transferEmployeeId').value = id;
+  renderTransferList(document.getElementById('transferSearch').value);
+};
+
+async function doReturnToStock(toolId) {
+  try {
+    const res = await fetch('/api/tools/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_id: toolId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Инструмент возвращён на склад', 'success');
+      await loadTools();
+    } else {
+      showToast(data.message || 'Не удалось вернуть', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+}
+
+window.openReturnModal = async (toolId) => {
+  const tool = toolsList.find(t => t.id === toolId);
+  if (!tool) return;
+  const modal = document.getElementById('returnModalOverlay');
+  modal.dataset.toolId = toolId;
+
+  document.getElementById('returnToolInfo').innerHTML = buildToolCard(tool);
+  document.getElementById('returnHolder').innerHTML = tool.current_holder
+    ? `Сейчас на руках у: <strong style="color:hsl(var(--text-primary))">${escapeHtml(tool.current_holder)}</strong>`
+    : '';
+
+  // Сброс к шагу 1
+  document.getElementById('returnStep1').style.display = 'flex';
+  document.getElementById('returnStep2').style.display = 'none';
+  document.getElementById('confirmTransferBtn').style.display = 'none';
+  document.getElementById('transferEmployeeId').value = '';
+  document.getElementById('transferSearch').value = '';
+  document.getElementById('transferEmployeeList').innerHTML = '';
+
+  modal.classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Заранее подгружаем сотрудников (кроме уволенных и текущего держателя)
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    transferEmployeesList = employees.filter(e => e.status !== 'fired' && e.id !== tool.current_employee_id);
+  } catch (err) {
+    transferEmployeesList = [];
+  }
+};
+
+window.openToolHistory = async (toolId) => {
+  const tool = toolsList.find(t => t.id === toolId);
+  document.getElementById('historyToolName').textContent = tool ? tool.name : '';
+  const tbody = document.getElementById('historyTableBody');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:16px;">Загрузка...</td></tr>';
+  document.getElementById('historyModalOverlay').classList.add('active');
+
+  try {
+    const res = await fetch(`/api/tools/history?tool_id=${toolId}`);
+    const rows = res.ok ? await res.json() : [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:16px;">Закреплений ещё не было</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const issued = r.issued_at ? new Date(r.issued_at).toLocaleString('ru-RU') : '—';
+      const returned = r.returned_at
+        ? new Date(r.returned_at).toLocaleString('ru-RU')
+        : '<span class="badge badge-warning">на руках</span>';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(r.employee_name || '—')}</strong>${r.notes ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(r.notes)}</div>` : ''}</td>
+        <td style="font-size:13px;">${issued}</td>
+        <td style="font-size:13px;">${returned}</td>
+        <td style="font-size:13px;color:hsl(var(--text-muted));">${escapeHtml(r.issued_by || '—')}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:16px;">Ошибка загрузки истории</td></tr>';
+  }
+};
 

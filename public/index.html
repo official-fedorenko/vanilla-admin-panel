@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Панель Управления</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%238a2be2'/%3E%3Cstop offset='100%25' stop-color='%2300d2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='42' fill='url(%23g)'/%3E%3Ctext x='50' y='63' font-size='46' text-anchor='middle' fill='white' font-family='system-ui,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
+  <title>Diamantas — Панель управления</title>
+  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%232e7bf6'/%3E%3Cstop offset='100%25' stop-color='%2320e0f5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='50,6 90,38 50,94 10,38' fill='url(%23g)'/%3E%3Cpolygon points='50,6 90,38 10,38' fill='%23ffffff' fill-opacity='0.18'/%3E%3C/svg%3E">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Quill Editor -->
@@ -17,11 +17,26 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
       <a href="/" class="brand" style="text-decoration: none; color: inherit;">
-        <div class="brand-icon">A</div>
-        <span>MyAdmin</span>
+        <div class="brand-icon"></div>
+        <span class="brand-name">
+          <b>DIAMANTAS</b>
+          <small>Elektros instaliacija</small>
+        </span>
       </a>
       
       <ul class="nav-list">
+        <li class="nav-item" data-section="employees">
+          <a href="#employees" title="Сотрудники">
+            <i data-lucide="users-round"></i>
+            <span>Сотрудники</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="tools">
+          <a href="#tools" title="Инструмент">
+            <i data-lucide="wrench"></i>
+            <span>Инструмент</span>
+          </a>
+        </li>
         <li class="nav-item active" data-section="articles">
           <a href="#articles" title="Статьи (CRUD)">
             <i data-lucide="file-text"></i>
@@ -76,7 +91,96 @@
 
     <!-- Main Content Area -->
     <main class="main-content">
-      
+
+      <!-- EMPLOYEES SECTION -->
+      <section id="section-employees" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Сотрудники</h2>
+            <p>Справочник персонала компании: карточки сотрудников, должности и статусы</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="exportCSV('employees')">Экспорт CSV</button>
+            <button class="btn btn-secondary" onclick="exportJSON('employees')">Экспорт JSON</button>
+            <button class="btn" id="addEmployeeBtn">
+              <i data-lucide="user-plus"></i>
+              <span>Добавить сотрудника</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="employeesSearch" class="form-control" placeholder="Поиск по имени, должности, отделу...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">ID</th>
+                  <th>ФИО</th>
+                  <th>Должность</th>
+                  <th>Отдел</th>
+                  <th>Телефон</th>
+                  <th style="width: 130px;">Принят</th>
+                  <th style="width: 120px;">Статус</th>
+                  <th style="width: 100px; text-align: right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="employeesTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TOOLS SECTION -->
+      <section id="section-tools" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Инструмент</h2>
+            <p>Инвентарь инструмента и его закрепление за сотрудниками (выдача / возврат)</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="exportCSV('tools')">Экспорт CSV</button>
+            <button class="btn" id="addToolBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить инструмент</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="toolsSearch" class="form-control" placeholder="Поиск по названию, категории, серийнику, держателю...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">ID</th>
+                  <th>Название</th>
+                  <th>Категория</th>
+                  <th>Серийный №</th>
+                  <th>Инв. №</th>
+                  <th style="width: 130px;">Статус</th>
+                  <th>У кого сейчас</th>
+                  <th style="width: 190px; text-align: right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="toolsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- ARTICLES (CRUD) SECTION - теперь с дашборд-элементами -->
       <section id="section-articles" class="app-section active">
         <div class="page-header">
@@ -401,6 +505,14 @@
               <option value="Superadmin">Суперадмин (Superadmin)</option>
             </select>
           </div>
+          <div class="form-group">
+            <label for="userAccountType">Тип аккаунта</label>
+            <select id="userAccountType" class="form-control">
+              <option value="client">Клиент</option>
+              <option value="employee">Сотрудник</option>
+            </select>
+            <small style="color: hsl(var(--text-muted)); font-size: 11px; display: block; margin-top: 4px;">При переключении на «Сотрудник» автоматически создаётся карточка в разделе «Сотрудники» (если её ещё нет).</small>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="cancelUserModalBtn">Отмена</button>
@@ -410,10 +522,289 @@
     </div>
   </div>
 
+  <!-- EMPLOYEE MODAL DIALOG -->
+  <div class="modal-overlay" id="employeeModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="employeeModalTitle">Добавить сотрудника</h3>
+        <button class="modal-close" id="closeEmployeeModalBtn">&times;</button>
+      </div>
+      <form id="employeeForm">
+        <input type="hidden" id="employeeId">
+        <div class="modal-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="empFirstName">Имя</label>
+              <input type="text" id="empFirstName" class="form-control" placeholder="Иван" required>
+            </div>
+            <div class="form-group">
+              <label for="empLastName">Фамилия</label>
+              <input type="text" id="empLastName" class="form-control" placeholder="Петров" required>
+            </div>
+            <div class="form-group">
+              <label for="empPosition">Должность</label>
+              <input type="text" id="empPosition" class="form-control" placeholder="Электромонтажник">
+            </div>
+            <div class="form-group">
+              <label for="empDepartment">Отдел</label>
+              <input type="text" id="empDepartment" class="form-control" placeholder="Монтаж">
+            </div>
+            <div class="form-group">
+              <label for="empPhone">Телефон</label>
+              <input type="text" id="empPhone" class="form-control" placeholder="+370 6xx xxxxx">
+            </div>
+            <div class="form-group">
+              <label for="empEmail">E-mail</label>
+              <input type="email" id="empEmail" class="form-control" placeholder="ivan@example.com">
+            </div>
+            <div class="form-group">
+              <label for="empHireDate">Дата приёма</label>
+              <input type="date" id="empHireDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="empStatus">Статус</label>
+              <select id="empStatus" class="form-control">
+                <option value="active">Работает</option>
+                <option value="vacation">В отпуске</option>
+                <option value="inactive">Неактивен</option>
+                <option value="fired">Уволен</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="empNotes">Заметки</label>
+            <textarea id="empNotes" class="form-control" rows="2" placeholder="Дополнительная информация..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelEmployeeModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOOL MODAL DIALOG -->
+  <div class="modal-overlay" id="toolModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="toolModalTitle">Добавить инструмент</h3>
+        <button class="modal-close" id="closeToolModalBtn">&times;</button>
+      </div>
+      <form id="toolForm">
+        <input type="hidden" id="toolId">
+        <div class="modal-body">
+          <div class="form-group">
+            <button type="button" class="btn btn-secondary" id="fromCatalogBtn" style="width:100%; justify-content:center;">
+              <i data-lucide="list"></i>
+              <span>Выбрать из каталога Bosch / DeWalt</span>
+            </button>
+          </div>
+          <div class="form-group">
+            <label for="toolName">Название</label>
+            <input type="text" id="toolName" class="form-control" placeholder="Перфоратор Bosch GBH 2-28" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="toolCategory">Категория</label>
+              <div style="display:flex; gap:8px;">
+                <select id="toolCategory" class="form-control" style="flex:1;">
+                  <option value="">— выберите —</option>
+                </select>
+                <button type="button" id="addCategoryBtn" class="btn btn-secondary superadmin-only" style="display:none; white-space:nowrap; padding:0 12px;" title="Добавить категорию (только Superadmin)">＋</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="toolStatus">Статус</label>
+              <select id="toolStatus" class="form-control">
+                <option value="available">На складе</option>
+                <option value="assigned">Выдан</option>
+                <option value="repair">В ремонте</option>
+                <option value="written_off">Списан</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="toolBrand">Бренд</label>
+              <input type="text" id="toolBrand" class="form-control" placeholder="Bosch">
+            </div>
+            <div class="form-group">
+              <label for="toolModel">Модель</label>
+              <input type="text" id="toolModel" class="form-control" placeholder="GBH 2-28">
+            </div>
+            <div class="form-group">
+              <label for="toolSerial">Серийный №</label>
+              <input type="text" id="toolSerial" class="form-control" placeholder="SN-000123" autocomplete="off">
+              <small id="toolSerialWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="toolInventory">Инвентарный №</label>
+              <input type="text" id="toolInventory" class="form-control" placeholder="INV-042" autocomplete="off">
+              <small id="toolInventoryWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="toolPurchaseDate">Дата покупки</label>
+              <input type="date" id="toolPurchaseDate" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Фото инструмента</label>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div id="toolPhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                <i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>
+              </div>
+              <div>
+                <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить фото</button>
+                <button type="button" class="btn btn-secondary" id="toolPhotoClearBtn" style="display:none;">Убрать</button>
+              </div>
+              <input type="file" id="toolPhotoInput" accept="image/*" style="display:none;">
+              <input type="hidden" id="toolPhotoUrl">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="toolNotes">Заметки</label>
+            <textarea id="toolNotes" class="form-control" rows="2" placeholder="Комплектация, состояние..."></textarea>
+          </div>
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">Статус «Выдан» ставится автоматически при выдаче инструмента сотруднику — вручную обычно не нужно.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelToolModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CATALOG PICKER MODAL DIALOG -->
+  <div class="modal-overlay" id="catalogModalOverlay">
+    <div class="modal" style="max-width: 760px;">
+      <div class="modal-header">
+        <h3>Каталог моделей</h3>
+        <button class="modal-close" id="closeCatalogModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: hsl(var(--text-secondary)); font-size: 13px; margin-bottom: 14px;">
+          Выберите модель — форма добавления инструмента заполнится автоматически. Серийный и инвентарный номер впишите вручную.
+        </p>
+        <div id="catalogFilters" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;"></div>
+        <div id="catalogList" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelCatalogModalBtn">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ISSUE TOOL MODAL DIALOG -->
+  <div class="modal-overlay" id="issueModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Выдать инструмент</h3>
+        <button class="modal-close" id="closeIssueModalBtn">&times;</button>
+      </div>
+      <form id="issueForm">
+        <input type="hidden" id="issueToolId">
+        <input type="hidden" id="issueEmployeeId">
+        <div class="modal-body">
+          <!-- Инфо об инструменте (заполняется в JS) -->
+          <div id="issueToolInfo" class="issue-tool-card"></div>
+
+          <div class="form-group">
+            <label for="issueEmployeeSearch">Кому выдать</label>
+            <input type="text" id="issueEmployeeSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom: 8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="issueEmployeeList"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="issueNotes">Заметка (необязательно)</label>
+            <input type="text" id="issueNotes" class="form-control" placeholder="Например: для объекта на ул. Vokiečių">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelIssueModalBtn">Отмена</button>
+          <button type="submit" class="btn">Выдать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RETURN / TRANSFER MODAL DIALOG -->
+  <div class="modal-overlay" id="returnModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Вернуть или передать инструмент</h3>
+        <button class="modal-close" id="closeReturnModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="returnToolInfo" class="issue-tool-card"></div>
+        <div id="returnHolder" style="font-size:13px; color:hsl(var(--text-secondary)); margin-bottom:18px;"></div>
+
+        <!-- Шаг 1: выбор действия -->
+        <div id="returnStep1" style="display:flex; gap:12px;">
+          <button type="button" class="btn btn-secondary" id="returnToStockBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="warehouse"></i>
+            <span>На склад</span>
+          </button>
+          <button type="button" class="btn btn-secondary" id="goTransferBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="user-check"></i>
+            <span>Передать другому</span>
+          </button>
+        </div>
+
+        <!-- Шаг 2: выбор сотрудника для передачи -->
+        <div id="returnStep2" style="display:none;">
+          <div class="form-group">
+            <label for="transferSearch">Кому передать</label>
+            <input type="text" id="transferSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom:8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="transferEmployeeList"></div>
+            </div>
+          </div>
+          <input type="hidden" id="transferEmployeeId">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelReturnModalBtn">Отмена</button>
+        <button type="button" class="btn" id="confirmTransferBtn" style="display:none;">Передать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOOL HISTORY MODAL DIALOG -->
+  <div class="modal-overlay" id="historyModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>История закреплений</h3>
+        <button class="modal-close" id="closeHistoryModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: hsl(var(--text-secondary)); font-size: 14px; margin-bottom: 16px;">
+          Инструмент: <strong id="historyToolName" style="color: hsl(var(--text-primary));"></strong>
+        </p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Сотрудник</th>
+                <th>Выдан</th>
+                <th>Возвращён</th>
+                <th>Выдал</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="closeHistoryBtn2">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- App logic JS -->
-  <script src="app.js"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

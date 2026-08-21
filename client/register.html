@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Регистрация — Мой Блог</title>
+  <title>Регистрация — UAB Diamantas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
@@ -139,6 +139,43 @@
     .hint.ok { color: var(--green); }
     .hint.bad { color: var(--red); }
 
+    .type-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .type-option {
+      text-align: left;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-family: 'Inter', sans-serif;
+      transition: border-color 0.2s, background 0.2s, transform 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .type-option:hover { transform: translateY(-1px); }
+    .type-option .type-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .type-option .type-desc { font-size: 11.5px; line-height: 1.35; }
+    .type-option.active {
+      border-color: var(--accent-cyan);
+      background: linear-gradient(135deg, rgba(0,210,255,0.12), rgba(138,43,226,0.08));
+      box-shadow: 0 0 0 3px rgba(0,210,255,0.12);
+    }
+    .name-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
     .btn {
       width: 100%;
       padding: 14px;
@@ -226,6 +263,32 @@
 
       <form id="registerForm">
         <div class="form-group">
+          <label>Тип аккаунта</label>
+          <div class="type-toggle" id="typeToggle">
+            <button type="button" class="type-option active" data-type="client">
+              <span class="type-title">Я клиент</span>
+              <span class="type-desc">Заказать работы / следить за проектом</span>
+            </button>
+            <button type="button" class="type-option" data-type="employee">
+              <span class="type-title">Я сотрудник</span>
+              <span class="type-desc">Доступ к рабочему кабинету компании</span>
+            </button>
+          </div>
+          <input type="hidden" id="accountType" value="client">
+        </div>
+
+        <div class="name-row" id="nameRow">
+          <div class="form-group">
+            <label for="firstName">Имя</label>
+            <input type="text" id="firstName" placeholder="Иван" autocomplete="given-name">
+          </div>
+          <div class="form-group">
+            <label for="lastName">Фамилия</label>
+            <input type="text" id="lastName" placeholder="Петров" autocomplete="family-name">
+          </div>
+        </div>
+
+        <div class="form-group">
           <label for="username">Имя пользователя</label>
           <input type="text" id="username" placeholder="Например: alex_dev" required autocomplete="username" minlength="3">
           <div class="hint" id="usernameHint">Минимум 3 символа, только буквы, цифры и _</div>
@@ -302,6 +365,30 @@
 
     // Генерируем вопрос сразу при загрузке страницы
     generateRandomBotQuestion();
+
+    // === Переключатель типа аккаунта (клиент / сотрудник) ===
+    const accountTypeInput = document.getElementById('accountType');
+    const firstNameInput = document.getElementById('firstName');
+    const lastNameInput = document.getElementById('lastName');
+    const submitBtnEl = document.getElementById('submitBtn');
+
+    function applyAccountType(type) {
+      accountTypeInput.value = type;
+      document.querySelectorAll('.type-option').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === type);
+      });
+      const isEmployee = type === 'employee';
+      // Для сотрудника имя и фамилия обязательны
+      firstNameInput.required = isEmployee;
+      lastNameInput.required = isEmployee;
+      firstNameInput.placeholder = isEmployee ? 'Иван' : 'Иван (необязательно)';
+      lastNameInput.placeholder = isEmployee ? 'Петров' : 'Петров (необязательно)';
+      submitBtnEl.textContent = isEmployee ? 'Зарегистрироваться как сотрудник' : 'Зарегистрироваться';
+    }
+
+    document.querySelectorAll('.type-option').forEach(btn => {
+      btn.addEventListener('click', () => applyAccountType(btn.dataset.type));
+    });
 
     // Живая валидация логина с проверкой занятости
     const usernameInput = document.getElementById('username');
@@ -387,6 +474,9 @@
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirm = document.getElementById('confirmPassword').value;
+      const accountType = accountTypeInput.value;
+      const firstName = firstNameInput.value.trim();
+      const lastName = lastNameInput.value.trim();
 
       // Honeypot
       const hp = document.getElementById('hp').value;
@@ -420,6 +510,10 @@
         errorBox.textContent = 'Пароли не совпадают';
         errorBox.style.display = 'block'; return;
       }
+      if (accountType === 'employee' && (!firstName || !lastName)) {
+        errorBox.textContent = 'Для сотрудника укажите имя и фамилию';
+        errorBox.style.display = 'block'; return;
+      }
       if (parseInt(botAnswerRaw, 10) !== window.botCorrectAnswer) {
         errorBox.textContent = 'Неверный ответ на вопрос защиты от ботов';
         errorBox.style.display = 'block';
@@ -437,10 +531,13 @@
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            username, 
-            email, 
+          body: JSON.stringify({
+            username,
+            email,
             password,
+            account_type: accountType,
+            first_name: firstName,
+            last_name: lastName,
             hp,           // honeypot
             website,      // honeypot
             botNum1,
@@ -452,7 +549,10 @@
         const data = await res.json();
 
         if (res.ok && data.success) {
-          showToast('Аккаунт создан! Добро пожаловать 🎉', 'success');
+          const welcome = accountType === 'employee'
+            ? 'Аккаунт сотрудника создан! Карточка ожидает активации админом.'
+            : 'Аккаунт создан! Добро пожаловать 🎉';
+          showToast(welcome, 'success');
           btn.textContent = 'Перенаправление...';
           setTimeout(() => { window.location.href = '/cabinet.html'; }, 900);
         } else {

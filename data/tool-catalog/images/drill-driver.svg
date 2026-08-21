@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130" fill="none" stroke="#8a94a6" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+  <title>Шуруповёрт</title>
+  <!-- корпус -->
+  <rect x="66" y="34" width="60" height="38" rx="10" fill="#8a94a6" fill-opacity="0.10"/>
+  <!-- патрон -->
+  <path d="M126 44 L150 40 L150 66 L126 62 Z" fill="#8a94a6" fill-opacity="0.14"/>
+  <line x1="150" y1="53" x2="176" y2="53"/>
+  <!-- бита -->
+  <path d="M170 49 L178 53 L170 57"/>
+  <!-- рукоятка -->
+  <path d="M82 72 L76 104 Q75 110 82 110 L100 110 Q107 110 106 104 L100 72 Z" fill="#8a94a6" fill-opacity="0.10"/>
+  <!-- аккумулятор -->
+  <rect x="72" y="108" width="34" height="16" rx="4" fill="#8a94a6" fill-opacity="0.14"/>
+  <!-- курок -->
+  <path d="M82 80 L72 84"/>
+</svg>
