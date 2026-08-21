@@ -152,6 +152,10 @@
       .mobile-collapse .cbody { display: none; }
       .mobile-collapse.expanded .cbody { display: block; }
       .mobile-collapse.expanded .collapse-chev { transform: rotate(180deg); }
+      /* Чат: убираем фиксированную высоту, чтобы свёрнутая карточка не
+         занимала пустое место; развёрнутый чат получает удобную высоту. */
+      .mobile-collapse.chat-card { height: auto !important; }
+      .mobile-collapse.chat-card.expanded .cbody { height: 70vh; }
     }
 
     /* Адаптив верхнего меню */
@@ -483,11 +487,12 @@
       <div style="display: flex; flex-direction: column; gap: 28px;">
 
         <!-- Моя карточка сотрудника (read-only, только для сотрудников) -->
-        <div class="card" id="myEmployeeCard" style="display: none;">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V4a2 2 0 114 0v2m-4 0a2 2 0 104 0"/></svg>
-            Моя карточка сотрудника
+        <div class="card mobile-collapse" id="myEmployeeCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V4a2 2 0 114 0v2m-4 0a2 2 0 104 0"/></svg> Моя карточка сотрудника</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
           <div id="myEmployeeCardBody" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
             <div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Загрузка...</div>
           </div>
@@ -495,32 +500,40 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             Данные заполняет администратор. Если что-то неверно — сообщите руководителю.
           </div>
+          </div><!-- /cbody -->
         </div>
 
         <!-- Мой закреплённый инструмент (только для сотрудников) -->
-        <div class="card" id="myToolsCard" style="display: none;">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-            Мой инструмент
+        <div class="card mobile-collapse" id="myToolsCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg> Мой инструмент</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
           <div id="myToolsList" style="display:flex; flex-direction:column; gap:12px;">
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
           <input type="file" id="myToolPhotoInput" accept="image/*" style="display:none;">
+          </div><!-- /cbody -->
         </div>
 
         <!-- Заявления -->
-        <div class="card" id="requestsCard">
-          <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+        <div class="card mobile-collapse" id="requestsCard">
+          <div class="card-title collapse-toggle" style="display:flex; align-items:center; justify-content:space-between;">
             <span style="display:flex; align-items:center; gap:8px;">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
               Заявления
             </span>
-            <button type="button" id="newRequestBtn" style="padding:6px 14px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">+ Новое</button>
+            <span style="display:flex; align-items:center; gap:10px;">
+              <button type="button" id="newRequestBtn" style="padding:6px 14px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">+ Новое</button>
+              <span class="collapse-chev">▾</span>
+            </span>
           </div>
+          <div class="cbody">
           <div id="myRequestsList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
             <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
           </div>
+          </div><!-- /cbody -->
         </div>
 
         <!-- Модалка нового заявления -->
@@ -542,20 +555,24 @@
         </div>
 
         <!-- Чат поддержки -->
-        <div class="card" style="display: flex; flex-direction: column; height: 500px;">
-          <div class="card-title" style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="card mobile-collapse chat-card" style="display: flex; flex-direction: column; height: 500px;">
+          <div class="card-title collapse-toggle" style="display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="color: var(--accent-purple);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
                 <span id="cabinetChatTitle">Чат с поддержкой</span>
               </div>
-              <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+                <span class="collapse-chev">▾</span>
+              </div>
             </div>
             <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; gap: 12px; margin-top: 2px;">
               <span>Создатель: <strong id="ticketCreator" style="color: var(--accent-cyan);">...</strong></span>
               <span>Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong></span>
             </div>
           </div>
+          <div class="cbody" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
           <div id="cabinetChatMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
             <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка сообщений...</div>
           </div>
@@ -563,13 +580,15 @@
             <input type="text" id="cabinetChatMessageInput" placeholder="Напишите сообщение..." required style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 12px; border-radius: 10px; outline: none; font-family: 'Inter', sans-serif;">
             <button type="submit" class="btn-save" style="width: auto; padding: 0 20px; margin: 0;">Отправить</button>
           </form>
+          </div><!-- /cbody -->
         </div>
 
-        <div class="card">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Последние публикации
+        <div class="card mobile-collapse">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Последние публикации</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
           <div id="articlesList" class="articles-list">
             <!-- Skeleton -->
             <div class="article-item" style="opacity:0.4">
@@ -577,6 +596,7 @@
               <div class="article-title">—</div>
             </div>
           </div>
+          </div><!-- /cbody -->
         </div>
       </div>
     </div>
@@ -1821,9 +1841,11 @@
         backBtn.addEventListener('click', window.closeAdminChatInline);
       }
 
-      // Сворачивание карточек «Мой профиль» / «2FA» на мобильных
+      // Сворачивание карточек кабинета на мобильных. Клик по кнопкам/ссылкам
+      // внутри заголовка (например «+ Новое», «Назад») не должен сворачивать.
       document.querySelectorAll('.collapse-toggle').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('button, a, input, select')) return;
           const card = el.closest('.mobile-collapse');
           if (card) card.classList.toggle('expanded');
         });
