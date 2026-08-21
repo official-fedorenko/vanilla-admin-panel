@@ -702,6 +702,52 @@
       return text.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
     }
 
+    // Подготовка файла к загрузке: изображения (jpeg/png/webp) ужимаются в
+    // браузере до 1920px по длинной стороне и перекодируются в JPEG, чтобы
+    // большие фото со смартфона не упирались в лимит сервера. Возвращает
+    // { filename, data(base64), mimeType }. SVG/GIF и прочее — как есть.
+    const UPLOAD_MAX_DIMENSION = 1920;
+    function readAsBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(',')[1]);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    }
+    function compressToJpeg(file) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          let { width, height } = img;
+          const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(width, height));
+          width = Math.round(width * scale); height = Math.round(height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(b => resolve(b), 'image/jpeg', 0.85);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+    }
+    async function prepareUploadFile(file) {
+      if (/^image\/(jpeg|png|webp)$/.test(file.type)) {
+        try {
+          const blob = await compressToJpeg(file);
+          if (blob && blob.size < file.size) {
+            const base = (file.name || 'photo').replace(/\.[^.]+$/, '');
+            return { filename: base + '.jpg', data: await readAsBase64(blob), mimeType: 'image/jpeg' };
+          }
+        } catch (_) { /* упадём на оригинал */ }
+      }
+      return { filename: file.name, data: await readAsBase64(file), mimeType: file.type };
+    }
+
     async function loadProfile() {
       try {
         const res = await fetch('/api/cabinet/me');
@@ -884,15 +930,17 @@
         
         try {
           // 1) загружаем файл, получаем URL
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
+          {
+            const prepared = await prepareUploadFile(file);
             const upRes = await fetch('/api/media', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
+              body: JSON.stringify({ files: [prepared], category: 'tools' })
             });
-            if (!upRes.ok) { showToast('Ошибка загрузки фото', 'error'); return; }
+            if (!upRes.ok) {
+              const e = await upRes.json().catch(() => ({}));
+              showToast(e.message || 'Ошибка загрузки фото', 'error'); return;
+            }
             const upData = await upRes.json();
             const url = upData.urls && upData.urls[0];
             if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
@@ -909,8 +957,7 @@
             } else {
               showToast(linkData.message || 'Не удалось сохранить фото', 'error');
             }
-          };
-          reader.readAsDataURL(file);
+          }
         } catch (e) {
           showToast('Ошибка при загрузке', 'error');
         } finally {
@@ -1068,13 +1115,12 @@
         uploadAvatarBtn.textContent = 'Загрузка...';
 
         try {
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
+          {
+            const prepared = await prepareUploadFile(file);
             const uploadRes = await fetch('/api/media', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'avatars' })
+              body: JSON.stringify({ files: [prepared], category: 'avatars' })
             });
             if (uploadRes.ok) {
               const data = await uploadRes.json();
@@ -1092,10 +1138,10 @@
                 }
               }
             } else {
-              showToast('Ошибка загрузки аватарки', 'error');
+              const e = await uploadRes.json().catch(() => ({}));
+              showToast(e.message || 'Ошибка загрузки аватарки', 'error');
             }
-          };
-          reader.readAsDataURL(file);
+          }
         } catch (e) {
           showToast('Ошибка при загрузке', 'error');
         } finally {
@@ -1353,23 +1399,22 @@
       uploadBtn.textContent = '...';
 
       try {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          const base64 = ev.target.result.split(',')[1];
-          const uploadRes = await fetch('/api/media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'support' })
-          });
-          if (uploadRes.ok) {
-            const data = await uploadRes.json();
-            if (data.urls && data.urls.length > 0) {
-              pendingImageUrl = data.urls[0];
-              showToast('Изображение прикреплено', 'success');
-            }
+        const prepared = await prepareUploadFile(file);
+        const uploadRes = await fetch('/api/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: [prepared], category: 'support' })
+        });
+        if (uploadRes.ok) {
+          const data = await uploadRes.json();
+          if (data.urls && data.urls.length > 0) {
+            pendingImageUrl = data.urls[0];
+            showToast('Изображение прикреплено', 'success');
           }
-        };
-        reader.readAsDataURL(file);
+        } else {
+          const e = await uploadRes.json().catch(() => ({}));
+          showToast(e.message || 'Ошибка загрузки изображения', 'error');
+        }
       } catch (e) {
         showToast('Ошибка загрузки изображения', 'error');
       } finally {
@@ -1901,23 +1946,22 @@
         if (!file) return;
         btn.disabled = true; btn.textContent = '...';
         try {
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
-            const up = await fetch('/api/media', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
-            });
-            if (up.ok) {
-              const d = await up.json();
-              if (d.urls && d.urls[0]) {
-                reqPhotoUrls[fieldName] = d.urls[0];
-                document.getElementById(fid + '_prev').innerHTML = `<img src="${d.urls[0]}" style="width:100%;height:100%;object-fit:cover;">`;
-              }
-            } else showToast('Ошибка загрузки фото', 'error');
-            btn.disabled = false; btn.textContent = 'Загрузить';
-          };
-          reader.readAsDataURL(file);
+          const prepared = await prepareUploadFile(file);
+          const up = await fetch('/api/media', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [prepared], category: 'tools' })
+          });
+          if (up.ok) {
+            const d = await up.json();
+            if (d.urls && d.urls[0]) {
+              reqPhotoUrls[fieldName] = d.urls[0];
+              document.getElementById(fid + '_prev').innerHTML = `<img src="${d.urls[0]}" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+          } else {
+            const e = await up.json().catch(() => ({}));
+            showToast(e.message || 'Ошибка загрузки фото', 'error');
+          }
+          btn.disabled = false; btn.textContent = 'Загрузить';
         } catch (e) { btn.disabled = false; btn.textContent = 'Загрузить'; }
         input.value = '';
       };
