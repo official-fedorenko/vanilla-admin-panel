@@ -2067,25 +2067,27 @@ function renderTools(filterQuery = '') {
 }
 
 // Загружает изображение через /api/media и возвращает его URL (/uploads/...)
-function uploadImageToMedia(file, category = 'general') {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      try {
-        const base64 = ev.target.result.split(',')[1];
-        const res = await fetch('/api/media', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category })
-        });
-        if (!res.ok) return resolve(null);
-        const data = await res.json();
-        resolve(data.urls && data.urls[0] ? data.urls[0] : null);
-      } catch (e) { reject(e); }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+async function uploadImageToMedia(file, category = 'general') {
+  // Большие изображения ужимаем в браузере, чтобы не упираться в лимит.
+  let payload = { filename: file.name, mimeType: file.type, blobOrFile: file };
+  if (/^image\/(jpeg|png|webp)$/.test(file.type)) {
+    try {
+      const compressed = await compressImage(file);
+      if (compressed && compressed.blob.size < file.size) {
+        const base = file.name.replace(/\.[^.]+$/, '');
+        payload = { filename: base + '.jpg', mimeType: 'image/jpeg', blobOrFile: compressed.blob };
+      }
+    } catch (_) { /* отправим оригинал */ }
+  }
+  const data = await blobToBase64(payload.blobOrFile);
+  const res = await fetch('/api/media', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: [{ filename: payload.filename, data, mimeType: payload.mimeType }], category })
   });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.urls && json.urls[0] ? json.urls[0] : null;
 }
 
 async function loadToolCategories() {

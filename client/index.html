@@ -14,10 +14,14 @@
     /* На мобильных чип пользователя открывает меню; отдельную кнопку
        «Панель» прячем — админ-панель доступна пунктом меню. */
     #navUserCaret { display: none; }
+    .guest-mobile-only { display: none; }
     @media (max-width: 768px) {
       #authNav #navAdminPanel { display: none !important; }
       #cabinetLink { cursor: pointer; }
       #navUserCaret { display: inline-flex; align-items: center; }
+      /* Гость: две ссылки → одна кнопка «Вход» с модалкой */
+      .guest-desktop-only { display: none !important; }
+      .guest-mobile-only { display: inline-flex; align-items: center; gap: 6px; }
     }
     .profile-menu-overlay {
       display: none; position: fixed; inset: 0; z-index: 2000;
@@ -75,8 +79,9 @@
     <div class="topbar__right">
       <!-- Guest links (shown when not logged in) -->
       <div id="guestNav" style="display:flex;align-items:center;gap:16px;">
-        <a href="/register.html" class="nav-btn-link">Регистрация</a>
-        <a href="/login.html" class="admin-link">Войти <i data-lucide="arrow-right"></i></a>
+        <a href="/register.html" class="nav-btn-link guest-desktop-only">Регистрация</a>
+        <a href="/login.html" class="admin-link guest-desktop-only">Войти <i data-lucide="arrow-right"></i></a>
+        <button type="button" id="guestMenuBtn" class="admin-link guest-mobile-only" style="cursor:pointer;font-family:inherit;">Вход <i data-lucide="chevron-down" style="width:14px;height:14px;"></i></button>
       </div>
       <!-- Auth links (shown when logged in) -->
       <div id="authNav" style="display:none;align-items:center;gap:12px;">
@@ -88,6 +93,14 @@
       </div>
     </div>
   </header>
+
+  <!-- Мобильное меню входа/регистрации (гость) -->
+  <div class="profile-menu-overlay" id="guestMenuOverlay">
+    <div class="profile-menu" role="menu" aria-label="Вход">
+      <a href="/login.html" class="profile-menu-item" role="menuitem"><i data-lucide="log-in"></i> Войти</a>
+      <a href="/register.html" class="profile-menu-item" role="menuitem"><i data-lucide="user-plus"></i> Регистрация</a>
+    </div>
+  </div>
 
   <!-- Мобильное меню профиля (тап по нику в шапке) -->
   <div class="profile-menu-overlay" id="profileMenuOverlay">
@@ -265,6 +278,16 @@
 
   <script src="app.js"></script>
   <script>
+    // Гостевое меню входа/регистрации (мобильные)
+    (function () {
+      const btn = document.getElementById('guestMenuBtn');
+      const overlay = document.getElementById('guestMenuOverlay');
+      if (!btn || !overlay) return;
+      btn.addEventListener('click', () => overlay.classList.add('open'));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.classList.remove('open'); });
+    })();
+
     // Сайдбар тогглер
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');
