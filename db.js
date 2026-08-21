@@ -382,6 +382,25 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // Публичные (урезанные) карточки инструмента — то, что открывается по
+  // QR-коду любым человеком без авторизации. Одна запись на инструмент.
+  // enabled=1 — карточка доступна; поля show_* управляют тем, какие данные
+  // видны на публичной странице. Если записи нет — действуют дефолты
+  // (карточка включена, показываются все поля).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tool_public_cards (
+      tool_id INTEGER PRIMARY KEY REFERENCES tools(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      show_brand INTEGER NOT NULL DEFAULT 1,
+      show_model INTEGER NOT NULL DEFAULT 1,
+      show_serial INTEGER NOT NULL DEFAULT 1,
+      show_inventory INTEGER NOT NULL DEFAULT 1,
+      show_status INTEGER NOT NULL DEFAULT 1,
+      show_photo INTEGER NOT NULL DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // 6. Таблица сообщений техподдержки / обратной связи (Чат)
   db.run(`
     CREATE TABLE IF NOT EXISTS support_messages (

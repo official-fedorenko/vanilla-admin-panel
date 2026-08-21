@@ -492,6 +492,73 @@ function handleDetails(req, res, user, parsedUrl) {
   });
 }
 
+// ---- Настройки публичной карточки инструмента ----
+// GET  /api/tools/public-card?id=  — текущие настройки (с дефолтами)
+// POST /api/tools/public-card       — сохранить (Admin/Superadmin)
+// Управляет тем, что видно на публичной странице /tool.html (по QR-коду).
+
+const PUBLIC_CARD_FIELDS = ['enabled', 'show_brand', 'show_model', 'show_serial',
+  'show_inventory', 'show_status', 'show_photo'];
+
+// Дефолт, когда записи в tool_public_cards ещё нет: всё включено.
+function defaultPublicCard(toolId) {
+  const card = { tool_id: toolId };
+  PUBLIC_CARD_FIELDS.forEach(f => { card[f] = 1; });
+  return card;
+}
+
+function getPublicCard(req, res, user, parsedUrl) {
+  const toolId = parseId(parsedUrl);
+  if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+  db.get("SELECT id FROM tools WHERE id = ?", [toolId], (err, tool) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
+
+    db.get("SELECT * FROM tool_public_cards WHERE tool_id = ?", [toolId], (e2, row) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      sendJson(res, 200, { success: true, card: row || defaultPublicCard(toolId) });
+    });
+  });
+}
+
+async function savePublicCard(req, res, user) {
+  if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
+  try {
+    const body = await getJsonBody(req);
+    const toolId = parseInt(body.tool_id, 10);
+    if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан инструмент' });
+
+    // Нормализуем каждое поле в 0/1 (по умолчанию 1, если не передано).
+    const vals = PUBLIC_CARD_FIELDS.map(f => (
+      body[f] === undefined ? 1 : (body[f] ? 1 : 0)
+    ));
+
+    db.get("SELECT id, name FROM tools WHERE id = ?", [toolId], (err, tool) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
+
+      const cols = PUBLIC_CARD_FIELDS.join(', ');
+      const placeholders = PUBLIC_CARD_FIELDS.map(() => '?').join(', ');
+      const updates = PUBLIC_CARD_FIELDS.map(f => `${f} = excluded.${f}`).join(', ');
+      const sql = `
+        INSERT INTO tool_public_cards (tool_id, ${cols}, updated_at)
+        VALUES (?, ${placeholders}, CURRENT_TIMESTAMP)
+        ON CONFLICT(tool_id) DO UPDATE SET ${updates}, updated_at = CURRENT_TIMESTAMP`;
+
+      db.run(sql, [toolId, ...vals], function (e2) {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+        logAction(user.username, `Обновлена публичная карточка инструмента «${tool.name}»`);
+        const card = defaultPublicCard(toolId);
+        PUBLIC_CARD_FIELDS.forEach((f, i) => { card[f] = vals[i]; });
+        sendJson(res, 200, { success: true, card });
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
+}
+
 // ---- QR-код инструмента (/api/tools/qr?id=) ----
 // Возвращает SVG, кодирующий ссылку на карточку инструмента (для наклейки).
 function handleQr(req, res, user, parsedUrl) {
@@ -500,7 +567,10 @@ function handleQr(req, res, user, parsedUrl) {
 
   const host = req.headers.host || 'localhost';
   const proto = (req.headers['x-forwarded-proto'] || 'http').split(',')[0];
-  const link = `${proto}://${host}/admin/?tool=${toolId}`;
+  // QR ведёт на ПУБЛИЧНУЮ карточку (без авторизации): любой, кто отсканирует
+  // наклейку, увидит только данные для идентификации инструмента. Полная
+  // карточка с историей и статистикой доступна админам через /admin/?tool=.
+  const link = `${proto}://${host}/tool.html?id=${toolId}`;
 
   QRCode.toString(link, { type: 'svg', margin: 1, width: 220,
     color: { dark: '#111111', light: '#ffffff' } }, (err, svg) => {
@@ -527,6 +597,8 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (pathname === '/api/tools/history' && method === 'GET') return handleHistory(req, res, user, parsedUrl);
   if (pathname === '/api/tools/details' && method === 'GET') return handleDetails(req, res, user, parsedUrl);
   if (pathname === '/api/tools/qr' && method === 'GET') return handleQr(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/public-card' && method === 'GET') return getPublicCard(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/public-card' && method === 'POST') return savePublicCard(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };
