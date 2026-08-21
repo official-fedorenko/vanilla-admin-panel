@@ -611,13 +611,27 @@
               <button type="button" id="requestModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
             </div>
             <div style="padding:20px;">
-              <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:6px;">Тип заявления</label>
-              <select id="requestTypeSelect" class="form-input" style="margin-bottom:18px;"></select>
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+                <div style="font-size:13px; color:var(--text-secondary);">Тип: <strong id="requestFormTypeLabel" style="color:var(--text-primary);"></strong></div>
+                <button type="button" id="requestChangeTypeBtn" style="background:none; border:none; color:var(--accent-cyan); font-size:12px; cursor:pointer; padding:0;">← Изменить тип</button>
+              </div>
+              <select id="requestTypeSelect" style="display:none;"></select>
               <form id="requestForm">
                 <div id="requestFields" style="display:flex; flex-direction:column; gap:10px;"></div>
                 <button type="submit" style="margin-top:18px; width:100%; padding:10px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Отправить</button>
               </form>
             </div>
+          </div>
+        </div>
+
+        <!-- Модалка выбора типа заявления (первый шаг) -->
+        <div id="requestTypeModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; align-items:center; justify-content:center;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:88vh; overflow:auto;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Выберите тип заявления</div>
+              <button type="button" id="requestTypeModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px; display:flex; flex-direction:column; gap:10px;" id="requestTypeList"></div>
           </div>
         </div>
 
@@ -627,16 +641,15 @@
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="color: var(--accent-purple);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-                <span id="cabinetChatTitle">Чат с поддержкой</span>
+                <span id="cabinetChatTitle">Чат с администрацией</span>
               </div>
               <div style="display: flex; align-items: center; gap: 10px;">
                 <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
                 <span class="collapse-chev">▾</span>
               </div>
             </div>
-            <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; gap: 12px; margin-top: 2px;">
-              <span>Создатель: <strong id="ticketCreator" style="color: var(--accent-cyan);">...</strong></span>
-              <span>Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong></span>
+            <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; margin-top: 2px;">
+              Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong><span id="ticketLastRepliedAt" style="color: var(--text-muted);"></span>
             </div>
           </div>
           <div class="cbody" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
@@ -1482,9 +1495,9 @@
       
       document.getElementById('adminBackBtn').style.display = 'inline-block';
       document.getElementById('cabinetChatForm').style.display = 'flex';
-      
-      // Скрываем старый субтитл — в заголовке теперь всегда только аватар + имя собеседника
-      document.getElementById('cabinetChatSubtitle').style.display = 'none';
+
+      // В заголовке — с кем чат; под ним показываем, кто и когда ответил последним.
+      document.getElementById('cabinetChatSubtitle').style.display = 'block';
       
       // Load messages
       await loadActiveTicketMessages(false);
@@ -1515,16 +1528,25 @@
           const data = await res.json();
           renderChatMessages(data.messages, isPolling);
           
-          // Determine last replier
+          // Кто и когда ответил последним
+          const repliedAtEl = document.getElementById('ticketLastRepliedAt');
           if (data.messages && data.messages.length > 0) {
             const lastMsg = data.messages[data.messages.length - 1];
             let lastReplier = lastMsg.name || 'Пользователь';
             if (lastMsg.sender_role === 'Admin' || lastMsg.sender_role === 'Superadmin') {
-              lastReplier = `${lastMsg.name} (Поддержка)`;
+              lastReplier = `${lastMsg.name} (Администрация)`;
             }
             document.getElementById('ticketLastReplier').textContent = lastReplier;
+            if (repliedAtEl && lastMsg.created_at) {
+              const d = new Date(lastMsg.created_at);
+              const when = d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+              repliedAtEl.textContent = ` · ${when}`;
+            } else if (repliedAtEl) {
+              repliedAtEl.textContent = '';
+            }
           } else {
             document.getElementById('ticketLastReplier').textContent = 'Нет сообщений';
+            if (repliedAtEl) repliedAtEl.textContent = '';
           }
         }
       } catch(e) {}
@@ -1665,7 +1687,7 @@
         toolCategories = cat || [];
       } catch (e) { requestTypes = {}; }
 
-      // Заполняем выбор типа
+      // Скрытый select хранит выбранный тип (для submitRequest)
       const typeSel = document.getElementById('requestTypeSelect');
       typeSel.innerHTML = '';
       Object.entries(requestTypes).forEach(([key, t]) => {
@@ -1673,21 +1695,62 @@
         o.value = key; o.textContent = t.label;
         typeSel.appendChild(o);
       });
-      typeSel.onchange = () => renderRequestFields(typeSel.value);
 
-      btn.onclick = () => {
-        document.getElementById('requestModalOverlay').style.display = 'flex';
-        if (typeSel.value) renderRequestFields(typeSel.value);
-      };
+      // Список кнопок выбора типа (первый шаг)
+      const typeList = document.getElementById('requestTypeList');
+      typeList.innerHTML = '';
+      Object.entries(requestTypes).forEach(([key, t]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'display:flex; align-items:center; gap:12px; text-align:left; padding:14px 16px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px; cursor:pointer; color:var(--text-primary); font-size:14px; font-weight:600; font-family:Inter,sans-serif; transition:background .15s;';
+        b.onmouseover = () => b.style.background = 'rgba(138,43,226,0.12)';
+        b.onmouseout = () => b.style.background = 'rgba(255,255,255,0.03)';
+        const icon = t.icon ? `<i data-lucide="${escapeHtmlC(t.icon)}" style="width:18px; height:18px; color:var(--accent-cyan); flex-shrink:0;"></i>` : '';
+        b.innerHTML = icon + `<span>${escapeHtmlC(t.label)}</span>`;
+        b.onclick = () => openRequestForm(key);
+        typeList.appendChild(b);
+      });
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      // «+ Новое» → сначала выбор типа
+      btn.onclick = openRequestTypePicker;
+
+      document.getElementById('requestTypeModalClose').onclick = closeRequestTypePicker;
+      document.getElementById('requestTypeModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'requestTypeModalOverlay') closeRequestTypePicker();
+      });
+
       document.getElementById('requestModalClose').onclick = closeRequestModal;
       document.getElementById('requestModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'requestModalOverlay') closeRequestModal();
       });
+      // «← Изменить тип» — вернуться к выбору типа
+      document.getElementById('requestChangeTypeBtn').onclick = () => {
+        closeRequestModal();
+        openRequestTypePicker();
+      };
 
       document.getElementById('requestForm').onsubmit = submitRequest;
 
-      if (typeSel.value) renderRequestFields(typeSel.value);
       loadMyRequests();
+    }
+
+    function openRequestTypePicker() {
+      document.getElementById('requestTypeModalOverlay').style.display = 'flex';
+    }
+    function closeRequestTypePicker() {
+      document.getElementById('requestTypeModalOverlay').style.display = 'none';
+    }
+
+    // Выбран тип → открываем форму заявления по этому типу
+    function openRequestForm(typeKey) {
+      const def = requestTypes[typeKey];
+      if (!def) return;
+      document.getElementById('requestTypeSelect').value = typeKey;
+      document.getElementById('requestFormTypeLabel').textContent = def.label || typeKey;
+      renderRequestFields(typeKey);
+      closeRequestTypePicker();
+      document.getElementById('requestModalOverlay').style.display = 'flex';
     }
 
     function closeRequestModal() {
