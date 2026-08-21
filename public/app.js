@@ -827,12 +827,8 @@ window.openMediaCategory = (category, title) => {
   // Раздел «Иконки категорий» показываем только внутри папки «Инструменты».
   const iconsPanel = document.getElementById('categoryIconsPanel');
   if (iconsPanel) {
-    if (category === 'tools') {
-      iconsPanel.style.display = 'block';
-      loadCategoryIcons();
-    } else {
-      iconsPanel.style.display = 'none';
-    }
+    // Показываем только кнопку; сами иконки грузятся при открытии модалки.
+    iconsPanel.style.display = category === 'tools' ? 'block' : 'none';
   }
 
   // Раздел «Стандартные аватары» показываем только внутри папки «Аватары».
@@ -876,6 +872,20 @@ async function loadStandardAvatars() {
     grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted));">Ошибка загрузки</div>';
   }
 }
+
+// Модалка со стандартными иконками категорий: открытие грузит актуальный
+// список, закрытие прячет оверлей.
+window.openCategoryIconsModal = () => {
+  const overlay = document.getElementById('categoryIconsModalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+  loadCategoryIcons();
+};
+
+window.closeCategoryIconsModal = () => {
+  const overlay = document.getElementById('categoryIconsModalOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
 
 // Загружает и рисует иконки категорий инструментов с возможностью замены.
 async function loadCategoryIcons() {
