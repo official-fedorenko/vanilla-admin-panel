@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_mixer" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06B6D4"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_mixer)"/>
+  <path d="M0 16 A16 16 0 0 1 16 0 H48 A16 16 0 0 1 64 16 V22 Q32 34 0 22 Z" fill="#ffffff" opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <rect x="17" y="16" width="17" height="12" rx="4"/>
+    <path d="M34 20 h5 M20 28 v3 M28 28 v3"/>
+    <path d="M25 31 V44"/>
+    <path d="M25 44 q-6 -3 0 -6 q6 -3 0 -6" stroke-width="2.6"/>
+    <path d="M25 44 q6 -3 0 -6 q-6 -3 0 -6" stroke-width="2.6"/>
+  </g>
+</svg>

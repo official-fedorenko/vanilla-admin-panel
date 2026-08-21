@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_crimpingpliers" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#7DD3FC"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_crimpingpliers)"/>
+  <path d="M0 16 A16 16 0 0 1 16 0 H48 A16 16 0 0 1 64 16 V22 Q32 34 0 22 Z" fill="#ffffff" opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <path d="M18 46 L34 26"/>
+    <path d="M46 46 L30 26"/>
+    <path d="M30 26 a5 5 0 0 1 4 0"/>
+    <circle cx="32" cy="22" r="4"/>
+  </g>
+</svg>

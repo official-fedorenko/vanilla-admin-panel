@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_sander" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#93C5FD"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_sander)"/>
+  <path d="M0 16 A16 16 0 0 1 16 0 H48 A16 16 0 0 1 64 16 V22 Q32 34 0 22 Z" fill="#ffffff" opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <rect x="16" y="34" width="32" height="8" rx="3"/>
+    <path d="M22 34 v-6 a4 4 0 0 1 4 -4 h12 a4 4 0 0 1 4 4 v6"/>
+    <path d="M20 46 h4 M28 46 h4 M36 46 h4 M44 46 h1" opacity="0.9"/>
+  </g>
+</svg>

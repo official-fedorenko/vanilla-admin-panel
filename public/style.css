@@ -1,20 +1,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* HSL Color Palette - Premium Dark Mode */
-  --bg-main: 224 25% 10%;
-  --bg-card: 224 25% 14%;
-  --bg-sidebar: 224 25% 8%;
-  --border-color: 224 20% 22%;
-  
-  --text-primary: 210 40% 98%;
-  --text-secondary: 215 20% 65%;
-  --text-muted: 215 15% 45%;
+  /* === UAB Diamantas — Diamond / Electrical identity ===
+     "Diamantas" (лит.) = бриллиант. Тема: глубокий навигационный
+     сапфировый фон + бриллиантово-синий→ледяной циан как «грани камня»
+     + электрический янтарь как искра энергии (электромонтаж). */
+  --bg-main: 220 38% 9%;
+  --bg-card: 220 32% 13%;
+  --bg-sidebar: 221 42% 7%;
+  --border-color: 218 25% 22%;
 
-  --accent-purple: 263 90% 64%;
-  --accent-cyan: 180 90% 45%;
-  --accent-green: 142 70% 45%;
-  --accent-red: 346 80% 55%;
+  --text-primary: 210 40% 98%;
+  --text-secondary: 214 22% 68%;
+  --text-muted: 215 15% 48%;
+
+  /* --accent-purple = основной брендовый цвет (сохранено имя переменной,
+     значение — бриллиантово-сапфировый синий). Используется по всей панели. */
+  --accent-purple: 214 96% 58%;
+  --accent-cyan: 189 94% 52%;
+  --accent-amber: 38 96% 56%;   /* электрическая «искра» / энергия */
+  --accent-green: 152 65% 46%;
+  --accent-red: 350 82% 58%;
 
   --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -33,9 +39,9 @@
   --text-primary: 224 25% 12%;
   --text-secondary: 215 15% 40%;
   --text-muted: 215 10% 60%;
-  
-  --accent-purple: 263 85% 55%;
-  --accent-cyan: 180 85% 40%;
+
+  --accent-purple: 214 90% 50%;
+  --accent-cyan: 189 88% 42%;
 }
 
 * {
@@ -141,15 +147,34 @@ aside.sidebar {
 }
 
 .brand-icon {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan)));
-  border-radius: 8px;
+  /* Огранённый «бриллиант» — ромб со срезанной верхушкой */
+  clip-path: polygon(50% 0%, 85% 33%, 50% 100%, 15% 33%);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
+  box-shadow: 0 0 14px hsl(var(--accent-cyan) / 0.45);
+}
+
+.brand-name {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.brand-name b {
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.brand-name small {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: hsl(var(--accent-cyan));
 }
 
 .nav-list {
@@ -555,6 +580,100 @@ table.data-table tbody tr:hover {
 .badge-warning {
   background-color: hsl(var(--accent-cyan) / 0.15);
   color: hsl(var(--accent-cyan));
+}
+
+.badge-danger {
+  background-color: hsl(var(--accent-red) / 0.15);
+  color: hsl(var(--accent-red));
+}
+
+/* === Модалка «Выдать инструмент»: карточка инструмента + пикер сотрудников === */
+.issue-tool-card {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid hsl(var(--border-color));
+  border-radius: 14px;
+  background: hsl(var(--bg-main));
+  margin-bottom: 18px;
+}
+.issue-tool-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-color));
+}
+.issue-tool-thumb.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--text-muted));
+}
+.issue-tool-meta { min-width: 0; }
+.issue-tool-meta .t-name { font-weight: 700; font-size: 16px; color: hsl(var(--text-primary)); }
+.issue-tool-meta .t-sub { font-size: 13px; color: hsl(var(--text-secondary)); margin-top: 2px; }
+.issue-tool-meta .t-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.issue-tool-meta .t-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: hsl(var(--accent-purple) / 0.12);
+  color: hsl(var(--accent-purple));
+}
+
+.emp-picker {
+  border: 1px solid hsl(var(--border-color));
+  border-radius: 12px;
+  overflow: hidden;
+}
+.emp-picker-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+.emp-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-top: 1px solid hsl(var(--border-color));
+  transition: background 0.15s;
+}
+.emp-pick-item:first-child { border-top: none; }
+.emp-pick-item:hover { background: hsl(var(--accent-purple) / 0.08); }
+.emp-pick-item.selected { background: hsl(var(--accent-purple) / 0.16); }
+.emp-pick-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan)));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.emp-pick-info { min-width: 0; flex: 1; }
+.emp-pick-name { font-weight: 600; font-size: 14px; color: hsl(var(--text-primary)); }
+.emp-pick-sub { font-size: 12px; color: hsl(var(--text-muted)); }
+.emp-pick-check { color: hsl(var(--accent-cyan)); flex-shrink: 0; }
+.emp-pick-empty { padding: 18px; text-align: center; color: hsl(var(--text-muted)); font-size: 13px; }
+
+.dup-warn {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: hsl(var(--accent-red));
+}
+.form-control.input-dup {
+  border-color: hsl(var(--accent-red)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--accent-red) / 0.12);
 }
 
 .action-btns {

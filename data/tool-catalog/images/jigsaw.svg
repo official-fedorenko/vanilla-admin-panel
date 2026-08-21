@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_jigsaw" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#C4A5FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_jigsaw)"/>
+  <path d="M0 16 A16 16 0 0 1 16 0 H48 A16 16 0 0 1 64 16 V22 Q32 34 0 22 Z" fill="#ffffff" opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <path d="M20 26 h18 a4 4 0 0 1 4 4 v5 h-26 v-5 a4 4 0 0 1 4 -4 z"/>
+    <path d="M22 26 q8 -10 18 -2" stroke-width="2.6"/>
+    <path d="M17 39 h20 l-3 4 h-14 z"/>
+    <path d="M24 43 v9 M24 45 l3 1.5 M24 48 l3 1.5 M24 51 l3 1.5" stroke-width="2.4"/>
+  </g>
+</svg>

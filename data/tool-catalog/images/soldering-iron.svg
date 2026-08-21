@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_solderingiron" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E11D48"/>
+      <stop offset="1" stop-color="#FDA4AF"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_solderingiron)"/>
+  <path d="M0 16 A16 16 0 0 1 16 0 H48 A16 16 0 0 1 64 16 V22 Q32 34 0 22 Z" fill="#ffffff" opacity="0.10"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+    <rect x="30" y="16" width="9" height="16" rx="3"/>
+    <path d="M34 32 L22 46"/>
+    <path d="M22 46 l-4 2 2 -4 z" fill="#ffffff"/>
+    <path d="M39 20 h10 M39 26 h8" stroke-width="2.4"/>
+  </g>
+</svg>

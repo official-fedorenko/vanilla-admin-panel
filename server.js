@@ -18,6 +18,12 @@ const handleMedia = require('./src/routes/media');
 const handleSettings = require('./src/routes/settings');
 const handleSupport = require('./src/routes/support');
 const handleUsers = require('./src/routes/users');
+const handleEmployees = require('./src/routes/employees');
+const handleTools = require('./src/routes/tools');
+const handleToolCatalog = require('./src/routes/toolCatalog');
+const handleCategoryIcons = require('./src/routes/categoryIcons');
+const handleRequests = require('./src/routes/requests');
+const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
 const handleBackup = require('./src/routes/backup');
@@ -53,7 +59,10 @@ const MIME_TYPES = {
 // HTML отдаём без кэша (доступ зависит от сессии: логин/редиректы),
 // статичные ассеты — с умеренным кэшем и обязательной ревалидацией,
 // т.к. у файлов нет версионирования в имени (cache-busting).
-const NO_CACHE_EXTENSIONS = new Set(['.html']);
+// .js/.css тоже отдаём без кэша: у файлов нет версионирования в имени, а
+// панель активно дорабатывается — иначе браузер показывает устаревший
+// app.js/style.css из кэша (до часа) и «кнопки не работают».
+const NO_CACHE_EXTENSIONS = new Set(['.html', '.js', '.css']);
 const STATIC_ASSET_CACHE_CONTROL = 'public, max-age=3600, must-revalidate';
 const NO_CACHE_CONTROL = 'no-cache';
 
@@ -146,8 +155,10 @@ const server = http.createServer(async (req, res) => {
     return handleAuth(req, res, user, parsedUrl, method);
   }
 
-  // Cabinet (own profile — needed for cabinet.html after login)
-  if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile') {
+  // Cabinet (own profile / мой инструмент — needed for cabinet.html after login)
+  if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
+      pathname === '/api/cabinet/my-card' ||
+      pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo') {
     return handleCabinet(req, res, user, parsedUrl, method);
   }
 
@@ -163,9 +174,40 @@ const server = http.createServer(async (req, res) => {
     return handleArticles(req, res, user, parsedUrl, method);
   }
 
+  // CRUD employees (учёт сотрудников)
+  if (pathname.startsWith('/api/crud/employees')) {
+    return handleEmployees(req, res, user, parsedUrl, method);
+  }
+
+  // Инструмент: CRUD инвентаря + выдача/возврат/история + справочник категорий
+  if (pathname.startsWith('/api/crud/tools') || pathname.startsWith('/api/tools/') ||
+      pathname.startsWith('/api/crud/tool-categories')) {
+    return handleTools(req, res, user, parsedUrl, method);
+  }
+
+  // Справочник моделей (data/tool-catalog) для подсказок при добавлении инструмента
+  if (pathname === '/api/tool-catalog' && method === 'GET') {
+    return handleToolCatalog(req, res, user);
+  }
+
+  // Универсальные заявления (пользователь создаёт, админ одобряет)
+  if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {
+    return handleRequests(req, res, user, parsedUrl, method);
+  }
+
   // Media
   if (pathname === '/api/media') {
     return handleMedia(req, res, user, parsedUrl, method, { UPLOADS_DIR });
+  }
+
+  // Иконки категорий инструментов (просмотр / переопределение)
+  if (pathname === '/api/category-icons') {
+    return handleCategoryIcons(req, res, user, parsedUrl, method);
+  }
+
+  // Стандартные (предустановленные) аватары
+  if (pathname === '/api/standard-avatars' && method === 'GET') {
+    return handleStandardAvatars(req, res, user);
   }
 
   // Settings
@@ -208,6 +250,25 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });
   }
 
+  // Serve catalog category images (SVG) from data/tool-catalog/images.
+  // Только .svg, имя файла жёстко валидируется (без обхода каталога).
+  if (pathname.startsWith('/catalog/images/')) {
+    const rel = pathname.replace('/catalog/images/', '');
+    if (!/^[A-Za-z0-9._-]+\.svg$/.test(rel)) {
+      return sendHtml404(res);
+    }
+    const fullPath = path.join(__dirname, 'data', 'tool-catalog', 'images', rel);
+    fs.access(fullPath, fs.constants.F_OK, (err) => {
+      if (err) return sendHtml404(res);
+      res.writeHead(200, {
+        'Content-Type': 'image/svg+xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      fs.createReadStream(fullPath).pipe(res);
+    });
+    return;
+  }
+
   // Serve uploaded media files (avatars, article images, media library URLs)
   // This was missing — files were saved but 404 on direct access
   if (pathname.startsWith('/uploads/')) {
@@ -246,8 +307,16 @@ const server = http.createServer(async (req, res) => {
         res.end();
         return;
       }
+      // В админку пускаем только Admin/Superadmin. Обычного пользователя
+      // (role User) отправляем в его кабинет — смотреть админку он не должен.
+      const isAdmin = user && (user.role === 'Admin' || user.role === 'Superadmin');
+      if (user && !isAdmin && staticPath !== '/login.html') {
+        res.writeHead(302, { 'Location': '/cabinet.html' });
+        res.end();
+        return;
+      }
       if (user && staticPath === '/login.html') {
-        res.writeHead(302, { 'Location': '/admin/' });
+        res.writeHead(302, { 'Location': isAdmin ? '/admin/' : '/cabinet.html' });
         res.end();
         return;
       }

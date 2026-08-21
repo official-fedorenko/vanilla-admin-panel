@@ -35,6 +35,7 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^17.4.2",
+    "qrcode": "^1.5.4",
     "sanitize-html": "2.17.5",
     "sqlite3": "5.1.7"
   }

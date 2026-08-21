@@ -85,6 +85,7 @@ async function handleBase64Upload(req, UPLOADS_DIR) {
 
   const body = await getJsonBody(req, MAX_UPLOAD_BODY_BYTES);
   const inputFiles = Array.isArray(body.files) ? body.files : [];
+  const category = body.category || 'general';
   const result = [];
 
   if (inputFiles.length > MAX_FILES) {
@@ -124,7 +125,7 @@ async function handleBase64Upload(req, UPLOADS_DIR) {
     });
   }
 
-  return result;
+  return { files: result, category };
 }
 
 module.exports = {

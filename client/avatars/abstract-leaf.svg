@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="g_abstractleaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="64" fill="url(#g_abstractleaf)"/>
+
+  <path d="M44 84 C44 54 64 40 88 40 C88 70 68 84 44 84 Z" fill="#ffffff" opacity="0.95"/>
+  <path d="M50 78 Q66 58 84 46" stroke="#22C55E" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>

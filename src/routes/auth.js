@@ -136,6 +136,10 @@ async function register(req, res) {
   try {
     const body = await getJsonBody(req);
     const { username, email, password, hp, website, address } = body; // hp, website, address — honeypot поля
+    // Тип аккаунта: 'employee' (сотрудник) или 'client' (клиент). По умолчанию — клиент.
+    const accountType = body.account_type === 'employee' ? 'employee' : 'client';
+    const firstName = (body.first_name || '').trim().slice(0, 120);
+    const lastName = (body.last_name || '').trim().slice(0, 120);
 
     // 1. Honeypot — если заполнено, это бот
     if (hp || website || address) {
@@ -184,6 +188,9 @@ async function register(req, res) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return sendJson(res, 400, { success: false, message: 'Некорректный email' });
       }
+      if (accountType === 'employee' && (!firstName || !lastName)) {
+        return sendJson(res, 400, { success: false, message: 'Для сотрудника укажите имя и фамилию' });
+      }
 
       // Проверяем уникальность
       db.get(
@@ -197,8 +204,8 @@ async function register(req, res) {
           const password_hash = hashPassword(password);
 
           db.run(
-            "INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, 'User')",
-            [username, email, password_hash],
+            "INSERT INTO users (username, email, password_hash, role, account_type) VALUES (?, ?, ?, 'User', ?)",
+            [username, email, password_hash, accountType],
             function (err3) {
               if (err3) {
                 logger.error('Register error:', err3);
@@ -206,7 +213,20 @@ async function register(req, res) {
               }
 
               const newUserId = this.lastID;
-              logAction(username, 'Регистрация нового пользователя');
+              logAction(username, `Регистрация нового ${accountType === 'employee' ? 'сотрудника' : 'клиента'}`);
+
+              // Для сотрудника сразу заводим карточку в справочнике employees,
+              // привязанную к аккаунту. Статус 'inactive' — карточка ждёт
+              // подтверждения/активации администратором.
+              if (accountType === 'employee') {
+                db.run(
+                  "INSERT INTO employees (first_name, last_name, email, user_id, status) VALUES (?, ?, ?, ?, 'inactive')",
+                  [firstName, lastName, email, newUserId],
+                  (empErr) => {
+                    if (empErr) logger.error('Не удалось создать карточку сотрудника при регистрации:', empErr);
+                  }
+                );
+              }
 
               // Автоматически логиним пользователя (без отдельной записи "Вход
               // в систему" — регистрация уже залогирована выше как своё действие).
@@ -218,7 +238,7 @@ async function register(req, res) {
               });
               res.end(JSON.stringify({
                 success: true,
-                user: { username, role: 'User' }
+                user: { username, role: 'User', account_type: accountType }
               }));
             }
           );

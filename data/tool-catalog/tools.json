@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "Electro Tool Catalog",
+  "description": "Справочник реальных моделей электроинструмента по категориям. Переиспользуемый источник для наполнения инвентаря (tools) в любой системе учёта.",
+  "updated": "2026-08-21",
+  "sourceNote": "Названия и модели — реальные, серийные. Технические характеристики ориентировочные: перед закупкой сверяйтесь с паспортом производителя (модели выпускаются в разных модификациях).",
+  "brands": ["Bosch", "DeWalt"],
+  "categories": [
+    {
+      "category": "Перфоратор",
+      "slugEn": "rotary-hammer",
+      "image": "images/rotary-hammer.svg",
+      "aliases": ["Перфоратор", "SDS-plus", "Rotary hammer", "Bohrhammer"],
+      "tools": [
+        { "brand": "Bosch", "model": "GBH 2-24 D", "name": "Bosch GBH 2-24 D", "line": "Professional", "powerType": "corded", "powerW": 790, "chuck": "SDS-plus" },
+        { "brand": "Bosch", "model": "GBH 2-26 DRE", "name": "Bosch GBH 2-26 DRE", "line": "Professional", "powerType": "corded", "powerW": 800, "chuck": "SDS-plus" },
+        { "brand": "Bosch", "model": "GBH 2-28 F", "name": "Bosch GBH 2-28 F", "line": "Professional", "powerType": "corded", "powerW": 880, "chuck": "SDS-plus" },
+        { "brand": "Bosch", "model": "GBH 4-32 DFR", "name": "Bosch GBH 4-32 DFR", "line": "Professional", "powerType": "corded", "powerW": 900, "chuck": "SDS-plus" },
+        { "brand": "Bosch", "model": "GBH 18V-26", "name": "Bosch GBH 18V-26", "line": "Professional", "powerType": "cordless", "voltageV": 18, "chuck": "SDS-plus" },
+        { "brand": "Bosch", "model": "GBH 18V-21", "name": "Bosch GBH 18V-21", "line": "Professional", "powerType": "cordless", "voltageV": 18, "chuck": "SDS-plus" },
+        { "brand": "DeWalt", "model": "D25133K", "name": "DeWalt D25133K", "powerType": "corded", "powerW": 800, "chuck": "SDS-plus" },
+        { "brand": "DeWalt", "model": "D25143K", "name": "DeWalt D25143K", "powerType": "corded", "powerW": 900, "chuck": "SDS-plus" },
+        { "brand": "DeWalt", "model": "D25263K", "name": "DeWalt D25263K", "powerType": "corded", "powerW": 900, "chuck": "SDS-plus" },
+        { "brand": "DeWalt", "model": "DCH273", "name": "DeWalt DCH273", "line": "XR", "powerType": "cordless", "voltageV": 18, "chuck": "SDS-plus" },
+        { "brand": "DeWalt", "model": "DCH133", "name": "DeWalt DCH133", "line": "XR", "powerType": "cordless", "voltageV": 18, "chuck": "SDS-plus" }
+      ]
+    },
+    {
+      "category": "Шуруповёрт",
+      "slugEn": "drill-driver",
+      "image": "images/drill-driver.svg",
+      "aliases": ["Шуруповёрт", "Дрель-шуруповёрт", "Drill/Driver", "Combi drill"],
+      "tools": [
+        { "brand": "Bosch", "model": "GSR 12V-15", "name": "Bosch GSR 12V-15", "line": "Professional", "powerType": "cordless", "voltageV": 12, "chuck": "10 мм" },
+        { "brand": "Bosch", "model": "GSR 18V-55", "name": "Bosch GSR 18V-55", "line": "Professional", "powerType": "cordless", "voltageV": 18, "brushless": true, "chuck": "13 мм" },
+        { "brand": "Bosch", "model": "GSR 18V-90 FC", "name": "Bosch GSR 18V-90 FC", "line": "Professional", "powerType": "cordless", "voltageV": 18, "brushless": true, "chuck": "FlexiClick" },
+        { "brand": "Bosch", "model": "GSB 18V-55", "name": "Bosch GSB 18V-55", "line": "Professional", "powerType": "cordless", "voltageV": 18, "brushless": true, "impact": true, "chuck": "13 мм" },
+        { "brand": "Bosch", "model": "GSB 13 RE", "name": "Bosch GSB 13 RE", "line": "Professional", "powerType": "corded", "powerW": 600, "impact": true, "chuck": "13 мм" },
+        { "brand": "DeWalt", "model": "DCD771", "name": "DeWalt DCD771", "powerType": "cordless", "voltageV": 18, "chuck": "13 мм" },
+        { "brand": "DeWalt", "model": "DCD791", "name": "DeWalt DCD791", "line": "XR", "powerType": "cordless", "voltageV": 18, "brushless": true, "chuck": "13 мм" },
+        { "brand": "DeWalt", "model": "DCD796", "name": "DeWalt DCD796", "line": "XR", "powerType": "cordless", "voltageV": 18, "brushless": true, "impact": true, "chuck": "13 мм" },
+        { "brand": "DeWalt", "model": "DCD709", "name": "DeWalt DCD709", "line": "XR", "powerType": "cordless", "voltageV": 18, "brushless": true, "impact": true, "chuck": "13 мм" },
+        { "brand": "DeWalt", "model": "DWD024", "name": "DeWalt DWD024", "powerType": "corded", "powerW": 650, "chuck": "13 мм" }
+      ]
+    },
+    {
+      "category": "Углошлифовальная машина (болгарка)",
+      "slugEn": "angle-grinder",
+      "image": "images/angle-grinder.svg",
+      "aliases": ["Болгарка", "УШМ", "Углошлифовальная машина", "Angle grinder", "Winkelschleifer"],
+      "tools": [
+        { "brand": "Bosch", "model": "GWS 7-125", "name": "Bosch GWS 7-125", "line": "Professional", "powerType": "corded", "powerW": 720, "discMm": 125 },
+        { "brand": "Bosch", "model": "GWS 750-125", "name": "Bosch GWS 750-125", "line": "Professional", "powerType": "corded", "powerW": 750, "discMm": 125 },
+        { "brand": "Bosch", "model": "GWS 850", "name": "Bosch GWS 850", "line": "Professional", "powerType": "corded", "powerW": 850, "discMm": 125 },
+        { "brand": "Bosch", "model": "GWS 2000", "name": "Bosch GWS 2000", "line": "Professional", "powerType": "corded", "powerW": 2000, "discMm": 230 },
+        { "brand": "Bosch", "model": "GWS 18V-10", "name": "Bosch GWS 18V-10", "line": "Professional", "powerType": "cordless", "voltageV": 18, "brushless": true, "discMm": 125 },
+        { "brand": "DeWalt", "model": "DWE4157", "name": "DeWalt DWE4157", "powerType": "corded", "powerW": 900, "discMm": 125 },
+        { "brand": "DeWalt", "model": "DWE4237", "name": "DeWalt DWE4237", "powerType": "corded", "powerW": 1400, "discMm": 125 },
+        { "brand": "DeWalt", "model": "DWE4557", "name": "DeWalt DWE4557", "powerType": "corded", "powerW": 1500, "discMm": 125 },
+        { "brand": "DeWalt", "model": "DCG405", "name": "DeWalt DCG405", "line": "XR", "powerType": "cordless", "voltageV": 18, "brushless": true, "discMm": 125 },
+        { "brand": "DeWalt", "model": "DCG414", "name": "DeWalt DCG414", "line": "FlexVolt", "powerType": "cordless", "voltageV": 54, "brushless": true, "discMm": 125 }
+      ]
+    }
+  ]
+}

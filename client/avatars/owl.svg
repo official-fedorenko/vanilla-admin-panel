@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="g_owl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="64" fill="url(#g_owl)"/>
+
+  <path d="M38 54 a26 30 0 0 1 52 0 v10 a26 26 0 0 1 -52 0 z" fill="#ffffff"/>
+  <circle cx="52" cy="56" r="11" fill="#8B5CF6"/>
+  <circle cx="76" cy="56" r="11" fill="#8B5CF6"/>
+  <circle cx="52" cy="56" r="4" fill="#ffffff"/>
+  <circle cx="76" cy="56" r="4" fill="#ffffff"/>
+  <path d="M64 64 l-5 6 h10 z" fill="#C4B5FD"/>
+  <path d="M40 34 l10 12 M88 34 l-10 12" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+</svg>
