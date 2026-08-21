@@ -359,16 +359,18 @@
 
           <!-- Стандартные аватары (показывается только в папке «Аватары») -->
           <div id="standardAvatarsPanel" style="display: none; margin-bottom: 24px;">
-            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Стандартные аватары</h3>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Предустановленный набор. Пользователи выбирают их в профиле (Выбрать → Стандартные).</p>
-            <div id="standardAvatarsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px;"></div>
+            <button type="button" class="btn btn-secondary" onclick="openStandardAvatarsModal()">
+              <i data-lucide="users"></i>
+              <span>Стандартные аватары</span>
+            </button>
           </div>
 
           <!-- Иконки категорий инструментов (показывается только в папке «Инструменты») -->
           <div id="categoryIconsPanel" style="display: none; margin-bottom: 24px;">
-            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Иконки категорий</h3>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
-            <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+            <button type="button" class="btn btn-secondary" onclick="openCategoryIconsModal()">
+              <i data-lucide="shapes"></i>
+              <span>Стандартные иконки категорий</span>
+            </button>
           </div>
 
           <div class="media-grid" id="mediaGrid">
@@ -584,6 +586,34 @@
           <button type="submit" class="btn">Сохранить</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- CATEGORY ICONS MODAL -->
+  <div class="modal-overlay" id="categoryIconsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Стандартные иконки категорий</h3>
+        <button class="modal-close" id="closeCategoryIconsModalBtn" onclick="closeCategoryIconsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
+        <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STANDARD AVATARS MODAL -->
+  <div class="modal-overlay" id="standardAvatarsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Стандартные аватары</h3>
+        <button class="modal-close" id="closeStandardAvatarsModalBtn" onclick="closeStandardAvatarsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Предустановленный набор. Пользователи выбирают их в профиле (Выбрать → Стандартные).</p>
+        <div id="standardAvatarsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px;"></div>
+      </div>
     </div>
   </div>
 
