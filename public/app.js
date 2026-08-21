@@ -1196,20 +1196,53 @@ window.deleteMedia = async (id, e) => {
   }
 };
 
+// Лимит одного файла на сервере (держим в синхроне с MAX_SIZE_BYTES в utils.js)
+const MEDIA_MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 МБ
+// Большие изображения ужимаем в браузере до этого размера по длинной стороне
+const IMAGE_MAX_DIMENSION = 1920;
+
+function humanSize(bytes) {
+  if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' МБ';
+  return Math.max(1, Math.round(bytes / 1024)) + ' КБ';
+}
+
 async function uploadFiles(filesList, category = 'general') {
-  showToast('Загрузка файлов...', 'info');
+  showToast('Подготовка файлов...', 'info');
 
   try {
     const filesPayload = [];
+    const skipped = [];
+
     for (const file of filesList) {
-      const data = await fileToBase64(file);
-      filesPayload.push({
-        filename: file.name,
-        data,
-        mimeType: file.type
-      });
+      let prepared = { filename: file.name, blobOrFile: file, mimeType: file.type };
+
+      // Изображения при необходимости уменьшаем (кроме SVG/GIF — их не трогаем).
+      if (/^image\/(jpeg|png|webp)$/.test(file.type)) {
+        try {
+          const compressed = await compressImage(file);
+          if (compressed && compressed.blob.size < file.size) {
+            const base = file.name.replace(/\.[^.]+$/, '');
+            prepared = { filename: base + '.jpg', blobOrFile: compressed.blob, mimeType: 'image/jpeg' };
+          }
+        } catch (_) { /* если сжатие не удалось — пробуем отправить оригинал */ }
+      }
+
+      // Понятная ошибка ДО отправки: если всё ещё больше лимита — пропускаем файл.
+      if (prepared.blobOrFile.size > MEDIA_MAX_FILE_BYTES) {
+        skipped.push(`${file.name} (${humanSize(prepared.blobOrFile.size)})`);
+        continue;
+      }
+
+      const data = await blobToBase64(prepared.blobOrFile);
+      filesPayload.push({ filename: prepared.filename, data, mimeType: prepared.mimeType });
     }
 
+    if (skipped.length) {
+      showToast(`Слишком большие, пропущены (макс ${humanSize(MEDIA_MAX_FILE_BYTES)}): ${skipped.join(', ')}`, 'error');
+    }
+    if (filesPayload.length === 0) return;
+
+    showToast('Загрузка файлов...', 'info');
     const res = await fetch('/api/media', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1217,10 +1250,10 @@ async function uploadFiles(filesList, category = 'general') {
     });
 
     if (res.ok) {
-      showToast('Файлы успешно загружены', 'success');
+      showToast(`Загружено файлов: ${filesPayload.length}`, 'success');
       await loadMedia();
     } else {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       showToast(err.message || 'Ошибка загрузки файлов', 'error');
     }
   } catch (err) {
@@ -1228,15 +1261,41 @@ async function uploadFiles(filesList, category = 'general') {
   }
 }
 
-function fileToBase64(file) {
+// Уменьшает изображение до IMAGE_MAX_DIMENSION по длинной стороне и
+// перекодирует в JPEG. Возвращает { blob } или null, если сжатие невозможно.
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      const scale = Math.min(1, IMAGE_MAX_DIMENSION / Math.max(width, height));
+      width = Math.round(width * scale);
+      height = Math.round(height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => resolve(blob ? { blob } : null),
+        'image/jpeg',
+        0.85
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1]; // убираем data:...;base64,
-      resolve(base64);
-    };
+    reader.onload = () => resolve(reader.result.split(',')[1]); // убираем data:...;base64,
     reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
 }
 
