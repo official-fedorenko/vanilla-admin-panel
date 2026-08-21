@@ -834,15 +834,24 @@ window.openMediaCategory = (category, title) => {
   // Раздел «Стандартные аватары» показываем только внутри папки «Аватары».
   const avPanel = document.getElementById('standardAvatarsPanel');
   if (avPanel) {
-    if (category === 'avatars') {
-      avPanel.style.display = 'block';
-      loadStandardAvatars();
-    } else {
-      avPanel.style.display = 'none';
-    }
+    // Показываем только кнопку; аватары грузятся при открытии модалки.
+    avPanel.style.display = category === 'avatars' ? 'block' : 'none';
   }
 
   loadMedia();
+};
+
+// Модалка со стандартными аватарами: открытие грузит набор, закрытие прячет.
+window.openStandardAvatarsModal = () => {
+  const overlay = document.getElementById('standardAvatarsModalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+  loadStandardAvatars();
+};
+
+window.closeStandardAvatarsModal = () => {
+  const overlay = document.getElementById('standardAvatarsModalOverlay');
+  if (overlay) overlay.classList.remove('active');
 };
 
 // Показывает предустановленные аватары в медиатеке (папка «Аватары»).
