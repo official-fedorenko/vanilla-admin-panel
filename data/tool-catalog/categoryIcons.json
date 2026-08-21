@@ -1,0 +1,22 @@
+{
+  "Перфоратор": "images/rotary-hammer.svg",
+  "Дрель": "images/drill.svg",
+  "Шуруповёрт": "images/drill-driver.svg",
+  "Углошлифовальная машина (болгарка)": "images/angle-grinder.svg",
+  "Отбойный молоток": "images/demolition-hammer.svg",
+  "Электролобзик": "images/jigsaw.svg",
+  "Циркулярная (дисковая) пила": "images/circular-saw.svg",
+  "Сабельная пила": "images/reciprocating-saw.svg",
+  "Штроборез": "images/wall-chaser.svg",
+  "Шлифовальная машина": "images/sander.svg",
+  "Строительный фен": "images/heat-gun.svg",
+  "Строительный миксер": "images/mixer.svg",
+  "Строительный пылесос": "images/vacuum.svg",
+  "Сварочный аппарат": "images/welder.svg",
+  "Паяльник": "images/soldering-iron.svg",
+  "Мультиметр": "images/multimeter.svg",
+  "Пресс-клещи": "images/crimping-pliers.svg",
+  "Генератор": "images/generator.svg",
+  "Удлинитель на катушке": "images/cable-reel.svg",
+  "Прожектор LED": "images/led-floodlight.svg"
+}

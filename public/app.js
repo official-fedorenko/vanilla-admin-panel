@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await checkSession();
   setupNavigation();
   initApp();
-  
+  handleToolDeepLink();
+
   // Create icons
   try {
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -136,13 +137,32 @@ function initApp() {
       quill = new Quill('#quillEditor', {
         theme: 'snow',
         modules: {
-          toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            ['blockquote', 'code-block'],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            ['clean']
-          ]
+          toolbar: {
+            container: [
+              [{ 'header': [1, 2, 3, false] }],
+              ['bold', 'italic', 'underline', 'strike'],
+              ['blockquote', 'code-block'],
+              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+              ['link', 'image'],
+              ['clean']
+            ],
+            handlers: {
+              image: function() {
+                if (window.openMediaPicker) {
+                  window.openMediaPicker((url) => {
+                    const range = this.quill.getSelection() || { index: this.quill.getLength() };
+                    this.quill.insertEmbed(range.index, 'image', url);
+                  }, 'articles');
+                } else {
+                  const url = prompt('Введите URL изображения:');
+                  if (url) {
+                    const range = this.quill.getSelection() || { index: this.quill.getLength() };
+                    this.quill.insertEmbed(range.index, 'image', url);
+                  }
+                }
+              }
+            }
+          }
         }
       });
     } catch (e) {
@@ -189,6 +209,9 @@ function initApp() {
 
   // Загружаем статистику для "дашборда" на главной странице статей
   loadDashboardStats();
+
+  // Счётчик ожидающих заявок на инструмент (бейдж в меню)
+  updateRequestsBadge();
 
   // Modal Setup
   const modal = document.getElementById('articleModalOverlay');
@@ -289,7 +312,11 @@ function initApp() {
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
 
-  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('click', (e) => {
+    // Не открываем диалог выбора файла, если кликнули по выпадающему списку
+    if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return;
+    fileInput.click();
+  });
 
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -304,13 +331,15 @@ function initApp() {
     e.preventDefault();
     dropZone.classList.remove('dragover');
     if (e.dataTransfer.files.length > 0) {
-      uploadFiles(e.dataTransfer.files);
+      const category = document.getElementById('uploadCategorySelect').value;
+      uploadFiles(e.dataTransfer.files, category);
     }
   });
 
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
-      uploadFiles(e.target.files);
+      const category = document.getElementById('uploadCategorySelect').value;
+      uploadFiles(e.target.files, category);
     }
   });
 
@@ -502,8 +531,139 @@ function loadSectionData(hash) {
     loadFullLogs();
   } else if (hash === 'support') {
     loadSupportTickets();
+  } else if (hash === 'requests') {
+    loadToolRequests();
   }
 }
+
+// ==== Заявления (админ) ====
+const REQ_STATUS = {
+  pending:  { label: 'Ожидает',   badge: 'badge-warning' },
+  approved: { label: 'Одобрено',  badge: 'badge-success' },
+  rejected: { label: 'Отклонено', badge: 'badge-danger' }
+};
+let requestTypesCache = null;
+
+async function ensureRequestTypes() {
+  if (requestTypesCache) return requestTypesCache;
+  try {
+    const res = await fetch('/api/request-types');
+    const d = await res.json();
+    requestTypesCache = d.types || {};
+  } catch (e) { requestTypesCache = {}; }
+  // Заполняем фильтр по типам (один раз)
+  const sel = document.getElementById('requestsTypeFilter');
+  if (sel && sel.options.length <= 1) {
+    Object.entries(requestTypesCache).forEach(([key, t]) => {
+      const o = document.createElement('option');
+      o.value = key; o.textContent = t.label;
+      sel.appendChild(o);
+    });
+  }
+  return requestTypesCache;
+}
+
+// Человекочитаемое описание заявления из payload + описания полей типа.
+function describeRequest(r, types) {
+  const def = types[r.type];
+  if (!def) return escapeHtml(r.title || '');
+  const parts = def.fields
+    .filter(f => f.type !== 'photo' && r.payload[f.name] !== '' && r.payload[f.name] != null)
+    .map(f => `<span style="color:hsl(var(--text-muted));">${escapeHtml(f.label)}:</span> ${escapeHtml(String(r.payload[f.name]))}`);
+  const photo = (r.payload.photo_url)
+    ? `<img src="${iconVer(r.payload.photo_url)}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;float:left;margin-right:8px;">`
+    : '';
+  return `${photo}<div><strong>${escapeHtml(r.title || def.label)}</strong></div><div style="font-size:12px;">${parts.join(' · ')}</div>`;
+}
+
+async function loadToolRequests() { return loadRequests(); }
+async function loadRequests() {
+  const tbody = document.getElementById('requestsTableBody');
+  if (!tbody) return;
+  const types = await ensureRequestTypes();
+  const status = document.getElementById('requestsStatusFilter')?.value ?? 'pending';
+  const type = document.getElementById('requestsTypeFilter')?.value ?? '';
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const qs = [];
+    if (status) qs.push('status=' + status);
+    if (type) qs.push('type=' + type);
+    const res = await fetch('/api/requests' + (qs.length ? '?' + qs.join('&') : ''));
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    updateRequestsBadge(data.pending);
+    renderRequests(data.requests || [], types);
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+function renderRequests(list, types) {
+  const tbody = document.getElementById('requestsTableBody');
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
+    return;
+  }
+  list.forEach(r => {
+    const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
+    const actions = r.status === 'pending'
+      ? `<button class="btn" style="padding:4px 10px;font-size:12px;" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+         <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="rejectRequest(${r.id})">Отклонить</button>`
+      : (r.review_note ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>` : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.id}</td>
+      <td>${escapeHtml(r.type_label || r.type)}</td>
+      <td>${describeRequest(r, types)}</td>
+      <td>${escapeHtml(r.requested_by_name || '—')}</td>
+      <td><span class="badge ${st.badge}">${st.label}</span></td>
+      <td style="text-align:right;">${actions}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+window.approveRequest = async (id, type) => {
+  const msg = type === 'tool_add' ? 'Одобрить и создать инструмент в инвентаре?' : 'Одобрить заявление?';
+  if (!confirm(msg)) return;
+  try {
+    const res = await fetch(`/api/requests/approve?id=${id}`, { method: 'POST' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { showToast('Заявление одобрено', 'success'); loadRequests(); }
+    else showToast(d.message || 'Ошибка одобрения', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+window.rejectRequest = async (id) => {
+  const note = prompt('Причина отклонения (необязательно):', '');
+  if (note === null) return;
+  try {
+    const res = await fetch(`/api/requests/reject?id=${id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ review_note: note })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { showToast('Заявление отклонено', 'success'); loadRequests(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+async function updateRequestsBadge(count) {
+  const badge = document.getElementById('requestsBadge');
+  if (!badge) return;
+  if (count === undefined) {
+    try {
+      const res = await fetch('/api/requests?status=pending');
+      if (!res.ok) return;
+      count = (await res.json()).pending || 0;
+    } catch (e) { return; }
+  }
+  if (count > 0) { badge.textContent = count; badge.style.display = ''; }
+  else badge.style.display = 'none';
+}
+
+document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
+document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRequests);
 
 // API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {
@@ -646,12 +806,167 @@ window.deleteArticle = async (id) => {
 // API: Media library loader & Uploader (улучшено: поиск + копирование URL)
 let mediaFilesCache = [];
 
+window.showMediaFolders = () => {
+  document.getElementById('mediaFoldersGrid').style.display = 'grid';
+  document.getElementById('mediaFilesView').style.display = 'none';
+  document.getElementById('mediaSearch').value = '';
+  const iconsPanel = document.getElementById('categoryIconsPanel');
+  if (iconsPanel) iconsPanel.style.display = 'none';
+  const avPanel = document.getElementById('standardAvatarsPanel');
+  if (avPanel) avPanel.style.display = 'none';
+};
+
+window.openMediaCategory = (category, title) => {
+  document.getElementById('mediaCategorySelect').value = category;
+  document.getElementById('uploadCategorySelect').value = category;
+  document.getElementById('currentMediaCategoryTitle').textContent = title;
+
+  document.getElementById('mediaFoldersGrid').style.display = 'none';
+  document.getElementById('mediaFilesView').style.display = 'block';
+
+  // Раздел «Иконки категорий» показываем только внутри папки «Инструменты».
+  const iconsPanel = document.getElementById('categoryIconsPanel');
+  if (iconsPanel) {
+    if (category === 'tools') {
+      iconsPanel.style.display = 'block';
+      loadCategoryIcons();
+    } else {
+      iconsPanel.style.display = 'none';
+    }
+  }
+
+  // Раздел «Стандартные аватары» показываем только внутри папки «Аватары».
+  const avPanel = document.getElementById('standardAvatarsPanel');
+  if (avPanel) {
+    if (category === 'avatars') {
+      avPanel.style.display = 'block';
+      loadStandardAvatars();
+    } else {
+      avPanel.style.display = 'none';
+    }
+  }
+
+  loadMedia();
+};
+
+// Показывает предустановленные аватары в медиатеке (папка «Аватары»).
+async function loadStandardAvatars() {
+  const grid = document.getElementById('standardAvatarsGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted)); font-size:13px;">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/standard-avatars');
+    const data = await res.json();
+    const avatars = (data && data.avatars) || [];
+    grid.innerHTML = '';
+    if (!avatars.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted)); font-size:13px;">Пусто</div>';
+      return;
+    }
+    avatars.forEach(a => {
+      const card = document.createElement('div');
+      card.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:6px;';
+      card.innerHTML = `
+        <img src="${a.url}" title="${escapeHtml(a.name)}" style="width:64px; height:64px; border-radius:50%; border:1px solid hsl(var(--border-color));">
+        <button onclick="copyMediaUrl('${a.url}', event)" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:2px 6px;font-size:11px;border-radius:4px;cursor:pointer;">URL</button>
+      `;
+      grid.appendChild(card);
+    });
+  } catch (e) {
+    grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted));">Ошибка загрузки</div>';
+  }
+}
+
+// Загружает и рисует иконки категорий инструментов с возможностью замены.
+async function loadCategoryIcons() {
+  const grid = document.getElementById('categoryIconsGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted)); font-size:13px;">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/category-icons');
+    const data = await res.json();
+    const cats = (data && data.categories) || [];
+    const isSuper = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'Superadmin');
+    grid.innerHTML = '';
+    cats.forEach(c => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid hsl(var(--border-color)); border-radius:12px; padding:14px; display:flex; flex-direction:column; align-items:center; gap:8px; background:rgba(255,255,255,0.01);';
+      const iconImg = c.image
+        ? `<img src="${c.image}" style="width:56px; height:56px; object-fit:contain;">`
+        : `<div style="width:56px;height:56px;display:flex;align-items:center;justify-content:center;color:hsl(var(--text-muted));font-size:11px;">нет</div>`;
+      const badge = c.is_custom
+        ? `<span style="font-size:10px; color:hsl(var(--accent-cyan));">своя иконка</span>`
+        : `<span style="font-size:10px; color:hsl(var(--text-muted));">стандартная</span>`;
+      const controls = isSuper ? `
+        <div style="display:flex; gap:6px; margin-top:4px;">
+          <button onclick="changeCategoryIcon('${encodeURIComponent(c.category)}')" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--accent-amber));padding:3px 8px;font-size:11px;border-radius:6px;cursor:pointer;">Изменить</button>
+          ${c.is_custom ? `<button onclick="resetCategoryIcon('${encodeURIComponent(c.category)}')" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:3px 8px;font-size:11px;border-radius:6px;cursor:pointer;">Сбросить</button>` : ''}
+        </div>` : '';
+      card.innerHTML = `
+        ${iconImg}
+        <div style="font-size:12px; color:hsl(var(--text-primary)); text-align:center;">${escapeHtml(c.category)}</div>
+        ${badge}
+        ${controls}
+      `;
+      grid.appendChild(card);
+    });
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted));">Ошибка загрузки</div>';
+  }
+}
+
+window.changeCategoryIcon = (categoryEnc) => {
+  const category = decodeURIComponent(categoryEnc);
+  if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+  window.openMediaPicker(async (url) => {
+    try {
+      const res = await fetch('/api/category-icons', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category, image_url: url })
+      });
+      if (res.ok) {
+        showToast('Иконка категории обновлена', 'success');
+        loadCategoryIcons();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.message || 'Ошибка сохранения', 'error');
+      }
+    } catch (e) { showToast('Ошибка сети', 'error'); }
+  }, 'tools');
+};
+
+window.resetCategoryIcon = async (categoryEnc) => {
+  const category = decodeURIComponent(categoryEnc);
+  if (!confirm('Вернуть стандартную иконку для этой категории?')) return;
+  try {
+    const res = await fetch(`/api/category-icons?category=${encodeURIComponent(category)}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Иконка сброшена', 'success');
+      loadCategoryIcons();
+    } else {
+      showToast('Ошибка сброса', 'error');
+    }
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
 async function loadMedia(filter = '') {
   const grid = document.getElementById('mediaGrid');
+  const categorySelect = document.getElementById('mediaCategorySelect');
+  
+  // If we are in folder view, don't load grid yet
+  const foldersGrid = document.getElementById('mediaFoldersGrid');
+  if (foldersGrid && foldersGrid.style.display !== 'none') {
+    return;
+  }
+  
+  if (!grid) return;
+  const category = categorySelect ? categorySelect.value : 'all';
   grid.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка файлов...</div>';
 
   try {
-    const res = await fetch('/api/media');
+    const res = await fetch(`/api/media?category=${category}`);
     if (res.ok) {
       mediaFilesCache = await res.json();
       renderMediaGrid(filter);
@@ -685,14 +1000,31 @@ function renderMediaGrid(filter = '') {
 
     const sizeMB = (file.file_size / (1024 * 1024)).toFixed(2);
 
+    // Строка с привязкой: к чему/к кому относится файл.
+    let attachHtml = '';
+    if (file.attached_to) {
+      const a = file.attached_to;
+      if (a.type === 'tool') {
+        attachHtml = `<div class="media-attach" style="font-size:11px;color:hsl(var(--accent-cyan));margin-top:2px;">🔧 Инструмент: ${escapeHtml(a.label || '')}${a.holder ? ` · у ${escapeHtml(a.holder)}` : ''}</div>`;
+      } else if (a.type === 'user') {
+        attachHtml = `<div class="media-attach" style="font-size:11px;color:hsl(var(--accent-amber));margin-top:2px;">👤 Аватар: ${escapeHtml(a.label || '')}</div>`;
+      }
+    }
+    const uploaderHtml = file.uploaded_by_name
+      ? `<div class="media-uploader" style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">Загрузил: ${escapeHtml(file.uploaded_by_name)}</div>`
+      : '';
+
     item.innerHTML = `
       <div class="media-preview">${previewEl}</div>
       <div class="media-info">
         <div class="media-title" title="${escapeHtml(file.filename)}">${escapeHtml(file.filename)}</div>
+        ${attachHtml}
+        ${uploaderHtml}
         <div class="media-meta">
           <span>${sizeMB} MB</span>
           <a href="${file.file_url}" target="_blank" style="color: hsl(var(--accent-cyan)); text-decoration: none;">Открыть</a>
-          <button onclick="copyMediaUrl('${file.file_url}', event)" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:2px 6px;font-size:11px;border-radius:4px;cursor:pointer;">Копировать URL</button>
+          <button onclick="copyMediaUrl('${file.file_url}', event)" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:2px 6px;font-size:11px;border-radius:4px;cursor:pointer;">URL</button>
+          ${(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'Superadmin') ? `<button onclick="moveMedia(${file.id}, '${file.category}', event)" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--accent-amber));padding:2px 6px;font-size:11px;border-radius:4px;cursor:pointer;margin-left:4px;">В папку</button>` : ''}
         </div>
       </div>
       <button class="media-delete" onclick="deleteMedia(${file.id}, event)"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
@@ -702,6 +1034,28 @@ function renderMediaGrid(filter = '') {
   
   lucide.createIcons();
 }
+
+window.moveMedia = async (id, currentCategory, e) => {
+  if (e) e.stopImmediatePropagation();
+  const targetCategory = prompt('Введите новую категорию (general, tools, avatars, articles):', currentCategory);
+  if (!targetCategory || targetCategory === currentCategory) return;
+  try {
+    const res = await fetch('/api/media', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, category: targetCategory })
+    });
+    if (res.ok) {
+      showToast('Медиафайл перемещен', 'success');
+      loadMedia(document.getElementById('mediaSearch')?.value || '');
+    } else {
+      const data = await res.json().catch(()=>({}));
+      showToast(data.message || 'Ошибка перемещения', 'error');
+    }
+  } catch(err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
 
 // Поиск в медиатеке
 const mediaSearchInput = document.getElementById('mediaSearch');
@@ -722,6 +1076,90 @@ window.copyMediaUrl = async (url, e) => {
   }
 };
 
+// --- Media Picker Modal ---
+let mediaPickerCallback = null;
+
+window.openMediaPicker = async (onSelect, defaultCategory = 'all') => {
+  mediaPickerCallback = onSelect;
+  const modal = document.getElementById('mediaPickerModalOverlay');
+  const catSelect = document.getElementById('mediaPickerCategorySelect');
+  if (catSelect) catSelect.value = defaultCategory;
+  
+  try {
+    const res = await fetch(`/api/media?category=${defaultCategory}`);
+    if (res.ok) mediaFilesCache = await res.json();
+  } catch(e) {}
+  
+  renderMediaPickerGrid();
+  modal.classList.add('active');
+};
+
+function renderMediaPickerGrid(filter = '') {
+  const grid = document.getElementById('mediaPickerGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  const filtered = mediaFilesCache.filter(f => 
+    f.mime_type.startsWith('image/') && 
+    f.filename.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: hsl(var(--text-muted)); padding: 40px;">Изображения не найдены.</div>';
+    return;
+  }
+
+  filtered.forEach(file => {
+    const item = document.createElement('div');
+    item.className = 'media-item';
+    item.style.cursor = 'pointer';
+    
+    item.innerHTML = `
+      <div class="media-preview">
+        <img src="${file.file_url}" alt="${escapeHtml(file.filename)}">
+      </div>
+      <div class="media-info" style="border-top: 1px solid hsl(var(--border-color)); padding: 6px;">
+        <div class="media-title" title="${escapeHtml(file.filename)}" style="font-size: 11px;">${escapeHtml(file.filename)}</div>
+      </div>
+    `;
+    
+    item.addEventListener('click', () => {
+      if (mediaPickerCallback) mediaPickerCallback(file.file_url);
+      document.getElementById('mediaPickerModalOverlay').classList.remove('active');
+    });
+    
+    grid.appendChild(item);
+  });
+}
+
+document.getElementById('closeMediaPickerBtn')?.addEventListener('click', () => {
+  document.getElementById('mediaPickerModalOverlay').classList.remove('active');
+});
+document.getElementById('cancelMediaPickerBtn')?.addEventListener('click', () => {
+  document.getElementById('mediaPickerModalOverlay').classList.remove('active');
+});
+const mediaPickerModal = document.getElementById('mediaPickerModalOverlay');
+mediaPickerModal?.addEventListener('click', (e) => {
+  if (e.target === mediaPickerModal) mediaPickerModal.classList.remove('active');
+});
+document.getElementById('mediaPickerSearch')?.addEventListener('input', (e) => {
+  renderMediaPickerGrid(e.target.value);
+});
+document.getElementById('mediaCategorySelect')?.addEventListener('change', () => {
+  loadMedia(document.getElementById('mediaSearch').value);
+});
+document.getElementById('mediaPickerCategorySelect')?.addEventListener('change', async (e) => {
+  const category = e.target.value;
+  try {
+    const res = await fetch(`/api/media?category=${category}`);
+    if (res.ok) {
+      mediaFilesCache = await res.json();
+      renderMediaPickerGrid(document.getElementById('mediaPickerSearch').value);
+    }
+  } catch(e) {}
+});
+
+
 window.deleteMedia = async (id, e) => {
   if (e) e.stopImmediatePropagation();
   if (!confirm('Вы уверены, что хотите удалить этот файл?')) return;
@@ -739,7 +1177,7 @@ window.deleteMedia = async (id, e) => {
   }
 };
 
-async function uploadFiles(filesList) {
+async function uploadFiles(filesList, category = 'general') {
   showToast('Загрузка файлов...', 'info');
 
   try {
@@ -756,7 +1194,7 @@ async function uploadFiles(filesList) {
     const res = await fetch('/api/media', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: filesPayload })
+      body: JSON.stringify({ files: filesPayload, category })
     });
 
     if (res.ok) {
@@ -1430,9 +1868,49 @@ const TOOL_STATUS = {
   written_off: { label: 'Списан',     badge: 'badge-danger' }
 };
 
+// Дописывает версию к каталожным иконкам, чтобы сбросить кэш браузера
+// (в БД путь хранится без ?v). Для фото из /uploads/ ничего не меняет.
+function iconVer(url) {
+  if (/^\/catalog\/images\//.test(url || '') && !url.includes('?')) return url + '?v=2';
+  return url;
+}
+
+// Клиентская генерация инвентарного номера — тот же формат, что на сервере
+// (INV-D + дата ГГММДД + крипто-hex). Показываем в поле сразу при добавлении.
+function genInventoryNumber() {
+  const d = new Date();
+  const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  let hex = '';
+  if (window.crypto && window.crypto.getRandomValues) {
+    const arr = new Uint8Array(3);
+    window.crypto.getRandomValues(arr);
+    hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+  } else {
+    hex = Math.random().toString(16).slice(2, 8);
+  }
+  return `INV-D${datePart}${hex.toUpperCase()}`;
+}
+
+// Карта "категория → иконка" для подстановки в списке инструментов,
+// когда у инструмента нет собственного фото.
+let categoryIconMap = {};
+async function loadCategoryIconMap() {
+  try {
+    const res = await fetch('/api/category-icons');
+    if (!res.ok) return;
+    const data = await res.json();
+    const map = {};
+    (data.categories || []).forEach(c => { if (c.image) map[c.category] = c.image; });
+    categoryIconMap = map;
+  } catch (e) { /* иконки не критичны */ }
+}
+
 async function loadTools() {
   try {
+    // Иконки категорий грузим параллельно (один раз кэшируем результат).
+    const iconsPromise = Object.keys(categoryIconMap).length ? Promise.resolve() : loadCategoryIconMap();
     const res = await fetch('/api/crud/tools');
+    await iconsPromise;
     if (res.ok) {
       toolsList = await res.json();
       renderTools();
@@ -1474,17 +1952,20 @@ function renderTools(filterQuery = '') {
       ? `<button class="action-btn" title="Вернуть / передать" onclick="openReturnModal(${t.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
       : (canWriteOff ? '' : `<button class="action-btn" title="Выдать" onclick="openIssueModal(${t.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
 
+    const catIcon = t.category ? categoryIconMap[t.category] : null;
     const thumb = t.photo_url
-      ? `<img src="${t.photo_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
-      : `<div style="width:40px;height:40px;border-radius:8px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i data-lucide="wrench" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i></div>`;
+      ? `<img src="${iconVer(t.photo_url)}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
+      : (catIcon
+        ? `<img src="${catIcon}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;" title="${escapeHtml(t.category)}">`
+        : `<div style="width:40px;height:40px;border-radius:8px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i data-lucide="wrench" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i></div>`);
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${t.id}</td>
       <td>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openToolDetail(${t.id})" title="Открыть карточку">
           ${thumb}
-          <div><strong>${escapeHtml(t.name)}</strong>${t.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(t.brand)}${t.model ? ' · ' + escapeHtml(t.model) : ''}</div>` : ''}</div>
+          <div><strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(t.name)}</strong>${t.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(t.brand)}${t.model ? ' · ' + escapeHtml(t.model) : ''}</div>` : ''}</div>
         </div>
       </td>
       <td>${escapeHtml(t.category || '—')}</td>
@@ -1495,7 +1976,7 @@ function renderTools(filterQuery = '') {
       <td style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           ${issueReturnBtn}
-          <button class="action-btn" title="История" onclick="openToolHistory(${t.id})"><i data-lucide="history"></i></button>
+          <button class="action-btn" title="Карточка инструмента" onclick="openToolDetail(${t.id})"><i data-lucide="eye"></i></button>
           <button class="action-btn edit" title="Изменить" onclick="editTool(${t.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" title="Удалить" onclick="deleteTool(${t.id})"><i data-lucide="trash-2"></i></button>
         </div>
@@ -1508,7 +1989,7 @@ function renderTools(filterQuery = '') {
 }
 
 // Загружает изображение через /api/media и возвращает его URL (/uploads/...)
-function uploadImageToMedia(file) {
+function uploadImageToMedia(file, category = 'general') {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -1517,7 +1998,7 @@ function uploadImageToMedia(file) {
         const res = await fetch('/api/media', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+          body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category })
         });
         if (!res.ok) return resolve(null);
         const data = await res.json();
@@ -1559,7 +2040,7 @@ function setToolPhotoPreview(url) {
   const preview = document.getElementById('toolPhotoPreview');
   const clearBtn = document.getElementById('toolPhotoClearBtn');
   if (url) {
-    preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+    preview.innerHTML = `<img src="${iconVer(url)}" style="width:100%;height:100%;object-fit:cover;">`;
     if (clearBtn) clearBtn.style.display = '';
   } else {
     preview.innerHTML = `<i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>`;
@@ -1791,8 +2272,21 @@ function setupTools() {
 
   // --- Photo upload inside tool modal ---
   const photoBtn = document.getElementById('toolPhotoBtn');
+  const photoPickBtn = document.getElementById('toolPhotoPickBtn');
   const photoClearBtn = document.getElementById('toolPhotoClearBtn');
   const photoInput = document.getElementById('toolPhotoInput');
+  
+  if (photoPickBtn) {
+    photoPickBtn.addEventListener('click', () => {
+      if (window.openMediaPicker) {
+        window.openMediaPicker((url) => {
+          setToolPhotoPreview(url);
+          showToast('Фото выбрано из медиатеки', 'success');
+        }, 'tools');
+      }
+    });
+  }
+
   if (photoBtn && photoInput) {
     photoBtn.addEventListener('click', () => photoInput.click());
     photoInput.addEventListener('change', async () => {
@@ -1801,7 +2295,7 @@ function setupTools() {
       photoBtn.disabled = true;
       photoBtn.textContent = 'Загрузка...';
       try {
-        const url = await uploadImageToMedia(file);
+        const url = await uploadImageToMedia(file, 'tools');
         if (url) {
           setToolPhotoPreview(url);
           showToast('Фото загружено', 'success');
@@ -1868,6 +2362,16 @@ function setupTools() {
   document.getElementById('closeHistoryBtn2').addEventListener('click', closeHistoryModal);
   historyModal.addEventListener('click', (e) => { if (e.target === historyModal) closeHistoryModal(); });
 
+  // --- Tool detail modal ---
+  const detailModal = document.getElementById('toolDetailModalOverlay');
+  if (detailModal) {
+    const closeDetail = () => detailModal.classList.remove('active');
+    document.getElementById('closeToolDetailBtn')?.addEventListener('click', closeDetail);
+    detailModal.addEventListener('click', (e) => { if (e.target === detailModal) closeDetail(); });
+  }
+  const lightbox = document.getElementById('photoLightbox');
+  if (lightbox) lightbox.addEventListener('click', () => { lightbox.style.display = 'none'; });
+
   // --- Return / transfer modal ---
   const returnModal = document.getElementById('returnModalOverlay');
   const closeReturnModal = () => returnModal.classList.remove('active');
@@ -1927,7 +2431,7 @@ function openToolModal(tool = null) {
   document.getElementById('toolBrand').value = tool ? (tool.brand || '') : '';
   document.getElementById('toolModel').value = tool ? (tool.model || '') : '';
   document.getElementById('toolSerial').value = tool ? (tool.serial_number || '') : '';
-  document.getElementById('toolInventory').value = tool ? (tool.inventory_number || '') : '';
+  document.getElementById('toolInventory').value = tool ? (tool.inventory_number || '') : genInventoryNumber();
   document.getElementById('toolStatus').value = tool ? tool.status : 'available';
   document.getElementById('toolPurchaseDate').value = tool && tool.purchase_date ? String(tool.purchase_date).slice(0, 10) : '';
   document.getElementById('toolNotes').value = tool ? (tool.notes || '') : '';
@@ -1965,9 +2469,12 @@ let issueEmployeesList = [];
 // Карточка инструмента для модалок выдачи/возврата (общий хелпер)
 function buildToolCard(tool) {
   const st = TOOL_STATUS[tool.status] || TOOL_STATUS.available;
+  const catIcon = tool.category ? categoryIconMap[tool.category] : null;
   const thumb = tool.photo_url
-    ? `<img class="issue-tool-thumb" src="${tool.photo_url}">`
-    : `<div class="issue-tool-thumb placeholder"><i data-lucide="wrench"></i></div>`;
+    ? `<img class="issue-tool-thumb" src="${iconVer(tool.photo_url)}">`
+    : (catIcon
+      ? `<img class="issue-tool-thumb" src="${catIcon}" title="${escapeHtml(tool.category)}">`
+      : `<div class="issue-tool-thumb placeholder"><i data-lucide="wrench"></i></div>`);
   const sub = [tool.brand, tool.model].filter(Boolean).join(' · ');
   const chips = [];
   if (tool.category) chips.push(escapeHtml(tool.category));
@@ -2126,6 +2633,247 @@ window.openReturnModal = async (toolId) => {
     transferEmployeesList = [];
   }
 };
+
+// ==== Карточка инструмента (детальная страница) ====
+const TOOL_STATUS_LABEL = {
+  available: { label: 'На складе', badge: 'badge-success' },
+  assigned:  { label: 'Выдан',     badge: 'badge-warning' },
+  repair:    { label: 'В ремонте', badge: 'badge-danger' },
+  written_off: { label: 'Списан',  badge: 'badge-danger' }
+};
+
+function pluralDays(n) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  if (a > 10 && a < 20) return n + ' дней';
+  if (b === 1) return n + ' день';
+  if (b >= 2 && b <= 4) return n + ' дня';
+  return n + ' дней';
+}
+
+window.openToolDetail = async (toolId) => {
+  const overlay = document.getElementById('toolDetailModalOverlay');
+  const body = document.getElementById('toolDetailBody');
+  body.innerHTML = '<div style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Загрузка...</div>';
+  overlay.classList.add('active');
+  try {
+    const res = await fetch(`/api/tools/details?id=${toolId}`);
+    if (!res.ok) { body.innerHTML = '<div style="text-align:center;color:hsl(var(--accent-red));padding:30px;">Не удалось загрузить</div>'; return; }
+    const data = await res.json();
+    renderToolDetail(data);
+  } catch (e) {
+    body.innerHTML = '<div style="text-align:center;color:hsl(var(--accent-red));padding:30px;">Ошибка сети</div>';
+  }
+};
+
+function renderToolDetail(data) {
+  const { tool, photos, history, stats } = data;
+  document.getElementById('toolDetailTitle').textContent = tool.name || 'Карточка инструмента';
+  const st = TOOL_STATUS_LABEL[tool.status] || TOOL_STATUS_LABEL.available;
+
+  const mainImg = tool.photo_url
+    ? iconVer(tool.photo_url)
+    : (tool.category && categoryIconMap[tool.category]) || '';
+  const mainImgHtml = mainImg
+    ? `<img src="${mainImg}" onclick="openLightbox('${mainImg}')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;">`
+    : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:hsl(var(--text-muted));"><i data-lucide="wrench"></i></div>`;
+
+  const catIcon = tool.category && categoryIconMap[tool.category]
+    ? `<img src="${categoryIconMap[tool.category]}" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px;">` : '';
+
+  const info = [
+    ['Категория', `${catIcon}${escapeHtml(tool.category || '—')}`],
+    ['Бренд / модель', escapeHtml([tool.brand, tool.model].filter(Boolean).join(' · ') || '—')],
+    ['Серийный №', escapeHtml(tool.serial_number || '—')],
+    ['Инвентарный №', escapeHtml(tool.inventory_number || '—')],
+    ['Дата покупки', tool.purchase_date ? escapeHtml(tool.purchase_date) : '—'],
+    ['Сейчас у', tool.current_holder ? `<strong>${escapeHtml(tool.current_holder)}</strong>` : '<span style="color:hsl(var(--text-muted))">на складе</span>']
+  ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid hsl(var(--border-color));"><span style="color:hsl(var(--text-muted));font-size:13px;">${k}</span><span style="font-size:13px;text-align:right;">${v}</span></div>`).join('');
+
+  const statTiles = [
+    ['Выдавался', stats.times_issued + ' раз', 'repeat'],
+    ['В эксплуатации', pluralDays(stats.days_in_service), 'clock'],
+    ['Держателей', String(stats.unique_holders), 'users'],
+    ['Фото', String(stats.photos_count), 'image']
+  ].map(([label, val, icon]) => `
+    <div style="flex:1;min-width:110px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));border-radius:12px;padding:14px;text-align:center;">
+      <i data-lucide="${icon}" style="width:20px;height:20px;color:hsl(var(--accent-cyan));"></i>
+      <div style="font-size:20px;font-weight:700;margin-top:6px;">${val}</div>
+      <div style="font-size:11px;color:hsl(var(--text-muted));">${label}</div>
+    </div>`).join('');
+
+  const gallery = photos.length
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;">
+        ${photos.map(p => `
+          <div style="position:relative;">
+            <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:96px;object-fit:cover;border-radius:10px;border:1px solid hsl(var(--border-color));cursor:zoom-in;">
+            <div style="font-size:10px;color:hsl(var(--text-muted));margin-top:3px;text-align:center;">${escapeHtml(p.uploaded_by_name || '—')}<br>${p.created_at ? new Date(p.created_at.replace(' ','T')+'Z').toLocaleDateString('ru-RU') : ''}</div>
+          </div>`).join('')}
+      </div>`
+    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Фотографий пока нет</div>';
+
+  const timeline = history.length
+    ? history.map(h => {
+        const issued = h.issued_at ? new Date(h.issued_at.replace(' ','T')+'Z').toLocaleString('ru-RU') : '—';
+        const returned = h.returned_at ? new Date(h.returned_at.replace(' ','T')+'Z').toLocaleString('ru-RU') : null;
+        const dot = returned ? 'hsl(var(--text-muted))' : 'hsl(var(--accent-amber))';
+        return `
+          <div style="display:flex;gap:12px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div style="width:11px;height:11px;border-radius:50%;background:${dot};margin-top:4px;"></div>
+              <div style="flex:1;width:2px;background:hsl(var(--border-color));"></div>
+            </div>
+            <div style="padding-bottom:16px;flex:1;">
+              <div style="font-weight:600;">${escapeHtml(h.employee_name || '—')} ${returned ? '' : '<span class="badge badge-warning" style="margin-left:6px;">на руках</span>'}</div>
+              <div style="font-size:12px;color:hsl(var(--text-muted));">Выдан: ${issued}${returned ? ` · Возвращён: ${returned}` : ''}</div>
+              ${h.issued_by ? `<div style="font-size:12px;color:hsl(var(--text-muted));">Выдал: ${escapeHtml(h.issued_by)}</div>` : ''}
+              ${h.notes ? `<div style="font-size:12px;color:hsl(var(--text-secondary));margin-top:2px;">${escapeHtml(h.notes)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('')
+    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Закреплений ещё не было</div>';
+
+  // Кнопки действий (закрывают карточку и открывают нужную модалку)
+  const btns = [];
+  if (tool.status !== 'written_off') {
+    if (stats.is_out) btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('return', ${tool.id})"><i data-lucide="corner-down-left"></i><span>Вернуть / передать</span></button>`);
+    else btns.push(`<button class="btn" onclick="toolDetailAction('issue', ${tool.id})"><i data-lucide="hand-helping"></i><span>Выдать</span></button>`);
+  }
+  btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('edit', ${tool.id})"><i data-lucide="edit-3"></i><span>Редактировать</span></button>`);
+  btns.push(`<button class="btn btn-secondary" onclick="printToolQr(${tool.id})"><i data-lucide="printer"></i><span>Печать QR</span></button>`);
+  btns.push(`<button class="btn btn-secondary" onclick="saveToolQr(${tool.id})"><i data-lucide="download"></i><span>Сохранить QR</span></button>`);
+
+  // QR-код инструмента (ссылка на эту карточку)
+  const qrBlock = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;">
+      <img id="toolQrImg" src="/api/tools/qr?id=${tool.id}" alt="QR" style="width:120px;height:120px;background:#fff;border-radius:10px;padding:6px;">
+      <div style="font-size:11px;color:hsl(var(--text-muted));">Сканируй → карточка</div>
+    </div>`;
+
+  document.getElementById('toolDetailBody').innerHTML = `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="width:200px;height:200px;border-radius:14px;overflow:hidden;border:1px solid hsl(var(--border-color));background:hsl(var(--bg-main));flex-shrink:0;">${mainImgHtml}</div>
+      <div style="flex:1;min-width:240px;">
+        <span class="badge ${st.badge}" style="margin-bottom:10px;display:inline-block;">${st.label}</span>
+        ${info}
+        ${tool.notes ? `<div style="margin-top:10px;font-size:13px;color:hsl(var(--text-secondary));"><i data-lucide="sticky-note" style="width:14px;height:14px;vertical-align:middle;"></i> ${escapeHtml(tool.notes)}</div>` : ''}
+      </div>
+      ${qrBlock}
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">${btns.join('')}</div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;">${statTiles}</div>
+
+    <h4 style="margin:18px 0 10px;font-size:14px;">Фотографии</h4>
+    ${gallery}
+
+    <h4 style="margin:22px 0 12px;font-size:14px;">История закреплений</h4>
+    <div id="toolHistoryList" style="overflow-y:auto;">${timeline}</div>
+  `;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Ровно 5 записей истории в высоту, дальше — прокрутка
+  const histBox = document.getElementById('toolHistoryList');
+  if (histBox && histBox.children.length > 5) {
+    let h = 0;
+    for (let i = 0; i < 5; i++) h += histBox.children[i].offsetHeight;
+    histBox.style.maxHeight = h + 'px';
+  }
+}
+
+window.openLightbox = (src) => {
+  const lb = document.getElementById('photoLightbox');
+  document.getElementById('photoLightboxImg').src = src;
+  lb.style.display = 'flex';
+};
+
+// Действия из карточки — закрываем её и открываем нужную модалку
+window.toolDetailAction = (action, id) => {
+  document.getElementById('toolDetailModalOverlay').classList.remove('active');
+  if (action === 'issue' && window.openIssueModal) openIssueModal(id);
+  else if (action === 'return' && window.openReturnModal) openReturnModal(id);
+  else if (action === 'edit' && window.editTool) editTool(id);
+};
+
+// Печать наклейки с QR-кодом
+window.printToolQr = (id) => {
+  const tool = toolsList.find(t => t.id === id) || {};
+  const w = window.open('', '_blank', 'width=420,height=560');
+  if (!w) { showToast('Разрешите всплывающие окна для печати', 'error'); return; }
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(tool.name || '')}</title>
+    <body style="font-family:sans-serif;text-align:center;padding:24px;">
+      <img src="/api/tools/qr?id=${id}" style="width:260px;height:260px;">
+      <h2 style="margin:12px 0 4px;">${escapeHtml(tool.name || '')}</h2>
+      <div style="color:#555;">${escapeHtml(tool.inventory_number || '')}</div>
+      <div style="color:#888;font-size:13px;">${escapeHtml([tool.brand, tool.model].filter(Boolean).join(' · '))}</div>
+      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}<\/script>
+    </body>`);
+  w.document.close();
+};
+
+// Сохранить QR-код инструмента файлом (PNG, с подписью инв.№; при ошибке — SVG)
+window.saveToolQr = async (id) => {
+  const tool = toolsList.find(t => t.id === id) || {};
+  const base = `qr-${(tool.inventory_number || tool.name || 'tool').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+  try {
+    const res = await fetch(`/api/tools/qr?id=${id}`);
+    const svgText = await res.text();
+    // Рендерим SVG на canvas → PNG (крупнее и с подписью инвентарного номера)
+    const size = 600, pad = 40, labelH = tool.inventory_number ? 60 : 20;
+    const svgBlob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size + pad * 2;
+      canvas.height = size + pad * 2 + labelH;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, pad, pad, size, size);
+      if (tool.inventory_number) {
+        ctx.fillStyle = '#111111';
+        ctx.font = 'bold 30px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(tool.inventory_number, canvas.width / 2, size + pad + 44);
+      }
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        triggerDownload(URL.createObjectURL(blob), base + '.png', true);
+        showToast('QR сохранён (PNG)', 'success');
+      }, 'image/png');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      // Фолбэк: скачиваем исходный SVG
+      triggerDownload(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg', true);
+      showToast('QR сохранён (SVG)', 'success');
+    };
+    img.src = url;
+  } catch (e) {
+    showToast('Не удалось сохранить QR', 'error');
+  }
+};
+
+function triggerDownload(href, filename, revoke) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  if (revoke) setTimeout(() => URL.revokeObjectURL(href), 2000);
+}
+
+// Открытие карточки по deep-link ?tool=<id> (из QR-кода)
+function handleToolDeepLink() {
+  const id = parseInt(new URLSearchParams(window.location.search).get('tool'), 10);
+  if (Number.isInteger(id) && id > 0) {
+    // переключаемся в раздел инструментов и открываем карточку
+    if (window.location.hash !== '#tools') window.location.hash = '#tools';
+    setTimeout(() => window.openToolDetail(id), 400);
+  }
+}
 
 window.openToolHistory = async (toolId) => {
   const tool = toolsList.find(t => t.id === toolId);

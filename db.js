@@ -56,6 +56,104 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE tools ADD COLUMN photo_url TEXT", () => {});
     }
+  },
+  {
+    version: 6,
+    description: 'Add category to media',
+    up: () => {
+      db.run("ALTER TABLE media ADD COLUMN category TEXT NOT NULL DEFAULT 'general'", () => {});
+    }
+  },
+  {
+    version: 7,
+    description: 'Create tool_photos gallery table',
+    up: () => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS tool_photos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+          photo_url TEXT NOT NULL,
+          uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+    }
+  },
+  {
+    version: 8,
+    description: 'Add uploaded_by to media',
+    up: () => {
+      db.run("ALTER TABLE media ADD COLUMN uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL", () => {});
+    }
+  },
+  {
+    version: 9,
+    description: 'Create category_icons overrides table',
+    up: () => {
+      // Переопределение стандартной иконки категории инструмента. Ключ —
+      // название категории (как в data/tool-catalog). Если записи нет —
+      // используется дефолтная иконка из каталога (tools.json).
+      db.run(`
+        CREATE TABLE IF NOT EXISTS category_icons (
+          category TEXT PRIMARY KEY,
+          image_url TEXT NOT NULL,
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+    }
+  },
+  {
+    version: 10,
+    description: 'Create tool_requests table (user-submitted, admin-approved)',
+    up: () => {
+      // Заявки на добавление инструмента от пользователей. Админ одобряет
+      // (создаётся запись в tools) или отклоняет. status: pending/approved/rejected.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS tool_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          category TEXT,
+          brand TEXT,
+          model TEXT,
+          serial_number TEXT,
+          inventory_number TEXT,
+          photo_url TEXT,
+          notes TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_at DATETIME,
+          review_note TEXT,
+          created_tool_id INTEGER REFERENCES tools(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+    }
+  },
+  {
+    version: 11,
+    description: 'Create generic requests table (заявления разных типов)',
+    up: () => {
+      // Универсальные заявления пользователей: type определяет вид (добавить
+      // инструмент, отпуск, увольнение, заказать инструмент …), payload — JSON
+      // с полями конкретного типа. Админ одобряет/отклоняет.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          title TEXT,
+          payload TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_at DATETIME,
+          review_note TEXT,
+          result_ref TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+    }
   }
 ];
 
@@ -134,6 +232,7 @@ db.serialize(() => {
       file_path TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       mime_type TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

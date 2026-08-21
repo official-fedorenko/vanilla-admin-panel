@@ -1,5 +1,6 @@
 const { sendJson } = require('../utils');
 const catalog = require('../../data/tool-catalog');
+const { db } = require('../../db');
 
 /**
  * Отдаёт справочник моделей (data/tool-catalog) фронтенду для подсказок при
@@ -9,16 +10,21 @@ const catalog = require('../../data/tool-catalog');
  * URL "/catalog/images/x.svg" (его раздаёт server.js).
  */
 function toUrl(img) {
-  return img ? '/catalog/' + String(img).replace(/^\/+/, '') : null;
+  return img ? '/catalog/' + String(img).replace(/^\/+/, '') + '?v=2' : null;
 }
 
 module.exports = function handleToolCatalog(req, res, user) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
+  // Переопределения иконок категорий из БД (если админ менял стандартную).
+  db.all("SELECT category, image_url FROM category_icons", [], (err, rows) => {
+    const overrides = {};
+    (rows || []).forEach(r => { overrides[r.category] = r.image_url; });
+
   const categories = catalog.raw.categories.map(c => ({
     category: c.category,
     slug: c.slugEn,
-    image: toUrl(c.image),
+    image: overrides[c.category] || toUrl(c.image),
     models: c.tools.map(t => ({
       brand: t.brand,
       model: t.model,
@@ -31,9 +37,10 @@ module.exports = function handleToolCatalog(req, res, user) {
       impact: !!t.impact,
       chuck: t.chuck || null,
       discMm: t.discMm || null,
-      image: toUrl(t.image || c.image)
+      image: t.image ? toUrl(t.image) : (overrides[c.category] || toUrl(c.image))
     }))
   }));
 
-  sendJson(res, 200, { success: true, categories });
+    sendJson(res, 200, { success: true, categories });
+  });
 };

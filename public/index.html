@@ -37,6 +37,12 @@
             <span>Инструмент</span>
           </a>
         </li>
+        <li class="nav-item" data-section="requests">
+          <a href="#requests" title="Заявления">
+            <i data-lucide="clipboard-list"></i>
+            <span>Заявления <span id="requestsBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
+          </a>
+        </li>
         <li class="nav-item active" data-section="articles">
           <a href="#articles" title="Статьи (CRUD)">
             <i data-lucide="file-text"></i>
@@ -181,6 +187,46 @@
         </div>
       </section>
 
+      <!-- REQUESTS (ЗАЯВЛЕНИЯ) SECTION -->
+      <section id="section-requests" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Заявления</h2>
+            <p>Заявления пользователей (добавить/заказать инструмент, отпуск, увольнение…). Одобрение «Добавить инструмент» создаёт запись в инвентаре.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="requestsTypeFilter" class="form-control" style="width:200px;">
+              <option value="">Все типы</option>
+            </select>
+            <select id="requestsStatusFilter" class="form-control" style="width:180px;">
+              <option value="pending">Ожидают</option>
+              <option value="approved">Одобренные</option>
+              <option value="rejected">Отклонённые</option>
+              <option value="">Все статусы</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">ID</th>
+                  <th style="width:180px;">Тип</th>
+                  <th>Описание</th>
+                  <th>От кого</th>
+                  <th style="width:120px;">Статус</th>
+                  <th style="width:200px; text-align:right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="requestsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- ARTICLES (CRUD) SECTION - теперь с дашборд-элементами -->
       <section id="section-articles" class="app-section active">
         <div class="page-header">
@@ -245,22 +291,89 @@
           </div>
         </div>
 
-        <!-- Drag & Drop Zone -->
-        <div class="upload-zone" id="dropZone">
-          <input type="file" id="fileInput" multiple style="display: none;">
-          <i data-lucide="cloud-upload" style="width: 48px; height: 48px;"></i>
-          <h3>Перетащите файлы сюда или кликните для выбора</h3>
-          <p style="color: hsl(var(--text-muted)); font-size: 13px; margin-top: 8px;">Максимальный размер файла: 10MB (Изображения, документы)</p>
-        </div>
-
-        <div class="table-toolbar" style="margin-bottom: 12px;">
-          <div class="table-search">
-            <input type="text" id="mediaSearch" class="form-control" placeholder="Поиск по имени файла...">
+        <!-- FOLDERS VIEW -->
+        <div id="mediaFoldersGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; padding: 20px 0;">
+          <div class="media-folder-card" onclick="openMediaCategory('general', 'Общие')" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <i data-lucide="folder" style="width: 48px; height: 48px; color: var(--accent-purple); margin-bottom: 12px;"></i>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Общие</h3>
+          </div>
+          <div class="media-folder-card" onclick="openMediaCategory('tools', 'Инструменты')" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--accent-cyan)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <i data-lucide="wrench" style="width: 48px; height: 48px; color: var(--accent-cyan); margin-bottom: 12px;"></i>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Инструменты</h3>
+          </div>
+          <div class="media-folder-card" onclick="openMediaCategory('avatars', 'Аватары')" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--accent-amber)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <i data-lucide="users" style="width: 48px; height: 48px; color: var(--accent-amber); margin-bottom: 12px;"></i>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Аватары</h3>
+          </div>
+          <div class="media-folder-card" onclick="openMediaCategory('articles', 'Статьи')" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--text-secondary)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <i data-lucide="file-text" style="width: 48px; height: 48px; color: var(--text-secondary); margin-bottom: 12px;"></i>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Статьи</h3>
+          </div>
+          <div class="media-folder-card" onclick="openMediaCategory('support', 'Поддержка')" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--accent-green)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <i data-lucide="life-buoy" style="width: 48px; height: 48px; color: var(--accent-green); margin-bottom: 12px;"></i>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Поддержка</h3>
           </div>
         </div>
-        
-        <div class="media-grid" id="mediaGrid">
-          <!-- Dynamically populated -->
+
+        <!-- FILES VIEW -->
+        <div id="mediaFilesView" style="display: none;">
+          <div style="margin-bottom: 16px; display: flex; align-items: center;">
+            <button class="btn btn-secondary" onclick="showMediaFolders()">
+              <i data-lucide="arrow-left"></i>
+              <span>Назад к категориям</span>
+            </button>
+            <span id="currentMediaCategoryTitle" style="margin-left: 16px; font-weight: 600; font-size: 18px; color: var(--text-primary);"></span>
+          </div>
+
+          <!-- Drag & Drop Zone -->
+          <div class="upload-zone" id="dropZone">
+            <input type="file" id="fileInput" multiple style="display: none;">
+            <i data-lucide="cloud-upload" style="width: 48px; height: 48px;"></i>
+            <h3>Перетащите файлы сюда или кликните для выбора</h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 8px;">Максимальный размер файла: 10MB (Изображения, документы)</p>
+            <div style="margin-top: 16px; display: none;">
+              <select id="uploadCategorySelect" class="form-control" style="width: 150px; display: inline-block;">
+                <option value="general">Общие</option>
+                <option value="tools">Инструменты</option>
+                <option value="avatars">Аватары</option>
+                <option value="articles">Статьи</option>
+                <option value="support">Поддержка</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-toolbar" style="margin-bottom: 12px; display: flex; gap: 12px;">
+            <div class="table-search" style="flex: 1;">
+              <input type="text" id="mediaSearch" class="form-control" placeholder="Поиск по имени файла...">
+            </div>
+            <!-- mediaCategorySelect is hidden as we handle category via the folder clicked -->
+            <select id="mediaCategorySelect" class="form-control" style="width: 200px; display: none;">
+              <option value="all">Все категории</option>
+              <option value="general">Общие</option>
+              <option value="tools">Инструменты</option>
+              <option value="avatars">Аватары</option>
+              <option value="articles">Статьи</option>
+              <option value="support">Поддержка</option>
+            </select>
+          </div>
+
+          <!-- Стандартные аватары (показывается только в папке «Аватары») -->
+          <div id="standardAvatarsPanel" style="display: none; margin-bottom: 24px;">
+            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Стандартные аватары</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Предустановленный набор. Пользователи выбирают их в профиле (Выбрать → Стандартные).</p>
+            <div id="standardAvatarsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px;"></div>
+          </div>
+
+          <!-- Иконки категорий инструментов (показывается только в папке «Инструменты») -->
+          <div id="categoryIconsPanel" style="display: none; margin-bottom: 24px;">
+            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Иконки категорий</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
+            <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+          </div>
+
+          <div class="media-grid" id="mediaGrid">
+            <!-- Dynamically populated -->
+          </div>
         </div>
       </section>
 
@@ -652,8 +765,9 @@
               <div id="toolPhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
                 <i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>
               </div>
-              <div>
-                <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить фото</button>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить</button>
+                <button type="button" class="btn btn-secondary" id="toolPhotoPickBtn">Из медиатеки</button>
                 <button type="button" class="btn btn-secondary" id="toolPhotoClearBtn" style="display:none;">Убрать</button>
               </div>
               <input type="file" id="toolPhotoInput" accept="image/*" style="display:none;">
@@ -797,6 +911,55 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="closeHistoryBtn2">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOOL DETAIL (КАРТОЧКА ИНСТРУМЕНТА) -->
+  <div class="modal-overlay" id="toolDetailModalOverlay">
+    <div class="modal" style="max-width: 880px;">
+      <div class="modal-header">
+        <h3 id="toolDetailTitle">Карточка инструмента</h3>
+        <button class="modal-close" id="closeToolDetailBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="toolDetailBody">
+        <div style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Загрузка...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox для фото инструмента -->
+  <div id="photoLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:2000; align-items:center; justify-content:center; cursor:zoom-out;">
+    <img id="photoLightboxImg" src="" style="max-width:92vw; max-height:92vh; border-radius:8px;">
+  </div>
+
+  <!-- MEDIA PICKER MODAL DIALOG -->
+  <div class="modal-overlay" id="mediaPickerModalOverlay">
+    <div class="modal" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3>Выбрать из медиатеки</h3>
+        <button class="modal-close" id="closeMediaPickerBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="table-toolbar" style="margin-bottom: 12px; display: flex; gap: 12px;">
+          <div class="table-search" style="flex: 1;">
+            <input type="text" id="mediaPickerSearch" class="form-control" placeholder="Поиск по имени файла...">
+          </div>
+          <select id="mediaPickerCategorySelect" class="form-control" style="width: 200px;">
+            <option value="all">Все категории</option>
+            <option value="general">Общие</option>
+            <option value="tools">Инструменты</option>
+            <option value="avatars">Аватары</option>
+            <option value="articles">Статьи</option>
+            <option value="support">Поддержка</option>
+          </select>
+        </div>
+        <div class="media-grid" id="mediaPickerGrid" style="max-height: 400px; overflow-y: auto;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelMediaPickerBtn">Отмена</button>
       </div>
     </div>
   </div>

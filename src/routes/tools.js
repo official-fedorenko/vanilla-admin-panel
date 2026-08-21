@@ -1,5 +1,16 @@
 const { sendJson, getJsonBody, logAction, parsePagination } = require('../utils');
 const { db } = require('../../db');
+const crypto = require('crypto');
+const QRCode = require('qrcode');
+
+// Автогенерация инвентарного номера: INV-D + дата(ГГММДД) + крипто-случайность.
+// Пример: INV-D260821A1B2C3. Дата — для читаемости, hex — против совпадений.
+function genInventory() {
+  const d = new Date();
+  const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `INV-D${datePart}${rand}`;
+}
 
 /**
  * Учёт инструмента + закрепление за сотрудниками (модель «выдача-возврат»).
@@ -71,7 +82,10 @@ function extractToolFields(body) {
   // photo_url принимаем только как внутренний путь: загруженный файл
   // (/uploads/...) или картинку из каталога (/catalog/images/*.svg).
   // Защита от подстановки внешних/произвольных URL.
-  const rawPhoto = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+  // Отрезаем query (?v=…) и якорь — каталожные иконки приходят с версией
+  // для сброса кэша, но в БД храним чистый путь.
+  const rawPhotoRaw = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+  const rawPhoto = rawPhotoRaw.split('?')[0].split('#')[0];
   const isUpload = /^\/uploads\/[A-Za-z0-9._-]+$/.test(rawPhoto);
   const isCatalogImg = /^\/catalog\/images\/[A-Za-z0-9._-]+\.svg$/.test(rawPhoto);
   const photoUrl = (isUpload || isCatalogImg) ? rawPhoto : null;
@@ -83,7 +97,8 @@ function extractToolFields(body) {
       brand: str(body.brand),
       model: str(body.model),
       serial_number: str(body.serial_number),
-      inventory_number: str(body.inventory_number),
+      // Пустой инвентарный номер генерируем автоматически (INV-D…).
+      inventory_number: str(body.inventory_number) || genInventory(),
       status,
       purchase_date: purchaseDate,
       photo_url: photoUrl,
@@ -407,6 +422,97 @@ async function handleCategories(req, res, user, parsedUrl, method) {
   return sendJson(res, 405, { success: false, message: 'Метод не поддерживается' });
 }
 
+// ---- Полная карточка инструмента (/api/tools/details?id=) ----
+// Собирает инструмент + галерею фото + историю закреплений + статистику.
+function handleDetails(req, res, user, parsedUrl) {
+  const toolId = parseId(parsedUrl);
+  if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+  const toolSql = `
+    SELECT t.*,
+      a.issued_at AS current_issued_at,
+      CASE WHEN e.id IS NOT NULL THEN e.last_name || ' ' || e.first_name END AS current_holder
+    FROM tools t
+    LEFT JOIN tool_assignments a ON a.tool_id = t.id AND a.returned_at IS NULL
+    LEFT JOIN employees e ON e.id = a.employee_id
+    WHERE t.id = ?`;
+
+  db.get(toolSql, [toolId], (err, tool) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
+
+    const photoSql = `
+      SELECT tp.id, tp.photo_url, tp.created_at, u.username AS uploaded_by_name
+      FROM tool_photos tp
+      LEFT JOIN users u ON u.id = tp.uploaded_by
+      WHERE tp.tool_id = ? ORDER BY tp.created_at DESC`;
+
+    db.all(photoSql, [toolId], (e2, photos) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+
+      const histSql = `
+        SELECT a.id, a.issued_at, a.returned_at, a.issued_by, a.notes,
+          CASE WHEN e.id IS NOT NULL THEN e.last_name || ' ' || e.first_name
+               ELSE '— (сотрудник удалён)' END AS employee_name,
+          a.employee_id
+        FROM tool_assignments a
+        LEFT JOIN employees e ON e.id = a.employee_id
+        WHERE a.tool_id = ? ORDER BY a.issued_at DESC`;
+
+      db.all(histSql, [toolId], (e3, history) => {
+        if (e3) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        history = history || [];
+
+        // Статистика по использованию.
+        const DAY = 1000 * 60 * 60 * 24;
+        const holders = new Set();
+        history.forEach(h => { if (h.employee_id) holders.add(h.employee_id); });
+
+        // Дни в эксплуатации — от даты покупки (или от даты добавления в систему)
+        // до настоящего времени.
+        const baseRaw = tool.purchase_date || (tool.created_at ? String(tool.created_at).split(' ')[0] : null);
+        let daysInService = 0;
+        if (baseRaw && /^\d{4}-\d{2}-\d{2}/.test(baseRaw)) {
+          const start = new Date(baseRaw.slice(0, 10) + 'T00:00:00Z').getTime();
+          daysInService = Math.max(0, Math.round((Date.now() - start) / DAY));
+        }
+
+        const stats = {
+          times_issued: history.length,
+          days_in_service: daysInService,
+          service_from: baseRaw ? baseRaw.slice(0, 10) : null,
+          unique_holders: holders.size,
+          photos_count: (photos || []).length,
+          is_out: history.some(h => !h.returned_at)
+        };
+
+        sendJson(res, 200, { success: true, tool, photos: photos || [], history, stats });
+      });
+    });
+  });
+}
+
+// ---- QR-код инструмента (/api/tools/qr?id=) ----
+// Возвращает SVG, кодирующий ссылку на карточку инструмента (для наклейки).
+function handleQr(req, res, user, parsedUrl) {
+  const toolId = parseId(parsedUrl);
+  if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+  const host = req.headers.host || 'localhost';
+  const proto = (req.headers['x-forwarded-proto'] || 'http').split(',')[0];
+  const link = `${proto}://${host}/admin/?tool=${toolId}`;
+
+  QRCode.toString(link, { type: 'svg', margin: 1, width: 220,
+    color: { dark: '#111111', light: '#ffffff' } }, (err, svg) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка QR' });
+    res.writeHead(200, {
+      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600'
+    });
+    res.end(svg);
+  });
+}
+
 module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
 
@@ -419,6 +525,15 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (pathname === '/api/tools/transfer' && method === 'POST') return handleTransfer(req, res, user);
   if (pathname === '/api/tools/check-dup' && method === 'GET') return handleCheckDup(req, res, user, parsedUrl);
   if (pathname === '/api/tools/history' && method === 'GET') return handleHistory(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/details' && method === 'GET') return handleDetails(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/qr' && method === 'GET') return handleQr(req, res, user, parsedUrl);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };
+
+// Экспортируем вспомогалки для модуля заявлений (requests.js), чтобы
+// одобрение заявления «Добавить инструмент» создавало инструмент по тем же
+// правилам валидации и проверки дублей.
+module.exports.extractToolFields = extractToolFields;
+module.exports.findDuplicate = findDuplicate;
+module.exports.duplicateMessage = duplicateMessage;

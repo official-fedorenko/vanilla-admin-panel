@@ -184,6 +184,30 @@
     input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(138,43,226,0.12); }
     input::placeholder { color: rgba(160,160,171,0.4); }
 
+    /* Редактируемые поля (модалка заявления и т.п.) — читаемый текст, плотный фон */
+    .form-input {
+      width: 100%;
+      background: #1c1c26;
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 10px 14px;
+      font-size: 14px;
+      border-radius: 10px;
+      outline: none;
+      font-family: 'Inter', sans-serif;
+      box-sizing: border-box;
+      color-scheme: dark;
+    }
+    .form-input:focus { border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(138,43,226,0.12); }
+    .form-input::placeholder { color: rgba(160,160,171,0.55); }
+    .form-input option { color: #fff; background: #15151d; }
+    textarea.form-input { resize: vertical; }
+    /* Плотная панель модалки, чтобы фон не просвечивал */
+    .modal-panel-solid {
+      background: #15151d;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+    }
+
     .section-divider {
       border: none;
       border-top: 1px solid var(--border-color);
@@ -336,8 +360,26 @@
               <div id="avatarPreview" style="width:64px; height:64px; border-radius:50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display:flex; align-items:center; justify-content:center; overflow:hidden; border:2px solid var(--border-color);">
                 <!-- image or letter will be set in JS -->
               </div>
+              <button type="button" id="chooseAvatarBtn" style="padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:13px;">Выбрать</button>
               <button type="button" id="uploadAvatarBtn" style="padding:6px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:13px;">Загрузить фото</button>
               <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+            </div>
+          </div>
+
+          <!-- Avatar picker modal -->
+          <div id="avatarPickerOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
+            <div style="background:var(--bg-card, #17171f); border:1px solid var(--border-color); border-radius:16px; width:min(560px, 92vw); max-height:82vh; overflow:hidden; display:flex; flex-direction:column;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+                <div style="font-weight:600; color:var(--text-primary);">Выбор аватара</div>
+                <button type="button" id="avatarPickerClose" style="background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1;">&times;</button>
+              </div>
+              <div style="display:flex; gap:8px; padding:12px 20px 0;">
+                <button type="button" class="avatar-tab" data-tab="standard" style="padding:6px 14px; border-radius:8px; border:1px solid var(--border-color); background:rgba(255,255,255,0.06); color:var(--text-primary); cursor:pointer; font-size:13px;">Стандартные</button>
+                <button type="button" class="avatar-tab" data-tab="uploaded" style="padding:6px 14px; border-radius:8px; border:1px solid var(--border-color); background:none; color:var(--text-secondary); cursor:pointer; font-size:13px;">Мои загруженные</button>
+              </div>
+              <div id="avatarPickerGrid" style="padding:16px 20px; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:12px;">
+                <!-- populated in JS -->
+              </div>
             </div>
           </div>
 
@@ -434,6 +476,38 @@
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
           <input type="file" id="myToolPhotoInput" accept="image/*" style="display:none;">
+        </div>
+
+        <!-- Заявления -->
+        <div class="card" id="requestsCard">
+          <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="display:flex; align-items:center; gap:8px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Заявления
+            </span>
+            <button type="button" id="newRequestBtn" style="padding:6px 14px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">+ Новое</button>
+          </div>
+          <div id="myRequestsList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
+            <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Модалка нового заявления -->
+        <div id="requestModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; align-items:center; justify-content:center;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(520px, 94vw); max-height:88vh; overflow:auto;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Новое заявление</div>
+              <button type="button" id="requestModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px;">
+              <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:6px;">Тип заявления</label>
+              <select id="requestTypeSelect" class="form-input" style="margin-bottom:18px;"></select>
+              <form id="requestForm">
+                <div id="requestFields" style="display:flex; flex-direction:column; gap:10px;"></div>
+                <button type="submit" style="margin-top:18px; width:100%; padding:10px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Отправить</button>
+              </form>
+            </div>
+          </div>
         </div>
 
         <!-- Чат поддержки -->
@@ -561,12 +635,51 @@
     // === Мой закреплённый инструмент ===
     let myToolPhotoTargetId = null;
 
+    let myToolsCache = [];
+
+    // Скачать QR-код инструмента (PNG с подписью инв.№; фолбэк — SVG)
+    window.saveMyToolQr = async (id) => {
+      const tool = myToolsCache.find(t => t.id === id) || {};
+      const base = `qr-${String(tool.inventory_number || tool.name || 'tool').replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+      try {
+        const res = await fetch(`/api/tools/qr?id=${id}`);
+        const svgText = await res.text();
+        const size = 600, pad = 40, labelH = tool.inventory_number ? 60 : 20;
+        const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size + pad * 2;
+          canvas.height = size + pad * 2 + labelH;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, pad, pad, size, size);
+          if (tool.inventory_number) {
+            ctx.fillStyle = '#111111'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(tool.inventory_number, canvas.width / 2, size + pad + 44);
+          }
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => { downloadBlob(URL.createObjectURL(blob), base + '.png'); showToast('QR сохранён', 'success'); }, 'image/png');
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); downloadBlob(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg'); showToast('QR сохранён (SVG)', 'success'); };
+        img.src = url;
+      } catch (e) { showToast('Не удалось сохранить QR', 'error'); }
+    };
+
+    function downloadBlob(href, filename) {
+      const a = document.createElement('a');
+      a.href = href; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 2000);
+    }
+
     async function loadMyTools() {
       const list = document.getElementById('myToolsList');
       try {
         const res = await fetch('/api/cabinet/my-tools');
         const data = res.ok ? await res.json() : { tools: [] };
         const tools = data.tools || [];
+        myToolsCache = tools;
         if (!tools.length) {
           list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплён инструмент.</div>';
           return;
@@ -574,24 +687,51 @@
         list.innerHTML = '';
         tools.forEach(t => {
           const issued = t.issued_at ? new Date(t.issued_at).toLocaleDateString('ru-RU') : '';
+          const photoSrc = (t.photo_url && t.photo_url.startsWith('/catalog/images/') && !t.photo_url.includes('?'))
+            ? t.photo_url + '?v=2' : t.photo_url;
           const photo = t.photo_url
-            ? `<img src="${t.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
+            ? `<img src="${photoSrc}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
             : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
           const sub = [t.brand, t.model].filter(Boolean).join(' · ');
+          
+          let galleryHtml = '';
+          if (t.gallery_photos && t.gallery_photos.length > 0) {
+            const imgs = t.gallery_photos.map(url => `<img src="${url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`).join('');
+            galleryHtml = `<div style="margin-top:12px; display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">${imgs}</div>`;
+          }
+
           const item = document.createElement('div');
-          item.style.cssText = 'display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-color);border-radius:12px;background:rgba(255,255,255,0.01);';
+          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
           item.innerHTML = `
-            ${photo}
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(t.name)}</div>
-              ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
-              ${t.serial_number ? `<div style="font-size:12px;color:var(--text-muted);">S/N: ${escapeHtml(t.serial_number)}</div>` : ''}
-              ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+            <div style="display:flex; align-items:center; gap:12px;">
+              ${photo}
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(t.name)}</div>
+                ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
+                ${t.serial_number ? `<div style="font-size:12px;color:var(--text-muted);">S/N: ${escapeHtml(t.serial_number)}</div>` : ''}
+                ${t.inventory_number ? `<div style="font-size:12px;color:var(--text-muted);">Инв. №: ${escapeHtml(t.inventory_number)}</div>` : ''}
+                ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <button type="button" onclick="startMyToolPhoto(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Добавить фото</button>
+                <button type="button" onclick="saveMyToolQr(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
+              </div>
             </div>
-            <button type="button" onclick="startMyToolPhoto(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">${t.photo_url ? 'Заменить фото' : 'Добавить фото'}</button>
+            ${galleryHtml}
           `;
           list.appendChild(item);
         });
+        // Ровно 5 инструментов в высоту, дальше — прокрутка
+        if (list.children.length > 5) {
+          let h = 0;
+          for (let i = 0; i < 5; i++) h += list.children[i].offsetHeight;
+          h += 12 * 4; // 4 промежутка gap между 5 карточками
+          list.style.maxHeight = h + 'px';
+          list.style.overflowY = 'auto';
+          list.style.paddingRight = '4px';
+        } else {
+          list.style.maxHeight = 'none';
+        }
       } catch (e) {
         list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить инструмент.</div>';
       }
@@ -608,6 +748,9 @@
       input.addEventListener('change', async () => {
         const file = input.files[0];
         if (!file || !myToolPhotoTargetId) return;
+        
+        const currentToolId = myToolPhotoTargetId; // Capture before finally block clears it
+        
         try {
           // 1) загружаем файл, получаем URL
           const reader = new FileReader();
@@ -616,7 +759,7 @@
             const upRes = await fetch('/api/media', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
             });
             if (!upRes.ok) { showToast('Ошибка загрузки фото', 'error'); return; }
             const upData = await upRes.json();
@@ -626,7 +769,7 @@
             const linkRes = await fetch('/api/cabinet/tool-photo', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tool_id: myToolPhotoTargetId, photo_url: url })
+              body: JSON.stringify({ tool_id: currentToolId, photo_url: url })
             });
             const linkData = await linkRes.json().catch(() => ({}));
             if (linkRes.ok) {
@@ -793,7 +936,7 @@
             const uploadRes = await fetch('/api/media', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'avatars' })
             });
             if (uploadRes.ok) {
               const data = await uploadRes.json();
@@ -824,6 +967,85 @@
         }
       };
     }
+
+    // --- Avatar picker (standard + uploaded) ---
+    const avatarPickerOverlay = document.getElementById('avatarPickerOverlay');
+    const avatarPickerGrid = document.getElementById('avatarPickerGrid');
+    const chooseAvatarBtn = document.getElementById('chooseAvatarBtn');
+
+    async function applyAvatarUrl(url) {
+      try {
+        const updateRes = await fetch('/api/cabinet/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avatar_url: url })
+        });
+        if (updateRes.ok) {
+          showToast('Аватарка обновлена', 'success');
+          avatarPickerOverlay.style.display = 'none';
+          await loadProfile();
+        } else {
+          showToast('Не удалось сохранить аватар', 'error');
+        }
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    }
+
+    function renderAvatarOptions(items) {
+      avatarPickerGrid.innerHTML = '';
+      if (!items.length) {
+        avatarPickerGrid.innerHTML = '<div style="grid-column:1/-1; color:var(--text-muted); font-size:13px; text-align:center; padding:20px;">Пусто</div>';
+        return;
+      }
+      items.forEach(url => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:0; border:2px solid var(--border-color); border-radius:50%; overflow:hidden; width:72px; height:72px; cursor:pointer; background:var(--bg-input);';
+        btn.innerHTML = `<img src="${url}" style="width:100%; height:100%; object-fit:cover; display:block;">`;
+        btn.onmouseover = () => { btn.style.borderColor = 'var(--accent-cyan)'; };
+        btn.onmouseout = () => { btn.style.borderColor = 'var(--border-color)'; };
+        btn.onclick = () => applyAvatarUrl(url);
+        avatarPickerGrid.appendChild(btn);
+      });
+    }
+
+    async function loadAvatarTab(tab) {
+      document.querySelectorAll('.avatar-tab').forEach(b => {
+        const active = b.dataset.tab === tab;
+        b.style.background = active ? 'rgba(255,255,255,0.06)' : 'none';
+        b.style.color = active ? 'var(--text-primary)' : 'var(--text-secondary)';
+      });
+      avatarPickerGrid.innerHTML = '<div style="grid-column:1/-1; color:var(--text-muted); font-size:13px; text-align:center; padding:20px;">Загрузка...</div>';
+      try {
+        if (tab === 'standard') {
+          const res = await fetch('/api/standard-avatars');
+          const data = await res.json();
+          renderAvatarOptions((data.avatars || []).map(a => a.url));
+        } else {
+          // mine=1 — показываем только собственные загрузки, не чужие аватары.
+          const res = await fetch('/api/media?category=avatars&mine=1');
+          const files = await res.json();
+          renderAvatarOptions((files || []).map(f => f.file_url));
+        }
+      } catch (e) {
+        avatarPickerGrid.innerHTML = '<div style="grid-column:1/-1; color:var(--text-muted);">Ошибка загрузки</div>';
+      }
+    }
+
+    if (chooseAvatarBtn) {
+      chooseAvatarBtn.onclick = () => {
+        avatarPickerOverlay.style.display = 'flex';
+        loadAvatarTab('standard');
+      };
+    }
+    document.getElementById('avatarPickerClose')?.addEventListener('click', () => {
+      avatarPickerOverlay.style.display = 'none';
+    });
+    avatarPickerOverlay?.addEventListener('click', (e) => {
+      if (e.target === avatarPickerOverlay) avatarPickerOverlay.style.display = 'none';
+    });
+    document.querySelectorAll('.avatar-tab').forEach(b => {
+      b.addEventListener('click', () => loadAvatarTab(b.dataset.tab));
+    });
 
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -978,7 +1200,7 @@
           const uploadRes = await fetch('/api/media', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }] })
+            body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'support' })
           });
           if (uploadRes.ok) {
             const data = await uploadRes.json();
@@ -1273,6 +1495,295 @@
       }
     });
 
+    // === Заявления (универсальные) ===
+    const TR_STATUS = {
+      pending:  { label: 'Ожидает',   color: 'var(--accent-cyan)' },
+      approved: { label: 'Одобрено',  color: '#22c55e' },
+      rejected: { label: 'Отклонено', color: '#ef4444' }
+    };
+    let requestTypes = {};
+    let toolCategories = [];
+    const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
+
+    async function setupToolRequests() {
+      const btn = document.getElementById('newRequestBtn');
+      if (!btn) return;
+
+      // Реестр типов и категории — грузим один раз
+      try {
+        const [rt, cat] = await Promise.all([
+          fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
+          fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => [])
+        ]);
+        requestTypes = (rt && rt.types) || {};
+        toolCategories = cat || [];
+      } catch (e) { requestTypes = {}; }
+
+      // Заполняем выбор типа
+      const typeSel = document.getElementById('requestTypeSelect');
+      typeSel.innerHTML = '';
+      Object.entries(requestTypes).forEach(([key, t]) => {
+        const o = document.createElement('option');
+        o.value = key; o.textContent = t.label;
+        typeSel.appendChild(o);
+      });
+      typeSel.onchange = () => renderRequestFields(typeSel.value);
+
+      btn.onclick = () => {
+        document.getElementById('requestModalOverlay').style.display = 'flex';
+        if (typeSel.value) renderRequestFields(typeSel.value);
+      };
+      document.getElementById('requestModalClose').onclick = closeRequestModal;
+      document.getElementById('requestModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'requestModalOverlay') closeRequestModal();
+      });
+
+      document.getElementById('requestForm').onsubmit = submitRequest;
+
+      if (typeSel.value) renderRequestFields(typeSel.value);
+      loadMyRequests();
+    }
+
+    function closeRequestModal() {
+      document.getElementById('requestModalOverlay').style.display = 'none';
+    }
+
+    // Строит поля формы по описанию выбранного типа
+    function renderRequestFields(typeKey) {
+      const def = requestTypes[typeKey];
+      const box = document.getElementById('requestFields');
+      box.innerHTML = '';
+      if (!def) return;
+
+      // Для «Добавить инструмент» — подбор из каталога, как в админке
+      if (typeKey === 'tool_add') {
+        const picker = document.createElement('div');
+        picker.innerHTML = `
+          <button type="button" id="catPickBtn" style="width:100%; padding:9px; background:rgba(138,43,226,0.12); border:1px solid var(--accent-purple); color:var(--text-primary); border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">📖 Подобрать из каталога</button>
+          <input id="catPickSearch" class="form-input" placeholder="Поиск по каталогу…" style="display:none; margin-top:8px;">
+          <div id="catPickList" style="display:none; max-height:220px; overflow:auto; margin-top:8px; border:1px solid var(--border-color); border-radius:8px;"></div>`;
+        box.appendChild(picker);
+        wireCatalogPicker();
+      }
+
+      def.fields.forEach(f => {
+        const wrap = document.createElement('div');
+        const label = `<label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">${escapeHtmlC(f.label)}${f.required ? ' *' : ''}</label>`;
+        const fid = 'reqf_' + f.name;
+        if (f.type === 'textarea') {
+          wrap.innerHTML = label + `<textarea id="${fid}" rows="2" class="form-input"></textarea>`;
+        } else if (f.type === 'category') {
+          const opts = ['<option value="">—</option>'].concat(toolCategories.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`)).join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
+        } else if (f.type === 'photo') {
+          reqPhotoUrls[f.name] = '';
+          wrap.innerHTML = label + `<div style="display:flex; align-items:center; gap:12px;">
+            <div id="${fid}_prev" style="width:44px;height:44px;border-radius:8px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--text-muted);font-size:10px;">фото</div>
+            <button type="button" id="${fid}_btn" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:13px;">Загрузить</button>
+            <input type="file" id="${fid}_input" accept="image/*" style="display:none;">
+          </div>`;
+        } else {
+          const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
+          wrap.innerHTML = label + `<input id="${fid}" type="${inputType}" class="form-input" placeholder="${escapeHtmlC(f.label)}">`;
+        }
+        box.appendChild(wrap);
+        if (f.type === 'photo') wirePhotoField(f.name, fid);
+        // Инвентарный номер для «Добавить инструмент» — подставляем сразу
+        if (typeKey === 'tool_add' && f.name === 'inventory_number') {
+          const el = document.getElementById(fid);
+          if (el && !el.value) el.value = genInventoryNumberCab();
+        }
+      });
+    }
+
+    // Клиентская генерация инвентарного номера (тот же формат, что на сервере)
+    function genInventoryNumberCab() {
+      const d = new Date();
+      const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+      let hex = '';
+      if (window.crypto && window.crypto.getRandomValues) {
+        const arr = new Uint8Array(3); window.crypto.getRandomValues(arr);
+        hex = Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+      } else { hex = Math.random().toString(16).slice(2, 8); }
+      return `INV-D${datePart}${hex.toUpperCase()}`;
+    }
+
+    // Каталог моделей (как в админке) для автозаполнения полей заявки
+    let catalogFlatCab = null;
+    async function wireCatalogPicker() {
+      const btn = document.getElementById('catPickBtn');
+      const search = document.getElementById('catPickSearch');
+      const list = document.getElementById('catPickList');
+      if (!btn) return;
+
+      btn.onclick = async () => {
+        const show = list.style.display === 'none';
+        list.style.display = show ? 'block' : 'none';
+        search.style.display = show ? 'block' : 'none';
+        if (show && !catalogFlatCab) {
+          list.innerHTML = '<div style="padding:12px; color:var(--text-muted); font-size:12px;">Загрузка каталога…</div>';
+          try {
+            const res = await fetch('/api/tool-catalog');
+            const d = await res.json();
+            catalogFlatCab = (d.categories || []).flatMap(c => c.models.map(m => ({ category: c.category, ...m })));
+          } catch (e) { catalogFlatCab = []; }
+        }
+        if (show) renderCatalogPickList('');
+      };
+      if (search) search.oninput = () => renderCatalogPickList(search.value);
+    }
+
+    function renderCatalogPickList(q) {
+      const list = document.getElementById('catPickList');
+      if (!list) return;
+      const query = (q || '').toLowerCase();
+      const items = (catalogFlatCab || []).filter(m =>
+        !query || `${m.name} ${m.category} ${m.brand} ${m.model}`.toLowerCase().includes(query));
+      if (!items.length) { list.innerHTML = '<div style="padding:12px; color:var(--text-muted); font-size:12px;">Ничего не найдено</div>'; return; }
+      list.innerHTML = '';
+      items.forEach(m => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; gap:10px; align-items:center; padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border-color);';
+        row.onmouseover = () => row.style.background = 'rgba(255,255,255,0.04)';
+        row.onmouseout = () => row.style.background = 'none';
+        row.innerHTML = `
+          <img src="${m.image}" style="width:36px;height:30px;object-fit:contain;flex-shrink:0;">
+          <div style="min-width:0;">
+            <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(m.name)}</div>
+            <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(m.category)}</div>
+          </div>`;
+        row.onclick = () => fillFromCatalog(m);
+        list.appendChild(row);
+      });
+    }
+
+    function fillFromCatalog(m) {
+      const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+      setVal('reqf_name', m.name);
+      setVal('reqf_brand', m.brand);
+      setVal('reqf_model', m.model);
+      // категория: выбираем в select, добавляем опцию если её нет
+      const catSel = document.getElementById('reqf_category');
+      if (catSel && m.category) {
+        if (![...catSel.options].some(o => o.value === m.category)) {
+          const o = document.createElement('option'); o.value = m.category; o.textContent = m.category; catSel.appendChild(o);
+        }
+        catSel.value = m.category;
+      }
+      // фото из каталога (чистый путь, сервер примет /catalog/images/*.svg)
+      if (m.image) {
+        const clean = String(m.image).split('?')[0];
+        reqPhotoUrls['photo_url'] = clean;
+        const prev = document.getElementById('reqf_photo_url_prev');
+        if (prev) prev.innerHTML = `<img src="${m.image}" style="width:100%;height:100%;object-fit:contain;">`;
+      }
+      // сворачиваем список
+      document.getElementById('catPickList').style.display = 'none';
+      document.getElementById('catPickSearch').style.display = 'none';
+      showToast('Модель подставлена', 'success');
+    }
+
+    function wirePhotoField(fieldName, fid) {
+      const btn = document.getElementById(fid + '_btn');
+      const input = document.getElementById(fid + '_input');
+      btn.onclick = () => input.click();
+      input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+        btn.disabled = true; btn.textContent = '...';
+        try {
+          const reader = new FileReader();
+          reader.onload = async (ev) => {
+            const base64 = ev.target.result.split(',')[1];
+            const up = await fetch('/api/media', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
+            });
+            if (up.ok) {
+              const d = await up.json();
+              if (d.urls && d.urls[0]) {
+                reqPhotoUrls[fieldName] = d.urls[0];
+                document.getElementById(fid + '_prev').innerHTML = `<img src="${d.urls[0]}" style="width:100%;height:100%;object-fit:cover;">`;
+              }
+            } else showToast('Ошибка загрузки фото', 'error');
+            btn.disabled = false; btn.textContent = 'Загрузить';
+          };
+          reader.readAsDataURL(file);
+        } catch (e) { btn.disabled = false; btn.textContent = 'Загрузить'; }
+        input.value = '';
+      };
+    }
+
+    async function submitRequest(e) {
+      e.preventDefault();
+      const typeKey = document.getElementById('requestTypeSelect').value;
+      const def = requestTypes[typeKey];
+      if (!def) return;
+      const payload = {};
+      for (const f of def.fields) {
+        if (f.type === 'photo') { payload[f.name] = reqPhotoUrls[f.name] || ''; continue; }
+        const el = document.getElementById('reqf_' + f.name);
+        payload[f.name] = el ? el.value : '';
+        if (f.required && !String(payload[f.name]).trim()) {
+          showToast(`Заполните: ${f.label}`, 'error'); return;
+        }
+      }
+      try {
+        const res = await fetch('/api/requests', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: typeKey, payload })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Заявление отправлено', 'success');
+          closeRequestModal();
+          Object.keys(reqPhotoUrls).forEach(k => reqPhotoUrls[k] = '');
+          loadMyRequests();
+        } else showToast(d.message || 'Ошибка отправки', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    }
+
+    async function loadMyRequests() {
+      const box = document.getElementById('myRequestsList');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/requests/mine');
+        const d = await res.json();
+        const list = (d && d.requests) || [];
+        if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Заявлений пока нет</div>'; return; }
+        box.innerHTML = '';
+        list.forEach(r => {
+          const st = TR_STATUS[r.status] || TR_STATUS.pending;
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,255,255,0.01);';
+          row.innerHTML = `
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(r.title || '')}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(r.type_label || r.type)}</div>
+              ${r.status === 'rejected' && r.review_note ? `<div style="font-size:11px; color:#ef4444;">Причина: ${escapeHtmlC(r.review_note)}</div>` : ''}
+            </div>
+            <span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`;
+          box.appendChild(row);
+        });
+        // Ровно 5 строк в высоту, дальше — прокрутка
+        const rows = box.children;
+        if (rows.length > 5) {
+          let h = 0;
+          for (let i = 0; i < 5; i++) h += rows[i].offsetHeight;
+          h += 8 * 4; // 4 промежутка gap между 5 строками
+          box.style.maxHeight = h + 'px';
+        } else {
+          box.style.maxHeight = 'none';
+        }
+      } catch (e) {
+        box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    function escapeHtmlC(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       const backBtn = document.getElementById('adminBackBtn');
       if (backBtn) {
@@ -1283,6 +1794,7 @@
       (async () => {
         await Promise.all([loadProfile(), loadArticles(), loadSettings()]);
         loadTwoFactorStatus();
+        setupToolRequests();
         if (currentUserData) {
           if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
             await loadAdminTickets();

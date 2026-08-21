@@ -28,20 +28,41 @@ function getMyCard(req, res, user) {
 // Клиенты (без карточки в employees) просто получают пустой список.
 function getMyTools(req, res, user) {
   const sql = `
-    SELECT t.id, t.name, t.category, t.brand, t.model, t.serial_number,
+    SELECT t.id, t.name, t.category, t.brand, t.model, t.serial_number, t.inventory_number,
            t.photo_url, a.issued_at
     FROM employees e
     JOIN tool_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
     JOIN tools t ON t.id = a.tool_id
     WHERE e.user_id = ?
     ORDER BY a.issued_at DESC`;
-  db.all(sql, [user.id], (err, rows) => {
+  db.all(sql, [user.id], (err, tools) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    sendJson(res, 200, { success: true, tools: rows || [] });
+    if (!tools || tools.length === 0) {
+      return sendJson(res, 200, { success: true, tools: [] });
+    }
+
+    const toolIds = tools.map(t => t.id);
+    const placeholders = toolIds.map(() => '?').join(',');
+    const photoSql = `SELECT tool_id, photo_url FROM tool_photos WHERE tool_id IN (${placeholders}) ORDER BY created_at ASC`;
+    db.all(photoSql, toolIds, (err2, photos) => {
+      if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка загрузки фото галереи' });
+      
+      const photosByTool = {};
+      (photos || []).forEach(p => {
+        if (!photosByTool[p.tool_id]) photosByTool[p.tool_id] = [];
+        photosByTool[p.tool_id].push(p.photo_url);
+      });
+
+      tools.forEach(t => {
+        t.gallery_photos = photosByTool[t.id] || [];
+      });
+
+      sendJson(res, 200, { success: true, tools: tools });
+    });
   });
 }
 
-// Сотрудник добавляет/меняет фото ТОЛЬКО у инструмента, который сейчас на нём.
+// Сотрудник добавляет фото в галерею ТОЛЬКО у инструмента, который сейчас на нём.
 // Файл заранее загружается через /api/media, сюда приходит уже готовый URL.
 async function setToolPhoto(req, res, user) {
   try {
@@ -63,9 +84,9 @@ async function setToolPhoto(req, res, user) {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       if (!row) return sendJson(res, 403, { success: false, message: 'Этот инструмент сейчас не закреплён за вами' });
 
-      db.run("UPDATE tools SET photo_url = ? WHERE id = ?", [rawPhoto, toolId], function (uErr) {
+      db.run("INSERT INTO tool_photos (tool_id, photo_url, uploaded_by) VALUES (?, ?, ?)", [toolId, rawPhoto, user.id], function (uErr) {
         if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить фото' });
-        logAction(user.username, `Добавил фото к инструменту id=${toolId}`);
+        logAction(user.username, `Добавил фото к инструменту id=${toolId} в галерею`);
         sendJson(res, 200, { success: true, photo_url: rawPhoto });
       });
     });

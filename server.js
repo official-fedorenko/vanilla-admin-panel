@@ -21,6 +21,9 @@ const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
 const handleToolCatalog = require('./src/routes/toolCatalog');
+const handleCategoryIcons = require('./src/routes/categoryIcons');
+const handleRequests = require('./src/routes/requests');
+const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
 const handleBackup = require('./src/routes/backup');
@@ -187,9 +190,24 @@ const server = http.createServer(async (req, res) => {
     return handleToolCatalog(req, res, user);
   }
 
+  // Универсальные заявления (пользователь создаёт, админ одобряет)
+  if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {
+    return handleRequests(req, res, user, parsedUrl, method);
+  }
+
   // Media
   if (pathname === '/api/media') {
     return handleMedia(req, res, user, parsedUrl, method, { UPLOADS_DIR });
+  }
+
+  // Иконки категорий инструментов (просмотр / переопределение)
+  if (pathname === '/api/category-icons') {
+    return handleCategoryIcons(req, res, user, parsedUrl, method);
+  }
+
+  // Стандартные (предустановленные) аватары
+  if (pathname === '/api/standard-avatars' && method === 'GET') {
+    return handleStandardAvatars(req, res, user);
   }
 
   // Settings
@@ -289,8 +307,16 @@ const server = http.createServer(async (req, res) => {
         res.end();
         return;
       }
+      // В админку пускаем только Admin/Superadmin. Обычного пользователя
+      // (role User) отправляем в его кабинет — смотреть админку он не должен.
+      const isAdmin = user && (user.role === 'Admin' || user.role === 'Superadmin');
+      if (user && !isAdmin && staticPath !== '/login.html') {
+        res.writeHead(302, { 'Location': '/cabinet.html' });
+        res.end();
+        return;
+      }
       if (user && staticPath === '/login.html') {
-        res.writeHead(302, { 'Location': '/admin/' });
+        res.writeHead(302, { 'Location': isAdmin ? '/admin/' : '/cabinet.html' });
         res.end();
         return;
       }
