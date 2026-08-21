@@ -7,6 +7,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* Мобильные: поле с font-size < 16px заставляет iOS зумить при фокусе —
+       держим 16px, чтобы экран не приближался сам. text-size-adjust не даёт
+       масштабировать текст при повороте. Ручной зум пользователю доступен. */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    @media (max-width: 768px) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      select, textarea { font-size: 16px !important; }
+    }
+
     :root {
       --bg-color: #050505;
       --bg-surface: rgba(14, 14, 20, 0.8);
