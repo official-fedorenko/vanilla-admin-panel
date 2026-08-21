@@ -2762,6 +2762,33 @@ function renderToolDetail(data) {
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">${btns.join('')}</div>
 
+    <div id="publicCardPanel" style="margin-top:18px;padding:16px;border:1px solid hsl(var(--border-color));border-radius:12px;background:hsl(var(--bg-main));">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;">
+          <i data-lucide="qr-code" style="width:16px;height:16px;"></i>
+          <span>Публичная карточка (по QR)</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="pcEnabled"> Карточка доступна всем
+        </label>
+      </div>
+      <div style="font-size:12px;color:hsl(var(--text-muted));margin:8px 0 12px;">
+        Отметьте, какие поля видит любой человек, отсканировавший QR. Название и категория показываются всегда.
+      </div>
+      <div id="pcFields" style="display:flex;gap:8px 18px;flex-wrap:wrap;font-size:13px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_photo"> Фото</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_brand"> Бренд</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_model"> Модель</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_serial"> Серийный №</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_inventory"> Инвентарный №</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" data-pc="show_status"> Статус</label>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn" onclick="savePublicCard(${tool.id})"><i data-lucide="save"></i><span>Сохранить</span></button>
+        <a href="/tool.html?id=${tool.id}" target="_blank" rel="noopener" style="font-size:13px;color:hsl(var(--accent));display:inline-flex;align-items:center;gap:6px;"><i data-lucide="external-link" style="width:14px;height:14px;"></i> Открыть публичную карточку</a>
+      </div>
+    </div>
+
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;">${statTiles}</div>
 
     <h4 style="margin:18px 0 10px;font-size:14px;">Фотографии</h4>
@@ -2771,6 +2798,9 @@ function renderToolDetail(data) {
     <div id="toolHistoryList" style="overflow-y:auto;">${timeline}</div>
   `;
   if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Подтягиваем текущие настройки публичной карточки в панель.
+  loadPublicCard(tool.id);
 
   // Ровно 5 записей истории в высоту, дальше — прокрутка
   const histBox = document.getElementById('toolHistoryList');
@@ -2793,6 +2823,43 @@ window.toolDetailAction = (action, id) => {
   if (action === 'issue' && window.openIssueModal) openIssueModal(id);
   else if (action === 'return' && window.openReturnModal) openReturnModal(id);
   else if (action === 'edit' && window.editTool) editTool(id);
+};
+
+// Настройки публичной карточки (по QR): загрузка в панель карточки инструмента
+async function loadPublicCard(id) {
+  try {
+    const res = await fetch(`/api/tools/public-card?id=${id}`);
+    const data = await res.json();
+    if (!data.success) return;
+    const c = data.card;
+    const enabled = document.getElementById('pcEnabled');
+    if (enabled) enabled.checked = !!c.enabled;
+    document.querySelectorAll('#pcFields input[data-pc]').forEach(cb => {
+      cb.checked = !!c[cb.getAttribute('data-pc')];
+    });
+  } catch (_) { /* панель просто останется в дефолте */ }
+}
+
+// Сохранение настроек публичной карточки
+window.savePublicCard = async (id) => {
+  const payload = { tool_id: id };
+  const enabled = document.getElementById('pcEnabled');
+  payload.enabled = enabled ? enabled.checked : true;
+  document.querySelectorAll('#pcFields input[data-pc]').forEach(cb => {
+    payload[cb.getAttribute('data-pc')] = cb.checked;
+  });
+  try {
+    const res = await fetch('/api/tools/public-card', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) showToast('Публичная карточка сохранена', 'success');
+    else showToast(data.message || 'Не удалось сохранить', 'error');
+  } catch (_) {
+    showToast('Ошибка сети при сохранении', 'error');
+  }
 };
 
 // Печать наклейки с QR-кодом

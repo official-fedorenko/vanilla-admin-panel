@@ -273,3 +273,50 @@ test('admin static pages redirect to login when there is no session', async () =
   assert.strictEqual(res.status, 302);
   assert.ok(res.headers.get('location').includes('/admin/login.html'));
 });
+
+test('public tool card respects admin visibility toggles and enable switch', async () => {
+  // Свежий логин админа (superadmin-сессию к этому моменту уже разлогинили).
+  const login = await api('/api/auth/login', {
+    method: 'POST', ip: '10.0.9.9',
+    body: { username: 'admin', password: '1234qwer' }
+  });
+  assert.strictEqual(login.status, 200);
+  const cookie = login.cookie;
+
+  // По умолчанию карточка включена и показывает все поля.
+  const def = await api('/api/tools/public-card?id=1', { cookie });
+  assert.strictEqual(def.status, 200);
+  assert.strictEqual(def.json.card.enabled, 1);
+  assert.strictEqual(def.json.card.show_serial, 1);
+
+  // Прячем серийный/инвентарный номера и статус.
+  const saved = await api('/api/tools/public-card', {
+    method: 'POST', cookie,
+    body: { tool_id: 1, enabled: true, show_photo: true, show_brand: true,
+            show_model: true, show_serial: false, show_inventory: false, show_status: false }
+  });
+  assert.strictEqual(saved.status, 200);
+  assert.strictEqual(saved.json.success, true);
+
+  // Публичная карточка больше не отдаёт скрытые поля, но имя/категория на месте.
+  const pub = await api('/api/public/tool?id=1');
+  assert.strictEqual(pub.status, 200);
+  assert.ok(pub.json.tool.name);
+  assert.ok(pub.json.tool.brand);
+  assert.strictEqual(pub.json.tool.serial_number, undefined);
+  assert.strictEqual(pub.json.tool.inventory_number, undefined);
+  assert.strictEqual(pub.json.tool.status, undefined);
+
+  // Выключаем карточку целиком — публичный доступ закрыт (404).
+  const off = await api('/api/tools/public-card', {
+    method: 'POST', cookie, body: { tool_id: 1, enabled: false }
+  });
+  assert.strictEqual(off.status, 200);
+  const pubOff = await api('/api/public/tool?id=1');
+  assert.strictEqual(pubOff.status, 404);
+});
+
+test('saving a public tool card requires an authenticated admin', async () => {
+  const res = await api('/api/tools/public-card', { method: 'POST', body: { tool_id: 1 } });
+  assert.ok(res.status === 401 || res.status === 403);
+});

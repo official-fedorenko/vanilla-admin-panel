@@ -106,10 +106,14 @@
       document.getElementById('name').textContent = t.name || 'Без названия';
       document.getElementById('cat').textContent = t.category || '';
 
-      const st = STATUS[t.status] || { label: t.status || '—', cls: 'b-muted' };
       const badge = document.getElementById('status');
-      badge.textContent = st.label;
-      badge.className = 'badge ' + st.cls;
+      if (t.status) {
+        const st = STATUS[t.status] || { label: t.status, cls: 'b-muted' };
+        badge.textContent = st.label;
+        badge.className = 'badge ' + st.cls;
+      } else {
+        badge.classList.add('hidden');
+      }
 
       if (t.photo_url) {
         document.getElementById('photoBox').innerHTML =
