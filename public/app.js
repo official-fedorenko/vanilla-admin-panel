@@ -2747,6 +2747,7 @@ function renderToolDetail(data) {
     <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;">
       <img id="toolQrImg" src="/api/tools/qr?id=${tool.id}" alt="QR" style="width:120px;height:120px;background:#fff;border-radius:10px;padding:6px;">
       <div style="font-size:11px;color:hsl(var(--text-muted));">Сканируй → карточка</div>
+      <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="refreshToolQr(${tool.id})"><i data-lucide="refresh-cw" style="width:13px;height:13px;"></i><span>Обновить QR</span></button>
     </div>`;
 
   document.getElementById('toolDetailBody').innerHTML = `
@@ -2862,6 +2863,15 @@ window.savePublicCard = async (id) => {
   }
 };
 
+// Обновить отображаемый QR, минуя кэш браузера (сам QR всегда кодирует
+// актуальную ссылку — кнопка просто заставляет перезагрузить картинку,
+// чтобы убедиться в правильности перед печатью).
+window.refreshToolQr = (id) => {
+  const img = document.getElementById('toolQrImg');
+  if (img) img.src = `/api/tools/qr?id=${id}&_=${Date.now()}`;
+  showToast('QR обновлён', 'success');
+};
+
 // Печать наклейки с QR-кодом
 window.printToolQr = (id) => {
   const tool = toolsList.find(t => t.id === id) || {};
@@ -2869,7 +2879,7 @@ window.printToolQr = (id) => {
   if (!w) { showToast('Разрешите всплывающие окна для печати', 'error'); return; }
   w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(tool.name || '')}</title>
     <body style="font-family:sans-serif;text-align:center;padding:24px;">
-      <img src="/api/tools/qr?id=${id}" style="width:260px;height:260px;">
+      <img src="/api/tools/qr?id=${id}&_=${Date.now()}" style="width:260px;height:260px;">
       <h2 style="margin:12px 0 4px;">${escapeHtml(tool.name || '')}</h2>
       <div style="color:#555;">${escapeHtml(tool.inventory_number || '')}</div>
       <div style="color:#888;font-size:13px;">${escapeHtml([tool.brand, tool.model].filter(Boolean).join(' · '))}</div>
@@ -2883,7 +2893,7 @@ window.saveToolQr = async (id) => {
   const tool = toolsList.find(t => t.id === id) || {};
   const base = `qr-${(tool.inventory_number || tool.name || 'tool').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
   try {
-    const res = await fetch(`/api/tools/qr?id=${id}`);
+    const res = await fetch(`/api/tools/qr?id=${id}&_=${Date.now()}`);
     const svgText = await res.text();
     // Рендерим SVG на canvas → PNG (крупнее и с подписью инвентарного номера)
     const size = 600, pad = 40, labelH = tool.inventory_number ? 60 : 20;
