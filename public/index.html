@@ -430,7 +430,13 @@
           </div>
         </div>
         
-        <!-- Список пользователей, написавших в поддержку -->
+        <!-- Поиск по пользователям -->
+        <div style="position: relative; margin-bottom: 16px; max-width: 420px;">
+          <i data-lucide="search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:hsl(var(--text-muted));"></i>
+          <input type="text" id="supportUserSearch" class="form-control" placeholder="Поиск по имени или нику..." style="padding-left: 38px;" autocomplete="off">
+        </div>
+
+        <!-- Список всех пользователей (клик → чат в модалке) -->
         <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
           <div id="ticketsList">
             <!-- Dynamically populated -->
