@@ -2919,21 +2919,41 @@ function renderToolDetail(data) {
 
   window.__detailToolId = tool.id;
   const gallery = photos.length
-    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;">
-        ${photos.map(p => {
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">
+        ${photos.map((p, i) => {
           const isAvatar = tool.photo_url && p.photo_url === tool.photo_url;
-          const mark = isAvatar
-            ? `<span style="position:absolute;top:4px;left:4px;background:hsl(var(--accent-purple));color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;">Аватар</span>`
-            : `<button type="button" onclick="setToolAvatar(${tool.id}, '${p.photo_url}')" title="Сделать аватаром" style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.55);color:#fff;border:none;font-size:10px;padding:2px 6px;border-radius:8px;cursor:pointer;">На аватар</button>`;
+          const when = p.created_at ? new Date(p.created_at.replace(' ', 'T') + 'Z')
+            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+          // Бейдж-статус: текущий аватар / порядковый номер (первое = №1)
+          const corner = isAvatar
+            ? `<span style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:4px;background:hsl(var(--accent-purple));color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;"><i data-lucide="star" style="width:12px;height:12px;"></i> Аватар</span>`
+            : `<span style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;">Фото ${i + 1}</span>`;
+          const action = isAvatar ? '' :
+            `<button type="button" onclick="setToolAvatar(${tool.id}, '${p.photo_url}')" title="Сделать аватаром инструмента"
+                     style="width:100%;margin-top:8px;padding:7px;background:hsl(var(--accent-purple) / 0.12);border:1px solid hsl(var(--accent-purple));color:hsl(var(--text-primary));border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+               <i data-lucide="star" style="width:14px;height:14px;"></i> Сделать аватаром
+             </button>`;
           return `
-          <div style="position:relative;">
-            ${mark}
-            <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:96px;object-fit:cover;border-radius:10px;border:1px solid ${isAvatar ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};cursor:zoom-in;">
-            <div style="font-size:10px;color:hsl(var(--text-muted));margin-top:3px;text-align:center;">${escapeHtml(p.uploaded_by_name || '—')}<br>${p.created_at ? new Date(p.created_at.replace(' ','T')+'Z').toLocaleDateString('ru-RU') : ''}</div>
+          <div style="background:hsl(var(--bg-main));border:1px solid ${isAvatar ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};border-radius:12px;padding:8px;">
+            <div style="position:relative;">
+              ${corner}
+              <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:150px;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block;">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:hsl(var(--text-secondary));">
+              <i data-lucide="user" style="width:13px;height:13px;color:hsl(var(--text-muted));flex-shrink:0;"></i>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.uploaded_by_name || 'Неизвестно')}</span>
+            </div>
+            ${when ? `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:hsl(var(--text-muted));">
+              <i data-lucide="calendar" style="width:13px;height:13px;flex-shrink:0;"></i><span>${when}</span>
+            </div>` : ''}
+            ${action}
           </div>`;
         }).join('')}
       </div>`
-    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Фотографий пока нет. Первое загруженное фото станет аватаром.</div>';
+    : `<div style="display:flex;align-items:center;gap:10px;color:hsl(var(--text-muted));font-size:13px;padding:16px;background:hsl(var(--bg-main));border:1px dashed hsl(var(--border-color));border-radius:12px;">
+        <i data-lucide="image-off" style="width:18px;height:18px;"></i>
+        <span>Фотографий пока нет. Первое загруженное фото станет аватаром инструмента.</span>
+      </div>`;
 
   const timeline = history.length
     ? history.map(h => {
