@@ -87,7 +87,11 @@ async function setToolPhoto(req, res, user) {
       db.run("INSERT INTO tool_photos (tool_id, photo_url, uploaded_by) VALUES (?, ?, ?)", [toolId, rawPhoto, user.id], function (uErr) {
         if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить фото' });
         logAction(user.username, `Добавил фото к инструменту id=${toolId} в галерею`);
-        sendJson(res, 200, { success: true, photo_url: rawPhoto });
+        // Первое фото инструмента автоматически становится аватаром.
+        db.run("UPDATE tools SET photo_url = ? WHERE id = ? AND (photo_url IS NULL OR photo_url = '')",
+          [rawPhoto, toolId], () => {
+            sendJson(res, 200, { success: true, photo_url: rawPhoto });
+          });
       });
     });
   } catch (e) {

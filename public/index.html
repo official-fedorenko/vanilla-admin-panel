@@ -786,19 +786,19 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Фото инструмента</label>
+            <label>Фото инструмента (аватар)</label>
             <div style="display:flex; align-items:center; gap:14px;">
               <div id="toolPhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
                 <i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить</button>
-                <button type="button" class="btn btn-secondary" id="toolPhotoPickBtn">Из медиатеки</button>
                 <button type="button" class="btn btn-secondary" id="toolPhotoClearBtn" style="display:none;">Убрать</button>
               </div>
               <input type="file" id="toolPhotoInput" accept="image/*" style="display:none;">
               <input type="hidden" id="toolPhotoUrl">
             </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">Первое загруженное фото становится аватаром. Аватар можно выбрать из фото инструмента в его карточке.</small>
           </div>
           <div class="form-group">
             <label for="toolNotes">Заметки</label>

@@ -2451,6 +2451,16 @@ function setupTools() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+          // Для нового инструмента с фото — регистрируем его в галерее,
+          // чтобы аватар был среди фото инструмента.
+          if (!id && data.id && payload.photo_url) {
+            try {
+              await fetch('/api/tools/photo', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tool_id: data.id, photo_url: payload.photo_url })
+              });
+            } catch (_) { /* некритично */ }
+          }
           showToast(id ? 'Инструмент обновлён' : 'Инструмент добавлен', 'success');
           closeModal();
           await loadTools();
@@ -2498,11 +2508,27 @@ function setupTools() {
       photoBtn.textContent = 'Загрузка...';
       try {
         const url = await uploadImageToMedia(file, 'tools');
-        if (url) {
-          setToolPhotoPreview(url);
-          showToast('Фото загружено', 'success');
+        if (!url) { showToast('Не удалось загрузить фото', 'error'); return; }
+
+        const editId = document.getElementById('toolId').value;
+        if (editId) {
+          // Существующий инструмент: фото уходит в его галерею; первое станет
+          // аватаром на сервере. Обновляем превью аватара из ответа.
+          const res = await fetch('/api/tools/photo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tool_id: parseInt(editId, 10), photo_url: url })
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            if (d.is_avatar) setToolPhotoPreview(url);
+            showToast(d.is_avatar ? 'Фото загружено и стало аватаром' : 'Фото добавлено в галерею инструмента', 'success');
+          } else {
+            showToast(d.message || 'Не удалось добавить фото', 'error');
+          }
         } else {
-          showToast('Не удалось загрузить фото', 'error');
+          // Новый инструмент: фото станет аватаром при создании.
+          setToolPhotoPreview(url);
+          showToast('Фото загружено — станет аватаром', 'success');
         }
       } catch (e) {
         showToast('Ошибка загрузки фото', 'error');
@@ -2903,15 +2929,23 @@ function renderToolDetail(data) {
       <div style="font-size:11px;color:hsl(var(--text-muted));">${label}</div>
     </div>`).join('');
 
+  window.__detailToolId = tool.id;
   const gallery = photos.length
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;">
-        ${photos.map(p => `
+        ${photos.map(p => {
+          const isAvatar = tool.photo_url && p.photo_url === tool.photo_url;
+          const mark = isAvatar
+            ? `<span style="position:absolute;top:4px;left:4px;background:hsl(var(--accent-purple));color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:8px;">Аватар</span>`
+            : `<button type="button" onclick="setToolAvatar(${tool.id}, '${p.photo_url}')" title="Сделать аватаром" style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.55);color:#fff;border:none;font-size:10px;padding:2px 6px;border-radius:8px;cursor:pointer;">На аватар</button>`;
+          return `
           <div style="position:relative;">
-            <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:96px;object-fit:cover;border-radius:10px;border:1px solid hsl(var(--border-color));cursor:zoom-in;">
+            ${mark}
+            <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:96px;object-fit:cover;border-radius:10px;border:1px solid ${isAvatar ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};cursor:zoom-in;">
             <div style="font-size:10px;color:hsl(var(--text-muted));margin-top:3px;text-align:center;">${escapeHtml(p.uploaded_by_name || '—')}<br>${p.created_at ? new Date(p.created_at.replace(' ','T')+'Z').toLocaleDateString('ru-RU') : ''}</div>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>`
-    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Фотографий пока нет</div>';
+    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Фотографий пока нет. Первое загруженное фото станет аватаром.</div>';
 
   const timeline = history.length
     ? history.map(h => {
@@ -2975,13 +3009,47 @@ function renderToolDetail(data) {
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;">${statTiles}</div>
 
-    <h4 style="margin:18px 0 10px;font-size:14px;">Фотографии</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px;">
+      <h4 style="margin:0;font-size:14px;">Фотографии</h4>
+      <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('toolGalleryInput').click()"><i data-lucide="image-plus" style="width:14px;height:14px;"></i><span>Добавить фото</span></button>
+      <input type="file" id="toolGalleryInput" accept="image/*" style="display:none;">
+    </div>
     ${gallery}
 
     <h4 style="margin:22px 0 12px;font-size:14px;">История закреплений</h4>
     <div id="toolHistoryList" style="overflow-y:auto;">${timeline}</div>
   `;
   if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Загрузка нового фото в галерею (первое станет аватаром автоматически)
+  const galInput = document.getElementById('toolGalleryInput');
+  if (galInput) {
+    galInput.addEventListener('change', async () => {
+      const file = galInput.files[0];
+      if (!file) return;
+      showToast('Загрузка фото...', 'info');
+      try {
+        const url = await uploadImageToMedia(file, 'tools');
+        if (!url) return showToast('Не удалось загрузить фото', 'error');
+        const res = await fetch('/api/tools/photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tool_id: tool.id, photo_url: url })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(d.is_avatar ? 'Фото добавлено и стало аватаром' : 'Фото добавлено в галерею', 'success');
+          window.openToolDetail(tool.id);   // перерисовать карточку
+          loadTools();                       // обновить миниатюру в списке
+        } else {
+          showToast(d.message || 'Не удалось добавить фото', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        galInput.value = '';
+      }
+    });
+  }
 
   // Ровно 5 записей истории в высоту, дальше — прокрутка
   const histBox = document.getElementById('toolHistoryList');
@@ -2996,6 +3064,26 @@ window.openLightbox = (src) => {
   const lb = document.getElementById('photoLightbox');
   document.getElementById('photoLightboxImg').src = src;
   lb.style.display = 'flex';
+};
+
+// Назначить аватаром фото из галереи инструмента (только из его же фото).
+window.setToolAvatar = async (toolId, photoUrl) => {
+  try {
+    const res = await fetch('/api/tools/set-avatar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_id: toolId, photo_url: photoUrl })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Аватар обновлён', 'success');
+      window.openToolDetail(toolId);
+      loadTools();
+    } else {
+      showToast(d.message || 'Не удалось сменить аватар', 'error');
+    }
+  } catch (e) {
+    showToast('Ошибка сети', 'error');
+  }
 };
 
 // Действия из карточки — закрываем её и открываем нужную модалку
