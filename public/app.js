@@ -213,6 +213,11 @@ function initApp() {
   // Счётчик ожидающих заявок на инструмент (бейдж в меню)
   updateRequestsBadge();
 
+  // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
+  // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
+  updateSupportBadge();
+  setInterval(updateSupportBadge, 15000);
+
   // Modal Setup
   const modal = document.getElementById('articleModalOverlay');
   const addBtn = document.getElementById('addArticleBtn');
@@ -660,6 +665,25 @@ async function updateRequestsBadge(count) {
   }
   if (count > 0) { badge.textContent = count; badge.style.display = ''; }
   else badge.style.display = 'none';
+}
+
+// Бейдж непрочитанных сообщений поддержки в меню (аналогично заявкам).
+// count — суммарное число непрочитанных сообщений по всем диалогам.
+function setSupportBadge(count) {
+  const badge = document.getElementById('supportBadge');
+  if (!badge) return;
+  if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = ''; }
+  else badge.style.display = 'none';
+}
+
+async function updateSupportBadge() {
+  try {
+    const res = await fetch('/api/support/tickets');
+    if (!res.ok) return; // не админ или ошибка — молча выходим
+    const data = await res.json();
+    const total = (data.tickets || []).reduce((s, t) => s + (t.unread_count || 0), 0);
+    setSupportBadge(total);
+  } catch (e) { /* тихо */ }
 }
 
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
@@ -1622,29 +1646,75 @@ async function loadSupportTickets() {
   }
 }
 
+// Короткая относительная дата: «5 мин», «3 ч», «2 дн», иначе дата.
+function shortWhen(raw) {
+  if (!raw) return '';
+  const d = new Date(String(raw).replace(' ', 'T'));
+  if (isNaN(d)) return '';
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days} дн`;
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+}
+
 function renderTickets(tickets) {
   const list = document.getElementById('ticketsList');
   if (!list) return;
+
+  // Обновляем бейдж меню из этих же данных.
+  setSupportBadge((tickets || []).reduce((s, t) => s + (t.unread_count || 0), 0));
+
   if (!tickets.length) {
-    list.innerHTML = '<div style="padding: 20px; color: hsl(var(--text-muted)); text-align: center;">Нет активных диалогов</div>';
+    list.innerHTML = `
+      <div style="padding: 40px 20px; color: hsl(var(--text-muted)); text-align: center; display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <i data-lucide="inbox" style="width:36px; height:36px; opacity:0.5;"></i>
+        <div>Пока никто не писал</div>
+      </div>`;
+    if (window.lucide) lucide.createIcons();
     return;
   }
-  
+
   let html = '';
   tickets.forEach(t => {
-    const isActive = t.ticket_id === activeTicketId ? 'background: rgba(255,255,255,0.05);' : '';
-    const badge = t.unread_count > 0 ? `<span style="background: var(--accent-purple); color: white; border-radius: 10px; padding: 2px 6px; font-size: 10px; font-weight: bold;">${t.unread_count}</span>` : '';
-    const avatarLetter = t.name.charAt(0).toUpperCase();
-    
+    const unread = t.unread_count || 0;
+    const isActive = t.ticket_id === activeTicketId;
+    const rowBg = isActive ? 'background: hsl(var(--accent-purple) / 0.12);'
+                : unread > 0 ? 'background: hsl(var(--accent-purple) / 0.06);' : '';
+    const accent = isActive ? 'box-shadow: inset 3px 0 0 hsl(var(--accent-purple));'
+                 : unread > 0 ? 'box-shadow: inset 3px 0 0 hsl(var(--accent-cyan));' : '';
+    const badge = unread > 0
+      ? `<span title="Непрочитанных: ${unread}" style="background: hsl(var(--accent-purple)); color:#fff; border-radius: 10px; min-width:18px; text-align:center; padding: 1px 6px; font-size: 11px; font-weight: 700;">${unread > 99 ? '99+' : unread}</span>`
+      : '';
+    const nameWeight = unread > 0 ? '700' : '600';
+    const avatarLetter = (t.name || '?').charAt(0).toUpperCase();
+
+    // Превью последнего сообщения (кто написал последним + текст).
+    const fromAdmin = t.last_sender_role === 'Admin' || t.last_sender_role === 'Superadmin';
+    const preview = t.last_message
+      ? (fromAdmin ? 'Вы: ' : '') + String(t.last_message).replace(/\s+/g, ' ').trim()
+      : (t.email || 'Гость');
+    const when = shortWhen(t.last_activity);
+
     html += `
-      <div style="padding: 12px 16px; border-bottom: 1px solid hsl(var(--border-color)); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s; ${isActive}" onclick="openSupportChat('${t.ticket_id}', '${escapeHtml(t.name)}', '${escapeHtml(t.email)}')">
-        <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--bg-surface); display: flex; align-items: center; justify-content: center; font-weight: bold;">${avatarLetter}</div>
-        <div style="flex: 1; overflow: hidden;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <strong style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.name)}</strong>
-            ${badge}
+      <div style="padding: 12px 16px; border-bottom: 1px solid hsl(var(--border-color)); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s; ${rowBg} ${accent}"
+           onmouseover="this.style.background='hsl(var(--accent-purple) / 0.1)'"
+           onmouseout="this.style.background='${isActive ? 'hsl(var(--accent-purple) / 0.12)' : unread > 0 ? 'hsl(var(--accent-purple) / 0.06)' : 'transparent'}'"
+           onclick="openSupportChat('${t.ticket_id}', '${escapeHtml(t.name)}', '${escapeHtml(t.email)}')">
+        <div style="width: 40px; height: 40px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff;">${avatarLetter}</div>
+        <div style="flex: 1; min-width:0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap:8px; margin-bottom: 3px;">
+            <strong style="font-size: 14px; font-weight:${nameWeight}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.name || 'Пользователь')}</strong>
+            <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+              ${when ? `<span style="font-size:11px; color:hsl(var(--text-muted));">${when}</span>` : ''}
+              ${badge}
+            </span>
           </div>
-          <div style="font-size: 12px; color: hsl(var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.email || 'Гость')}</div>
+          <div style="font-size: 12px; color: hsl(var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(preview)}</div>
         </div>
       </div>
     `;
@@ -1710,6 +1780,8 @@ async function loadSupportMessages(ticketId, isPolling = false) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticketId })
       });
+      // Сразу обновляем бейдж меню (диалог прочитан).
+      if (!isPolling) updateSupportBadge();
     }
   } catch (err) {}
 }
