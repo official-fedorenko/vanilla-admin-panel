@@ -2484,20 +2484,8 @@ function setupTools() {
 
   // --- Photo upload inside tool modal ---
   const photoBtn = document.getElementById('toolPhotoBtn');
-  const photoPickBtn = document.getElementById('toolPhotoPickBtn');
   const photoClearBtn = document.getElementById('toolPhotoClearBtn');
   const photoInput = document.getElementById('toolPhotoInput');
-  
-  if (photoPickBtn) {
-    photoPickBtn.addEventListener('click', () => {
-      if (window.openMediaPicker) {
-        window.openMediaPicker((url) => {
-          setToolPhotoPreview(url);
-          showToast('Фото выбрано из медиатеки', 'success');
-        }, 'tools');
-      }
-    });
-  }
 
   if (photoBtn && photoInput) {
     photoBtn.addEventListener('click', () => photoInput.click());
