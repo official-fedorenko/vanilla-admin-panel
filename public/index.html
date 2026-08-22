@@ -430,50 +430,40 @@
           </div>
         </div>
         
-        <div class="support-container">
-
-          <!-- Tickets List -->
-          <div class="support-sidebar">
-            <div style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2);">
-              <h3 style="font-size: 14px; margin: 0;">Диалоги</h3>
-            </div>
-            <div id="ticketsList" style="flex: 1; overflow-y: auto;">
-              <!-- Dynamically populated -->
-            </div>
-          </div>
-
-          <!-- Chat Window -->
-          <div class="support-chat">
-            <!-- Header -->
-            <div id="chatHeader" style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; display: none;">
-              <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; font-weight: bold;" id="chatHeaderAvatar">?</div>
-              <div>
-                <div style="font-weight: 600;" id="chatHeaderName">Выберите диалог</div>
-                <div style="font-size: 12px; color: hsl(var(--text-muted));" id="chatHeaderEmail">...</div>
-              </div>
-            </div>
-            
-            <!-- Empty state -->
-            <div id="chatEmptyState" style="flex: 1; display: flex; align-items: center; justify-content: center; color: hsl(var(--text-muted)); flex-direction: column; gap: 10px;">
-              <i data-lucide="message-square" style="width: 48px; height: 48px; opacity: 0.5;"></i>
-              Выберите диалог слева для начала общения
-            </div>
-
-            <!-- Messages List -->
-            <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 20px; display: none; flex-direction: column; gap: 16px;">
-              <!-- Dynamically populated -->
-            </div>
-            
-            <!-- Input Area -->
-            <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-              <form id="replyForm" style="display: flex; gap: 10px;">
-                <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1;" required autocomplete="off">
-                <button type="submit" class="btn" style="padding: 0 20px;">Отправить</button>
-              </form>
-            </div>
+        <!-- Список пользователей, написавших в поддержку -->
+        <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          <div id="ticketsList">
+            <!-- Dynamically populated -->
           </div>
         </div>
       </section>
+
+      <!-- SUPPORT CHAT MODAL -->
+      <div class="modal-overlay" id="supportChatModalOverlay">
+        <div class="modal" style="display: flex; flex-direction: column; height: min(80vh, 640px); padding: 0; overflow: hidden;">
+          <div class="modal-header" style="margin: 0; padding: 16px 20px; border-bottom: 1px solid hsl(var(--border-color));">
+            <div style="display: flex; align-items: center; gap: 12px; min-width:0;">
+              <div class="chat-avatar" style="width: 38px; height: 38px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff;" id="chatHeaderAvatar">?</div>
+              <div style="min-width:0;">
+                <div style="font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="chatHeaderName">Пользователь</div>
+                <div style="font-size: 12px; color: hsl(var(--text-muted)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="chatHeaderEmail">...</div>
+              </div>
+            </div>
+            <button class="modal-close" id="closeSupportChatBtn" onclick="closeSupportChat()">&times;</button>
+          </div>
+
+          <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color));">
+            <form id="replyForm" style="display: flex; gap: 10px;">
+              <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1;" required autocomplete="off">
+              <button type="submit" class="btn" style="padding: 0 20px;">Отправить</button>
+            </form>
+          </div>
+        </div>
+      </div>
 
       <!-- USERS SECTION -->
       <section id="section-users" class="app-section">

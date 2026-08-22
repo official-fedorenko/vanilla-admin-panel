@@ -1724,17 +1724,20 @@ function renderTickets(tickets) {
 
 window.openSupportChat = (ticketId, name, email) => {
   activeTicketId = ticketId;
-  document.getElementById('chatEmptyState').style.display = 'none';
-  document.getElementById('chatHeader').style.display = 'flex';
-  document.getElementById('chatMessages').style.display = 'flex';
-  document.getElementById('chatInputArea').style.display = 'block';
-  
   document.getElementById('chatHeaderName').textContent = name;
   document.getElementById('chatHeaderEmail').textContent = email || 'Гость';
-  document.getElementById('chatHeaderAvatar').textContent = name.charAt(0).toUpperCase();
-  
-  loadSupportTickets();
+  document.getElementById('chatHeaderAvatar').textContent = (name || '?').charAt(0).toUpperCase();
+  document.getElementById('supportChatModalOverlay').classList.add('active');
+
   loadSupportMessages(ticketId);
+  loadSupportTickets(); // обновить счётчики в списке и бейдж меню
+  setTimeout(() => document.getElementById('replyMessageInput')?.focus(), 50);
+};
+
+window.closeSupportChat = () => {
+  document.getElementById('supportChatModalOverlay').classList.remove('active');
+  activeTicketId = null;
+  loadSupportTickets(); // непрочитанные обнулились — обновляем список/бейдж
 };
 
 // Admin-initiated chat function
@@ -1752,18 +1755,14 @@ function adminStartChat(userId, name, email) {
     } catch (e) {
       console.error('Failed to create admin chat ticket', e);
     }
-    // Update UI
-    document.getElementById('chatEmptyState').style.display = 'none';
-    document.getElementById('chatHeader').style.display = 'flex';
-    document.getElementById('chatMessages').style.display = 'flex';
-    document.getElementById('chatInputArea').style.display = 'block';
+    // Открываем модалку чата
     document.getElementById('chatHeaderName').textContent = name;
     document.getElementById('chatHeaderEmail').textContent = email || 'Гость';
-    document.getElementById('chatHeaderAvatar').textContent = name.charAt(0).toUpperCase();
-    // Load messages (likely empty) and start polling for this ticket
+    document.getElementById('chatHeaderAvatar').textContent = (name || '?').charAt(0).toUpperCase();
+    document.getElementById('supportChatModalOverlay').classList.add('active');
     loadSupportMessages(ticketId);
-    // Ensure the ticket appears in the list (refresh)
     loadSupportTickets();
+    setTimeout(() => document.getElementById('replyMessageInput')?.focus(), 50);
   })();
 }
 
@@ -1853,6 +1852,16 @@ if (replyForm) {
     }
   });
 }
+
+// Закрытие модалки чата поддержки по клику на фон и по Escape
+(function () {
+  const overlay = document.getElementById('supportChatModalOverlay');
+  if (!overlay) return;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSupportChat(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('active')) closeSupportChat();
+  });
+})();
 
 // =====================================================================
 //  EMPLOYEES (Сотрудники) — CRUD модуль учёта персонала
