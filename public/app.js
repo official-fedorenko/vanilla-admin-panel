@@ -1615,36 +1615,58 @@ window.deleteUser = async (id) => {
 // --- SUPPORT CHAT LOGIC ---
 let activeTicketId = null;
 let supportPollingInterval = null;
+let supportUsersCache = [];   // все пользователи + агрегаты поддержки
+let supportSearchQuery = '';
+
+async function fetchSupportUsers() {
+  const res = await fetch('/api/support/users');
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.users || [];
+}
+
+// Фильтр по имени/нику и сортировка: сначала непрочитанные, затем по
+// последней активности, затем по имени.
+function renderSupportUsers() {
+  const q = supportSearchQuery.trim().toLowerCase();
+  let list = supportUsersCache.slice();
+  if (q) list = list.filter(u => (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
+  list.sort((a, b) => {
+    if ((b.unread_count || 0) !== (a.unread_count || 0)) return (b.unread_count || 0) - (a.unread_count || 0);
+    const ta = a.last_activity ? Date.parse(String(a.last_activity).replace(' ', 'T')) : 0;
+    const tb = b.last_activity ? Date.parse(String(b.last_activity).replace(' ', 'T')) : 0;
+    if (tb !== ta) return tb - ta;
+    return (a.name || '').localeCompare(b.name || '', 'ru');
+  });
+  renderTickets(list, !!q);
+}
 
 async function loadSupportTickets() {
   try {
-    const res = await fetch('/api/support/tickets');
-    if (res.ok) {
-      const data = await res.json();
-      renderTickets(data.tickets);
-      
-      // Start polling for new tickets/messages
-      if (supportPollingInterval) clearInterval(supportPollingInterval);
-      supportPollingInterval = setInterval(async () => {
-        // Poll logic
-        if (document.getElementById('section-support') && document.getElementById('section-support').classList.contains('active')) {
-          const tRes = await fetch('/api/support/tickets');
-          if (tRes.ok) {
-            const tData = await tRes.json();
-            renderTickets(tData.tickets);
-            if (activeTicketId) {
-              loadSupportMessages(activeTicketId, true);
-            }
-          }
-        } else {
-          clearInterval(supportPollingInterval);
-        }
-      }, 5000);
-    }
+    const users = await fetchSupportUsers();
+    if (users) { supportUsersCache = users; renderSupportUsers(); }
+
+    // Опрос новых сообщений, пока открыт раздел поддержки
+    if (supportPollingInterval) clearInterval(supportPollingInterval);
+    supportPollingInterval = setInterval(async () => {
+      const sec = document.getElementById('section-support');
+      if (sec && sec.classList.contains('active')) {
+        const u = await fetchSupportUsers();
+        if (u) { supportUsersCache = u; renderSupportUsers(); }
+        if (activeTicketId) loadSupportMessages(activeTicketId, true);
+      } else {
+        clearInterval(supportPollingInterval);
+      }
+    }, 5000);
   } catch (err) {
-    showToast('Ошибка загрузки тикетов', 'error');
+    showToast('Ошибка загрузки списка пользователей', 'error');
   }
 }
+
+document.getElementById('supportUserSearch')?.addEventListener('input', (e) => {
+  supportSearchQuery = e.target.value || '';
+  renderSupportUsers();
+});
 
 // Короткая относительная дата: «5 мин», «3 ч», «2 дн», иначе дата.
 function shortWhen(raw) {
@@ -1662,18 +1684,19 @@ function shortWhen(raw) {
   return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }
 
-function renderTickets(tickets) {
+function renderTickets(tickets, isFiltered = false) {
   const list = document.getElementById('ticketsList');
   if (!list) return;
 
-  // Обновляем бейдж меню из этих же данных.
-  setSupportBadge((tickets || []).reduce((s, t) => s + (t.unread_count || 0), 0));
+  // Бейдж меню считаем из ПОЛНОГО кэша (не из отфильтрованного списка).
+  setSupportBadge((supportUsersCache || []).reduce((s, t) => s + (t.unread_count || 0), 0));
 
   if (!tickets.length) {
+    const msg = isFiltered ? 'Никого не найдено' : 'Пока нет пользователей';
     list.innerHTML = `
       <div style="padding: 40px 20px; color: hsl(var(--text-muted)); text-align: center; display:flex; flex-direction:column; align-items:center; gap:10px;">
-        <i data-lucide="inbox" style="width:36px; height:36px; opacity:0.5;"></i>
-        <div>Пока никто не писал</div>
+        <i data-lucide="${isFiltered ? 'search-x' : 'users'}" style="width:36px; height:36px; opacity:0.5;"></i>
+        <div>${msg}</div>
       </div>`;
     if (window.lucide) lucide.createIcons();
     return;
@@ -1697,15 +1720,15 @@ function renderTickets(tickets) {
     const fromAdmin = t.last_sender_role === 'Admin' || t.last_sender_role === 'Superadmin';
     const preview = t.last_message
       ? (fromAdmin ? 'Вы: ' : '') + String(t.last_message).replace(/\s+/g, ' ').trim()
-      : (t.email || 'Гость');
+      : (t.email ? t.email + ' · нет переписки' : 'Нет переписки — напишите первым');
     const when = shortWhen(t.last_activity);
 
     html += `
       <div style="padding: 12px 16px; border-bottom: 1px solid hsl(var(--border-color)); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s; ${rowBg} ${accent}"
            onmouseover="this.style.background='hsl(var(--accent-purple) / 0.1)'"
            onmouseout="this.style.background='${isActive ? 'hsl(var(--accent-purple) / 0.12)' : unread > 0 ? 'hsl(var(--accent-purple) / 0.06)' : 'transparent'}'"
-           onclick="openSupportChat('${t.ticket_id}', '${escapeHtml(t.name)}', '${escapeHtml(t.email)}')">
-        <div style="width: 40px; height: 40px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff;">${avatarLetter}</div>
+           onclick="openSupportChat('${t.ticket_id}', '${escapeHtml(t.name || '')}', '${escapeHtml(t.email || '')}')">
+        <div style="width: 40px; height: 40px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff; overflow:hidden;">${t.avatar_url ? `<img src="${escapeHtml(t.avatar_url)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.replaceWith(document.createTextNode('${avatarLetter}'))">` : avatarLetter}</div>
         <div style="flex: 1; min-width:0;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap:8px; margin-bottom: 3px;">
             <strong style="font-size: 14px; font-weight:${nameWeight}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.name || 'Пользователь')}</strong>
