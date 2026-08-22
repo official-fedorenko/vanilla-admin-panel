@@ -13,9 +13,11 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
     }
     const query = `
       SELECT ticket_id, name, email, MAX(created_at) as last_activity,
-             SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count
-      FROM support_messages 
-      GROUP BY ticket_id 
+             SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count,
+             (SELECT m2.message FROM support_messages m2 WHERE m2.ticket_id = support_messages.ticket_id ORDER BY m2.id DESC LIMIT 1) as last_message,
+             (SELECT m3.sender_role FROM support_messages m3 WHERE m3.ticket_id = support_messages.ticket_id ORDER BY m3.id DESC LIMIT 1) as last_sender_role
+      FROM support_messages
+      GROUP BY ticket_id
       ORDER BY last_activity DESC
     `;
     db.all(query, [], (err, rows) => {
