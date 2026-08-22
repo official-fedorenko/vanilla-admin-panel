@@ -440,6 +440,9 @@ db.serialize(() => {
   stmt.run("public_card_show_serial", "true", "Публичная карточка: показывать серийный №");
   stmt.run("public_card_show_inventory", "true", "Публичная карточка: показывать инвентарный №");
   stmt.run("public_card_show_status", "true", "Публичная карточка: показывать статус");
+  stmt.run("public_card_show_category", "true", "Публичная карточка: показывать категорию");
+  stmt.run("public_card_show_purchase_date", "false", "Публичная карточка: показывать дату покупки");
+  stmt.run("public_card_show_notes", "false", "Публичная карточка: показывать заметки");
   stmt.finalize();
 
   // Заполняем тестовые статьи

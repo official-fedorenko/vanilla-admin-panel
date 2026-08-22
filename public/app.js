@@ -1334,7 +1334,7 @@ async function loadSettings() {
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address'],
-    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status']
+    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes']
   };
 
   // Понятные подписи (не зависят от description в БД, который может теряться
@@ -1346,7 +1346,10 @@ async function loadSettings() {
     public_card_show_model: 'Показывать модель',
     public_card_show_serial: 'Показывать серийный №',
     public_card_show_inventory: 'Показывать инвентарный №',
-    public_card_show_status: 'Показывать статус'
+    public_card_show_status: 'Показывать статус',
+    public_card_show_category: 'Показывать категорию',
+    public_card_show_purchase_date: 'Показывать дату покупки',
+    public_card_show_notes: 'Показывать заметки'
   };
 
   const PUBLIC_CARD_KEYS = GROUPS['Публичная карточка инструмента (по QR)'];
