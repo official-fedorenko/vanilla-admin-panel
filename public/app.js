@@ -213,6 +213,9 @@ function initApp() {
   // Счётчик ожидающих заявок на инструмент (бейдж в меню)
   updateRequestsBadge();
 
+  // Счётчик заказов, ожидающих получения сотрудником (бейдж в меню)
+  initToolOrdersBadge();
+
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
   updateSupportBadge();
@@ -542,7 +545,82 @@ function loadSectionData(hash) {
     loadWorkTimeSummary();
   } else if (hash === 'vacations') {
     loadVacations();
+  } else if (hash === 'toolorders') {
+    loadToolOrders();
   }
+}
+
+// ==== Заказы инструмента (админ): кому и что одобрили ====
+let toolOrdersCache = [];
+
+function toolOrderFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadToolOrders() {
+  const tbody = document.getElementById('toolOrdersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const res = await fetch('/api/requests/tool-orders');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    toolOrdersCache = data.orders || [];
+    updateToolOrdersBadge();
+    renderToolOrders();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+async function initToolOrdersBadge() {
+  try {
+    const res = await fetch('/api/requests/tool-orders');
+    if (!res.ok) return;
+    const data = await res.json();
+    toolOrdersCache = data.orders || [];
+    updateToolOrdersBadge();
+  } catch (e) { /* тихо */ }
+}
+
+function updateToolOrdersBadge() {
+  const badge = document.getElementById('toolOrdersBadge');
+  if (!badge) return;
+  const awaiting = toolOrdersCache.filter(o => !o.received).length;
+  if (awaiting > 0) { badge.textContent = awaiting; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+function renderToolOrders() {
+  const tbody = document.getElementById('toolOrdersTableBody');
+  const filter = document.getElementById('toolOrdersReceiptFilter')?.value || '';
+  let list = toolOrdersCache;
+  if (filter === 'awaiting') list = list.filter(o => !o.received);
+  else if (filter === 'received') list = list.filter(o => o.received);
+
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Заказов нет</td></tr>';
+    return;
+  }
+  list.forEach(o => {
+    const receipt = o.received
+      ? `<span class="badge badge-success">✓ Получено</span><div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${toolOrderFmtDate(o.received_at)}</div>`
+      : `<span class="badge badge-warning">Ожидает получения</span>`;
+    const tr = document.createElement('tr');
+    if (!o.received) tr.style.background = 'hsl(var(--accent-purple) / 0.05)';
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(o.name)}</strong></td>
+      <td>${escapeHtml(o.item || o.title || '—')}${o.notes ? `<div style="font-size:11px;color:hsl(var(--text-muted));">${escapeHtml(o.notes)}</div>` : ''}</td>
+      <td>${o.quantity !== '' ? escapeHtml(String(o.quantity)) : '—'}</td>
+      <td>${escapeHtml(o.category || '—')}</td>
+      <td>${escapeHtml(o.reviewed_by_name || '—')}<div style="font-size:11px;color:hsl(var(--text-muted));">${toolOrderFmtDate(o.reviewed_at)}</div></td>
+      <td>${receipt}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 // ==== Отпуска (админ): кто и когда в отпуске ====
@@ -788,17 +866,33 @@ async function ensureRequestTypes() {
   return requestTypesCache;
 }
 
-// Человекочитаемое описание заявления из payload + описания полей типа.
+// Поле-обоснование заявки: первое textarea-поле типа (Обоснование / Причина /
+// Комментарий). Возвращает { label, text } — text может быть пустым.
+function requestJustification(r, types) {
+  const def = types[r.type];
+  const f = def && (def.fields || []).find(x => x.type === 'textarea');
+  if (!f) return { label: 'Обоснование', text: '' };
+  return { label: f.label, text: String(r.payload[f.name] ?? '').trim() };
+}
+
+// Человекочитаемое описание заявления: заголовок + поля-чипы (без фото и без
+// поля-обоснования — оно доступно отдельной кнопкой).
 function describeRequest(r, types) {
   const def = types[r.type];
   if (!def) return escapeHtml(r.title || '');
-  const parts = def.fields
-    .filter(f => f.type !== 'photo' && r.payload[f.name] !== '' && r.payload[f.name] != null)
-    .map(f => `<span style="color:hsl(var(--text-muted));">${escapeHtml(f.label)}:</span> ${escapeHtml(String(r.payload[f.name]))}`);
+  const justField = (def.fields || []).find(x => x.type === 'textarea');
+  const chips = def.fields
+    .filter(f => f.type !== 'photo' && f.type !== 'textarea'
+      && r.payload[f.name] !== '' && r.payload[f.name] != null)
+    .map(f => `<span class="req-chip"><span class="req-chip-label">${escapeHtml(f.label)}:</span>${escapeHtml(String(r.payload[f.name]))}</span>`)
+    .join('');
   const photo = (r.payload.photo_url)
-    ? `<img src="${iconVer(r.payload.photo_url)}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;float:left;margin-right:8px;">`
+    ? `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" alt="">`
     : '';
-  return `${photo}<div><strong>${escapeHtml(r.title || def.label)}</strong></div><div style="font-size:12px;">${parts.join(' · ')}</div>`;
+  return `<div class="req-desc">${photo}<div style="min-width:0;">
+      <div class="req-title">${escapeHtml(r.title || def.label)}</div>
+      ${chips ? `<div class="req-chips">${chips}</div>` : ''}
+    </div></div>`;
 }
 
 async function loadToolRequests() { return loadRequests(); }
@@ -823,8 +917,14 @@ async function loadRequests() {
   }
 }
 
+// Кэш для модалки обоснования (id → заявка) и типов.
+let requestsRenderCache = [];
+let requestsTypesCacheForRender = {};
+
 function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
+  requestsRenderCache = list;
+  requestsTypesCacheForRender = types;
   tbody.innerHTML = '';
   if (!list.length) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
@@ -832,10 +932,16 @@ function renderRequests(list, types) {
   }
   list.forEach(r => {
     const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
-    const actions = r.status === 'pending'
-      ? `<button class="btn" style="padding:4px 10px;font-size:12px;" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
-         <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="rejectRequest(${r.id})">Отклонить</button>`
-      : (r.review_note ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>` : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
+    const just = requestJustification(r, types);
+    const justBtn = just.text
+      ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
+      : `<button class="req-action req-action--red" disabled title="Обоснование не указано">Обоснование</button>`;
+    const decide = r.status === 'pending'
+      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+         <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
+      : (r.review_note
+          ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
+          : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${r.id}</td>
@@ -843,10 +949,25 @@ function renderRequests(list, types) {
       <td>${describeRequest(r, types)}</td>
       <td>${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
-      <td style="text-align:right;">${actions}</td>`;
+      <td><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${justBtn}${decide}</div></td>`;
     tbody.appendChild(tr);
   });
 }
+
+// Модалка обоснования заявки
+window.openJustification = function (id) {
+  const r = requestsRenderCache.find(x => x.id === id);
+  if (!r) return;
+  const just = requestJustification(r, requestsTypesCacheForRender);
+  document.getElementById('justificationModalTitle').textContent = just.label || 'Обоснование';
+  document.getElementById('justificationModalMeta').textContent =
+    `${r.type_label || r.type} · ${r.requested_by_name || '—'}`;
+  document.getElementById('justificationModalText').textContent = just.text || '—';
+  document.getElementById('justificationModalOverlay').classList.add('active');
+};
+window.closeJustification = function () {
+  document.getElementById('justificationModalOverlay').classList.remove('active');
+};
 
 window.approveRequest = async (id, type) => {
   const msg = type === 'tool_add' ? 'Одобрить и создать инструмент в инвентаре?' : 'Одобрить заявление?';
@@ -909,6 +1030,10 @@ async function updateSupportBadge() {
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
 document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRequests);
 document.getElementById('vacationsPhaseFilter')?.addEventListener('change', renderVacations);
+document.getElementById('toolOrdersReceiptFilter')?.addEventListener('change', renderToolOrders);
+document.getElementById('justificationModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'justificationModalOverlay') window.closeJustification();
+});
 
 // API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {

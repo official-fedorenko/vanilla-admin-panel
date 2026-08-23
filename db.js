@@ -154,6 +154,15 @@ const MIGRATIONS = [
         )
       `, () => {});
     }
+  },
+  {
+    version: 12,
+    description: 'Add received_at to requests (сотрудник отметил получение заказа)',
+    up: () => {
+      // Для заявок type='tool_order': после одобрения сотрудник нажимает
+      // «Получил» → проставляется received_at. Пока NULL — заявка «висит».
+      db.run("ALTER TABLE requests ADD COLUMN received_at DATETIME", () => {});
+    }
   }
 ];
 

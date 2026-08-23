@@ -71,6 +71,27 @@ function getStaticCacheControl(ext) {
   return NO_CACHE_EXTENSIONS.has(ext) ? NO_CACHE_CONTROL : STATIC_ASSET_CACHE_CONTROL;
 }
 
+// Авто-версионирование ассетов (cache-busting без ручного бампа ?v=).
+// При отдаче HTML подставляем в ссылки на локальные .js/.css параметр
+// ?v=<время изменения файла>. Меняется файл → меняется URL → браузер
+// гарантированно берёт свежую версию. Забывать про ручной ?v= больше не нужно.
+function assetVersion(filePath) {
+  try { return Math.floor(fs.statSync(filePath).mtimeMs).toString(36); }
+  catch (e) { return null; }
+}
+function injectAssetVersions(html, baseDir) {
+  return html.replace(
+    /((?:src|href)=")([^"?#]+\.(?:js|css))(?:\?[^"#]*)?(#[^"]*)?(")/g,
+    (match, pre, assetPath, hash, post) => {
+      // Внешние ссылки (CDN) не трогаем.
+      if (/^(?:https?:)?\/\//.test(assetPath)) return match;
+      const abs = path.join(baseDir, assetPath.replace(/^\//, ''));
+      const v = assetVersion(abs);
+      return v ? `${pre}${assetPath}?v=${v}${hash || ''}${post}` : match;
+    }
+  );
+}
+
 // === Settings cache (for maintenance_mode etc) + helpers ===
 let cachedSettings = {};
 
@@ -340,6 +361,20 @@ const server = http.createServer(async (req, res) => {
 
     const ext = path.extname(fullStaticPath);
     const contentType = MIME_TYPES[ext] || 'text/plain';
+
+    // HTML читаем и подставляем свежие версии ассетов (авто cache-busting).
+    if (ext === '.html') {
+      fs.readFile(fullStaticPath, 'utf8', (rErr, html) => {
+        if (rErr) { sendHtml404(res); return; }
+        const out = injectAssetVersions(html, path.dirname(fullStaticPath));
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': getStaticCacheControl(ext)
+        });
+        res.end(out);
+      });
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': contentType,

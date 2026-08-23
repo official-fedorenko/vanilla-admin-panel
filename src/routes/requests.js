@@ -140,7 +140,7 @@ function mapRow(r) {
     title: r.title, payload, status: r.status,
     review_note: r.review_note, reviewed_at: r.reviewed_at, created_at: r.created_at,
     requested_by_name: r.requested_by_name, reviewed_by_name: r.reviewed_by_name,
-    result_ref: r.result_ref
+    result_ref: r.result_ref, received_at: r.received_at
   };
 }
 
@@ -222,6 +222,67 @@ function listVacations(req, res, user) {
       return a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0;
     });
     sendJson(res, 200, { success: true, vacations });
+  });
+}
+
+// --- Сводка заказов инструмента (админ): кому и что одобрили ---
+// Только одобренные заявки type='tool_order' (отклонённые «исчезают»).
+// received_at показывает, отметил ли сотрудник получение.
+function listToolOrders(req, res, user) {
+  const sql = `
+    SELECT r.id, r.payload, r.title, r.created_at, r.reviewed_at, r.received_at,
+           u.username AS requested_by_name,
+           rv.username AS reviewed_by_name,
+           e.first_name AS emp_first, e.last_name AS emp_last
+    FROM requests r
+    LEFT JOIN users u ON u.id = r.requested_by
+    LEFT JOIN users rv ON rv.id = r.reviewed_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
+    WHERE r.type = 'tool_order' AND r.status = 'approved'
+    ORDER BY CASE WHEN r.received_at IS NULL THEN 0 ELSE 1 END, r.reviewed_at DESC, r.id DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    const orders = (rows || []).map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const name = (r.emp_first || r.emp_last)
+        ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
+        : (r.requested_by_name || '—');
+      return {
+        id: r.id, name, title: r.title || '',
+        item: payload.name || '', category: payload.category || '',
+        quantity: payload.quantity || '', notes: payload.notes || '',
+        reviewed_by_name: r.reviewed_by_name || '',
+        reviewed_at: r.reviewed_at, received_at: r.received_at,
+        received: !!r.received_at
+      };
+    });
+    sendJson(res, 200, { success: true, orders });
+  });
+}
+
+// --- Отметка получения (сотрудник): «Получил» ---
+// Разрешено только автору заявки, только для одобренного tool_order,
+// который ещё не получен.
+function receiveRequest(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.requested_by !== user.id) return sendJson(res, 403, { success: false, message: 'Это не ваша заявка' });
+    if (row.type !== 'tool_order') return sendJson(res, 400, { success: false, message: 'Неприменимо к этому типу' });
+    if (row.status !== 'approved') return sendJson(res, 409, { success: false, message: 'Заявка ещё не одобрена' });
+    if (row.received_at) return sendJson(res, 409, { success: false, message: 'Уже отмечено как получено' });
+    db.run(
+      "UPDATE requests SET received_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Отметил получение заказа id=${id}: ${row.title || ''}`);
+        sendJson(res, 200, { success: true });
+      }
+    );
   });
 }
 
@@ -331,6 +392,11 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return listVacations(req, res, user);
   }
+  if (p === '/api/requests/tool-orders' && method === 'GET') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return listToolOrders(req, res, user);
+  }
+  if (p === '/api/requests/receive' && method === 'POST') return receiveRequest(req, res, user, parsedUrl);
 
   if (p === '/api/requests' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });

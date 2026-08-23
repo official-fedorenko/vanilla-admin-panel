@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Diamantas — Панель управления</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%232e7bf6'/%3E%3Cstop offset='100%25' stop-color='%2320e0f5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='50,6 90,38 50,94 10,38' fill='url(%23g)'/%3E%3Cpolygon points='50,6 90,38 10,38' fill='%23ffffff' fill-opacity='0.18'/%3E%3C/svg%3E">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -47,6 +47,12 @@
           <a href="#vacations" title="Отпуска">
             <i data-lucide="palmtree"></i>
             <span>Отпуска</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="toolorders">
+          <a href="#toolorders" title="Заказы инструмента">
+            <i data-lucide="shopping-cart"></i>
+            <span>Заказы инструмента <span id="toolOrdersBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
         <li class="nav-item" data-section="worktime">
@@ -275,6 +281,42 @@
                 </tr>
               </thead>
               <tbody id="vacationsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TOOL ORDERS (ЗАКАЗЫ ИНСТРУМЕНТА) SECTION -->
+      <section id="section-toolorders" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Заказы инструмента</h2>
+            <p>Одобренные заказы: кому и что выдать. Пока сотрудник не нажал «Получил» — заказ в ожидании получения.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="toolOrdersReceiptFilter" class="form-control" style="width:220px;">
+              <option value="">Все одобренные</option>
+              <option value="awaiting">Ожидают получения</option>
+              <option value="received">Получены</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th>Что заказано</th>
+                  <th style="width:100px;">Кол-во</th>
+                  <th style="width:150px;">Категория</th>
+                  <th style="width:150px;">Одобрил</th>
+                  <th style="width:160px;">Получение</th>
+                </tr>
+              </thead>
+              <tbody id="toolOrdersTableBody">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
@@ -665,6 +707,22 @@
           <button type="submit" class="btn">Сохранить</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- JUSTIFICATION (ОБОСНОВАНИЕ ЗАЯВКИ) MODAL -->
+  <div class="modal-overlay" id="justificationModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="justificationModalTitle">Обоснование</h3>
+          <div id="justificationModalMeta" style="font-size:12px;color:hsl(var(--text-muted));margin-top:2px;"></div>
+        </div>
+        <button class="modal-close" onclick="closeJustification()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="justificationModalText" style="white-space:pre-wrap;line-height:1.6;color:hsl(var(--text-primary));margin:0;"></p>
+      </div>
     </div>
   </div>
 
@@ -1077,6 +1135,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- App logic JS -->
-  <script src="app.js?v=8"></script>
+  <!-- ?v= подставляется сервером автоматически по mtime файла (см. injectAssetVersions в server.js) -->
+  <script src="app.js"></script>
 </body>
 </html>

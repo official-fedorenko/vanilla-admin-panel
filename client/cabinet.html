@@ -69,14 +69,18 @@
     }
     .nav-right { display: flex; align-items: center; gap: 16px; }
     .nav-user {
-      display: flex; align-items: center; gap: 10px;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+      padding: 4px 12px 4px 5px; border-radius: 8px;
       font-size: 14px; color: var(--text-secondary);
+      cursor: pointer; transition: all 0.2s;
     }
+    .nav-user:hover { background: rgba(255,255,255,0.1); transform: translateY(-1px); }
     .nav-avatar {
-      width: 34px; height: 34px; border-radius: 50%;
+      width: 26px; height: 26px; border-radius: 50%;
       background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
       display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 14px; color: white; flex-shrink: 0;
+      font-weight: 700; font-size: 12px; color: white; flex-shrink: 0;
     }
     .nav-username { font-weight: 600; color: var(--text-primary); font-size: 14px; }
     .nav-caret { display: none; align-items: center; color: var(--text-muted); }
@@ -123,11 +127,17 @@
     }
     .btn-logout:hover { background: rgba(255,74,110,0.2); transform: translateY(-1px); }
     .btn-home {
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
       color: var(--text-secondary); text-decoration: none;
-      font-size: 13px; font-weight: 500; transition: color 0.2s;
+      padding: 8px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+      cursor: pointer; transition: all 0.2s;
       display: inline-flex; align-items: center; gap: 6px;
     }
-    .btn-home:hover { color: var(--text-primary); }
+    .btn-home:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); transform: translateY(-1px); }
+    /* Кнопка «Админ-панель» — акцентная бирюзовая */
+    #adminPanelLink { background: rgba(0,210,255,0.1); border-color: rgba(0,210,255,0.25); }
+    #adminPanelLink:hover { background: rgba(0,210,255,0.2); color: var(--accent-cyan); }
 
     /* Layout */
     .page {
@@ -645,8 +655,8 @@
         </div>
 
         <!-- Модалка нового заявления -->
-        <div id="requestModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; align-items:center; justify-content:center;">
-          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(520px, 94vw); max-height:88vh; overflow:auto;">
+        <div id="requestModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(520px, 94vw); max-height:calc(100dvh - 48px); overflow:auto; margin:auto;">
             <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
               <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Новое заявление</div>
               <button type="button" id="requestModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
@@ -1293,9 +1303,14 @@
       const openMenu = () => overlay.classList.add('open');
       const closeMenu = () => overlay.classList.remove('open');
 
-      trigger.addEventListener('click', () => {
-        // Только на мобильных — на десктопе работают отдельные кнопки.
-        if (window.matchMedia('(max-width: 640px)').matches) openMenu();
+      trigger.addEventListener('click', async () => {
+        // На мобильных — открываем меню профиля (там отдельные кнопки).
+        if (window.matchMedia('(max-width: 640px)').matches) { openMenu(); return; }
+        // На десктопе — клик по себе просто обновляет данные профиля.
+        try {
+          await loadProfile();
+          showToast('Профиль обновлён', 'success');
+        } catch (e) { showToast('Не удалось обновить профиль', 'error'); }
       });
       // Клик по фону закрывает; клик по самому меню — нет.
       overlay.addEventListener('click', (e) => { if (e.target === overlay) closeMenu(); });
@@ -2122,16 +2137,29 @@
         box.innerHTML = '';
         list.forEach(r => {
           const st = TR_STATUS[r.status] || TR_STATUS.pending;
+          // Одобренный заказ инструмента, ещё не полученный → кнопка «Получил».
+          const awaitingReceipt = r.type === 'tool_order' && r.status === 'approved' && !r.received_at;
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,255,255,0.01);';
+          if (awaitingReceipt) row.style.borderColor = 'rgba(34,197,94,0.4)';
+          const rightSide = awaitingReceipt
+            ? `<button type="button" data-receive-id="${r.id}" style="padding:6px 14px; background:#22c55e; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Получил</button>`
+            : (r.type === 'tool_order' && r.received_at
+                ? `<span style="font-size:11px; font-weight:600; color:#22c55e;">✓ Получено</span>`
+                : `<span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`);
           row.innerHTML = `
             <div style="flex:1; min-width:0;">
               <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(r.title || '')}</div>
               <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(r.type_label || r.type)}</div>
               ${r.status === 'rejected' && r.review_note ? `<div style="font-size:11px; color:#ef4444;">Причина: ${escapeHtmlC(r.review_note)}</div>` : ''}
+              ${awaitingReceipt ? `<div style="font-size:11px; color:#22c55e;">Одобрено — заберите инструмент и нажмите «Получил»</div>` : ''}
             </div>
-            <span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`;
+            ${rightSide}`;
           box.appendChild(row);
+        });
+        // Обработчики кнопок «Получил»
+        box.querySelectorAll('[data-receive-id]').forEach(btn => {
+          btn.addEventListener('click', () => markReceived(btn.getAttribute('data-receive-id'), btn));
         });
         // Ровно 5 строк в высоту, дальше — прокрутка
         const rows = box.children;
@@ -2145,6 +2173,24 @@
         }
       } catch (e) {
         box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    async function markReceived(id, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '...'; }
+      try {
+        const res = await fetch('/api/requests/receive?id=' + encodeURIComponent(id), { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) {
+          showToast('Отмечено как получено', 'success');
+          loadMyRequests();
+        } else {
+          showToast(d.message || 'Не удалось отметить', 'error');
+          if (btn) { btn.disabled = false; btn.textContent = 'Получил'; }
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Получил'; }
       }
     }
 
