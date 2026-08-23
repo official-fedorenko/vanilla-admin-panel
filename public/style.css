@@ -121,7 +121,10 @@ body {
 .app-container {
   display: grid;
   grid-template-columns: 260px 1fr;
-  min-height: 100vh;
+  /* Фиксируем высоту окна: сайдбар и контент прокручиваются независимо
+     (на мобильных сбрасывается — см. медиазапросы ниже). */
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Sidebar */
@@ -134,6 +137,7 @@ aside.sidebar {
   position: sticky;
   top: 0;
   padding: 24px;
+  overflow: hidden; /* прокручивается только список меню (.nav-list) */
 }
 
 .brand {
@@ -183,6 +187,12 @@ aside.sidebar {
   flex-direction: column;
   gap: 8px;
   flex-grow: 1;
+  /* Собственная прокрутка меню, независимо от контента справа.
+     min-height:0 нужен, чтобы flex-элемент мог сжиматься и включать скролл. */
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
 }
 
 .nav-item a {
@@ -268,6 +278,9 @@ main.main-content {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+  /* Контент прокручивается сам по себе внутри фиксированной высоты окна. */
+  height: 100vh;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -977,8 +990,11 @@ table.data-table tbody tr:hover {
 @media (max-width: 1024px) {
   .app-container {
     grid-template-columns: 1fr;
+    /* Сброс независимой прокрутки: сайдбар сверху, страница скроллится целиком. */
+    height: auto;
+    overflow: visible;
   }
-  
+
   aside.sidebar {
     height: auto;
     position: relative;
@@ -988,16 +1004,26 @@ table.data-table tbody tr:hover {
     justify-content: space-between;
     align-items: center;
     padding: 16px 24px;
+    overflow: visible;
   }
-  
+
   .brand {
     margin-bottom: 0;
   }
-  
+
   .nav-list {
     flex-direction: row;
     gap: 4px;
     flex-grow: 0;
+    overflow: visible;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  main.main-content {
+    height: auto;
+    overflow-y: visible;
   }
   
   .sidebar-footer {
@@ -1145,6 +1171,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   padding: 6px 14px; font-size: 12px; font-weight: 600; line-height: 1;
   border-radius: 8px; border: 1px solid transparent; cursor: pointer;
   transition: all 0.15s; white-space: nowrap;
+  min-width: 112px; /* одинаковая ширина всех трёх кнопок */
 }
 .req-action--green {
   background: hsl(var(--accent-green) / 0.15); color: hsl(var(--accent-green));
