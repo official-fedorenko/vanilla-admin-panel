@@ -378,11 +378,11 @@
       <a href="/" class="nav-logo" id="navSiteName">Мой Блог</a>
       <div class="nav-right">
         <a href="/admin/" id="adminPanelLink" class="btn-home" style="display:none; color: var(--accent-cyan);">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14" style="stroke: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="stroke: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Админ-панель
         </a>
         <a href="/" class="btn-home">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
           На сайт
         </a>
         <div class="nav-user" id="navUserBtn">
@@ -391,7 +391,7 @@
           <span class="nav-caret"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></span>
         </div>
         <button class="btn-logout" id="logoutBtn">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
           Выйти
         </button>
       </div>
@@ -561,6 +561,38 @@
 
       <!-- Правая колонка: статьи -->
       <div style="display: flex; flex-direction: column; gap: 28px;">
+
+        <!-- Учёт рабочего времени -->
+        <div class="card mobile-collapse" id="workLogCard">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Учёт рабочего времени</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+            <form id="workLogForm" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end;">
+              <div class="form-group" style="margin:0;">
+                <label for="wlDate">Дата</label>
+                <input type="date" id="wlDate" required>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="wlHours">Часов (0–24)</label>
+                <input type="number" id="wlHours" min="0.25" max="24" step="0.25" placeholder="8" required>
+              </div>
+              <div class="form-group" style="margin:0; grid-column:1/-1;">
+                <label for="wlNote">Заметка (необязательно)</label>
+                <input type="text" id="wlNote" maxlength="300" placeholder="Что делали, объект…">
+              </div>
+              <button type="submit" class="btn-save" style="grid-column:1/-1; margin-top:2px;">Добавить запись</button>
+            </form>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px;">
+              <span style="font-size:13px; color:var(--text-secondary);">Мои записи</span>
+              <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong></span>
+            </div>
+            <div id="wlList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
+              <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+            </div>
+          </div>
+        </div>
 
         <!-- Моя карточка сотрудника (read-only, только для сотрудников) -->
         <div class="card mobile-collapse" id="myEmployeeCard" style="display: none;">
@@ -2005,6 +2037,80 @@
       } catch (e) { showToast('Ошибка сети', 'error'); }
     }
 
+    // === Учёт рабочего времени ===
+    function fmtHours(h) {
+      const n = Math.round((h || 0) * 100) / 100;
+      return (Number.isInteger(n) ? n : n.toFixed(2)) + ' ч';
+    }
+
+    function setupWorkLog() {
+      const form = document.getElementById('workLogForm');
+      if (!form) return;
+      // Дата по умолчанию — сегодня.
+      const dateInput = document.getElementById('wlDate');
+      if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+          work_date: document.getElementById('wlDate').value,
+          hours: document.getElementById('wlHours').value,
+          note: document.getElementById('wlNote').value
+        };
+        try {
+          const res = await fetch('/api/worklogs', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            showToast('Запись добавлена', 'success');
+            document.getElementById('wlHours').value = '';
+            document.getElementById('wlNote').value = '';
+            loadMyWorkLogs();
+          } else showToast(d.message || 'Не удалось сохранить', 'error');
+        } catch (_) { showToast('Ошибка сети', 'error'); }
+      };
+
+      loadMyWorkLogs();
+    }
+
+    async function loadMyWorkLogs() {
+      const box = document.getElementById('wlList');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/worklogs/mine');
+        const d = await res.json();
+        const list = (d && d.entries) || [];
+        document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
+        if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
+        box.innerHTML = '';
+        list.forEach(r => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);';
+          const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+          row.innerHTML = `
+            <div style="min-width:0;">
+              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span></div>
+              ${r.note ? `<div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtmlC(r.note)}</div>` : ''}
+            </div>
+            <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>`;
+          box.appendChild(row);
+        });
+      } catch (_) {
+        box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    window.deleteMyWorkLog = async (id) => {
+      if (!confirm('Удалить запись?')) return;
+      try {
+        const res = await fetch('/api/worklogs?id=' + id, { method: 'DELETE' });
+        if (res.ok) { showToast('Запись удалена', 'success'); loadMyWorkLogs(); }
+        else showToast('Не удалось удалить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
     async function loadMyRequests() {
       const box = document.getElementById('myRequestsList');
       if (!box) return;
@@ -2067,6 +2173,7 @@
         await Promise.all([loadProfile(), loadArticles(), loadSettings()]);
         loadTwoFactorStatus();
         setupToolRequests();
+        setupWorkLog();
         if (currentUserData) {
           if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
             await loadAdminTickets();

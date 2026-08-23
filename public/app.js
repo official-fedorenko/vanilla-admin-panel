@@ -538,8 +538,78 @@ function loadSectionData(hash) {
     loadSupportTickets();
   } else if (hash === 'requests') {
     loadToolRequests();
+  } else if (hash === 'worktime') {
+    loadWorkTimeSummary();
   }
 }
+
+// ==== Учёт рабочего времени (админ) ====
+function fmtHoursAdmin(h) {
+  const n = Math.round((h || 0) * 100) / 100;
+  return (Number.isInteger(n) ? n : n.toFixed(2)) + ' ч';
+}
+
+async function loadWorkTimeSummary() {
+  const box = document.getElementById('workTimeSummary');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:20px; color:hsl(var(--text-muted));">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/worklogs/summary');
+    const d = await res.json();
+    const users = (d && d.users) || [];
+    if (!users.length) {
+      box.innerHTML = `<div style="padding:40px 20px; text-align:center; color:hsl(var(--text-muted)); display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <i data-lucide="clock" style="width:36px; height:36px; opacity:0.5;"></i>
+        <div>Пока никто не вносил рабочее время</div></div>`;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    box.innerHTML = users.map(u => {
+      const last = u.last_date ? new Date(u.last_date + 'T00:00:00').toLocaleDateString('ru-RU', { day:'numeric', month:'short', year:'numeric' }) : '—';
+      return `
+      <div onclick="openWorkTimeUser(${u.user_id}, '${escapeHtml(u.username)}')" style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid hsl(var(--border-color)); cursor:pointer;"
+           onmouseover="this.style.background='hsl(var(--accent-purple) / 0.08)'" onmouseout="this.style.background='transparent'">
+        <div style="width:40px; height:40px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">${escapeHtml((u.username||'?').charAt(0).toUpperCase())}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:600;">${escapeHtml(u.username)}</div>
+          <div style="font-size:12px; color:hsl(var(--text-muted));">Записей: ${u.entries} · последняя: ${last}</div>
+        </div>
+        <div style="font-size:18px; font-weight:700; color:hsl(var(--accent-cyan));">${fmtHoursAdmin(u.total_hours)}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="padding:20px; color:#ff6b6b;">Не удалось загрузить</div>';
+  }
+}
+
+window.openWorkTimeUser = async (userId, username) => {
+  document.getElementById('workTimeModalTitle').textContent = 'Время: ' + username;
+  const box = document.getElementById('workTimeEntries');
+  box.innerHTML = '<div style="color:hsl(var(--text-muted));">Загрузка...</div>';
+  document.getElementById('workTimeModalOverlay').classList.add('active');
+  try {
+    const res = await fetch('/api/worklogs/all?user_id=' + userId);
+    const d = await res.json();
+    const list = (d && d.entries) || [];
+    if (!list.length) { box.innerHTML = '<div style="color:hsl(var(--text-muted));">Записей нет</div>'; return; }
+    box.innerHTML = `<div style="margin-bottom:12px; font-size:14px;">Итого: <strong style="color:hsl(var(--accent-cyan));">${fmtHoursAdmin(d.total)}</strong></div>`
+      + list.map(r => {
+        const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day:'numeric', month:'short', year:'numeric' });
+        return `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid hsl(var(--border-color)); border-radius:10px; margin-bottom:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:hsl(var(--accent-cyan));">${fmtHoursAdmin(r.hours)}</span></div>
+            ${r.note ? `<div style="font-size:12px; color:hsl(var(--text-muted));">${escapeHtml(r.note)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="color:#ff6b6b;">Ошибка загрузки</div>';
+  }
+};
+
+window.closeWorkTimeModal = () => {
+  document.getElementById('workTimeModalOverlay').classList.remove('active');
+};
 
 // ==== Заявления (админ) ====
 const REQ_STATUS = {
@@ -1334,7 +1404,7 @@ async function loadSettings() {
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address'],
-    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status']
+    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes']
   };
 
   // Понятные подписи (не зависят от description в БД, который может теряться
@@ -1346,7 +1416,10 @@ async function loadSettings() {
     public_card_show_model: 'Показывать модель',
     public_card_show_serial: 'Показывать серийный №',
     public_card_show_inventory: 'Показывать инвентарный №',
-    public_card_show_status: 'Показывать статус'
+    public_card_show_status: 'Показывать статус',
+    public_card_show_category: 'Показывать категорию',
+    public_card_show_purchase_date: 'Показывать дату покупки',
+    public_card_show_notes: 'Показывать заметки'
   };
 
   const PUBLIC_CARD_KEYS = GROUPS['Публичная карточка инструмента (по QR)'];
@@ -2448,6 +2521,16 @@ function setupTools() {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
+          // Для нового инструмента с фото — регистрируем его в галерее,
+          // чтобы аватар был среди фото инструмента.
+          if (!id && data.id && payload.photo_url) {
+            try {
+              await fetch('/api/tools/photo', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tool_id: data.id, photo_url: payload.photo_url })
+              });
+            } catch (_) { /* некритично */ }
+          }
           showToast(id ? 'Инструмент обновлён' : 'Инструмент добавлен', 'success');
           closeModal();
           await loadTools();
@@ -2471,20 +2554,8 @@ function setupTools() {
 
   // --- Photo upload inside tool modal ---
   const photoBtn = document.getElementById('toolPhotoBtn');
-  const photoPickBtn = document.getElementById('toolPhotoPickBtn');
   const photoClearBtn = document.getElementById('toolPhotoClearBtn');
   const photoInput = document.getElementById('toolPhotoInput');
-  
-  if (photoPickBtn) {
-    photoPickBtn.addEventListener('click', () => {
-      if (window.openMediaPicker) {
-        window.openMediaPicker((url) => {
-          setToolPhotoPreview(url);
-          showToast('Фото выбрано из медиатеки', 'success');
-        }, 'tools');
-      }
-    });
-  }
 
   if (photoBtn && photoInput) {
     photoBtn.addEventListener('click', () => photoInput.click());
@@ -2495,11 +2566,27 @@ function setupTools() {
       photoBtn.textContent = 'Загрузка...';
       try {
         const url = await uploadImageToMedia(file, 'tools');
-        if (url) {
-          setToolPhotoPreview(url);
-          showToast('Фото загружено', 'success');
+        if (!url) { showToast('Не удалось загрузить фото', 'error'); return; }
+
+        const editId = document.getElementById('toolId').value;
+        if (editId) {
+          // Существующий инструмент: фото уходит в его галерею; первое станет
+          // аватаром на сервере. Обновляем превью аватара из ответа.
+          const res = await fetch('/api/tools/photo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tool_id: parseInt(editId, 10), photo_url: url })
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            if (d.is_avatar) setToolPhotoPreview(url);
+            showToast(d.is_avatar ? 'Фото загружено и стало аватаром' : 'Фото добавлено в галерею инструмента', 'success');
+          } else {
+            showToast(d.message || 'Не удалось добавить фото', 'error');
+          }
         } else {
-          showToast('Не удалось загрузить фото', 'error');
+          // Новый инструмент: фото станет аватаром при создании.
+          setToolPhotoPreview(url);
+          showToast('Фото загружено — станет аватаром', 'success');
         }
       } catch (e) {
         showToast('Ошибка загрузки фото', 'error');
@@ -2900,15 +2987,43 @@ function renderToolDetail(data) {
       <div style="font-size:11px;color:hsl(var(--text-muted));">${label}</div>
     </div>`).join('');
 
+  window.__detailToolId = tool.id;
   const gallery = photos.length
-    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px;">
-        ${photos.map(p => `
-          <div style="position:relative;">
-            <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:96px;object-fit:cover;border-radius:10px;border:1px solid hsl(var(--border-color));cursor:zoom-in;">
-            <div style="font-size:10px;color:hsl(var(--text-muted));margin-top:3px;text-align:center;">${escapeHtml(p.uploaded_by_name || '—')}<br>${p.created_at ? new Date(p.created_at.replace(' ','T')+'Z').toLocaleDateString('ru-RU') : ''}</div>
-          </div>`).join('')}
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">
+        ${photos.map((p, i) => {
+          const isAvatar = tool.photo_url && p.photo_url === tool.photo_url;
+          const when = p.created_at ? new Date(p.created_at.replace(' ', 'T') + 'Z')
+            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+          // Бейдж-статус: текущий аватар / порядковый номер (первое = №1)
+          const corner = isAvatar
+            ? `<span style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:4px;background:hsl(var(--accent-purple));color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;"><i data-lucide="star" style="width:12px;height:12px;"></i> Аватар</span>`
+            : `<span style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;">Фото ${i + 1}</span>`;
+          const action = isAvatar ? '' :
+            `<button type="button" onclick="setToolAvatar(${tool.id}, '${p.photo_url}')" title="Сделать аватаром инструмента"
+                     style="width:100%;margin-top:8px;padding:7px;background:hsl(var(--accent-purple) / 0.12);border:1px solid hsl(var(--accent-purple));color:hsl(var(--text-primary));border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+               <i data-lucide="star" style="width:14px;height:14px;"></i> Сделать аватаром
+             </button>`;
+          return `
+          <div style="background:hsl(var(--bg-main));border:1px solid ${isAvatar ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};border-radius:12px;padding:8px;">
+            <div style="position:relative;">
+              ${corner}
+              <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:150px;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block;">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:hsl(var(--text-secondary));">
+              <i data-lucide="user" style="width:13px;height:13px;color:hsl(var(--text-muted));flex-shrink:0;"></i>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.uploaded_by_name || 'Неизвестно')}</span>
+            </div>
+            ${when ? `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:hsl(var(--text-muted));">
+              <i data-lucide="calendar" style="width:13px;height:13px;flex-shrink:0;"></i><span>${when}</span>
+            </div>` : ''}
+            ${action}
+          </div>`;
+        }).join('')}
       </div>`
-    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Фотографий пока нет</div>';
+    : `<div style="display:flex;align-items:center;gap:10px;color:hsl(var(--text-muted));font-size:13px;padding:16px;background:hsl(var(--bg-main));border:1px dashed hsl(var(--border-color));border-radius:12px;">
+        <i data-lucide="image-off" style="width:18px;height:18px;"></i>
+        <span>Фотографий пока нет. Первое загруженное фото станет аватаром инструмента.</span>
+      </div>`;
 
   const timeline = history.length
     ? history.map(h => {
@@ -2972,13 +3087,47 @@ function renderToolDetail(data) {
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;">${statTiles}</div>
 
-    <h4 style="margin:18px 0 10px;font-size:14px;">Фотографии</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px;">
+      <h4 style="margin:0;font-size:14px;">Фотографии</h4>
+      <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('toolGalleryInput').click()"><i data-lucide="image-plus" style="width:14px;height:14px;"></i><span>Добавить фото</span></button>
+      <input type="file" id="toolGalleryInput" accept="image/*" style="display:none;">
+    </div>
     ${gallery}
 
     <h4 style="margin:22px 0 12px;font-size:14px;">История закреплений</h4>
     <div id="toolHistoryList" style="overflow-y:auto;">${timeline}</div>
   `;
   if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Загрузка нового фото в галерею (первое станет аватаром автоматически)
+  const galInput = document.getElementById('toolGalleryInput');
+  if (galInput) {
+    galInput.addEventListener('change', async () => {
+      const file = galInput.files[0];
+      if (!file) return;
+      showToast('Загрузка фото...', 'info');
+      try {
+        const url = await uploadImageToMedia(file, 'tools');
+        if (!url) return showToast('Не удалось загрузить фото', 'error');
+        const res = await fetch('/api/tools/photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tool_id: tool.id, photo_url: url })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(d.is_avatar ? 'Фото добавлено и стало аватаром' : 'Фото добавлено в галерею', 'success');
+          window.openToolDetail(tool.id);   // перерисовать карточку
+          loadTools();                       // обновить миниатюру в списке
+        } else {
+          showToast(d.message || 'Не удалось добавить фото', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        galInput.value = '';
+      }
+    });
+  }
 
   // Ровно 5 записей истории в высоту, дальше — прокрутка
   const histBox = document.getElementById('toolHistoryList');
@@ -2993,6 +3142,26 @@ window.openLightbox = (src) => {
   const lb = document.getElementById('photoLightbox');
   document.getElementById('photoLightboxImg').src = src;
   lb.style.display = 'flex';
+};
+
+// Назначить аватаром фото из галереи инструмента (только из его же фото).
+window.setToolAvatar = async (toolId, photoUrl) => {
+  try {
+    const res = await fetch('/api/tools/set-avatar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_id: toolId, photo_url: photoUrl })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Аватар обновлён', 'success');
+      window.openToolDetail(toolId);
+      loadTools();
+    } else {
+      showToast(d.message || 'Не удалось сменить аватар', 'error');
+    }
+  } catch (e) {
+    showToast('Ошибка сети', 'error');
+  }
 };
 
 // Действия из карточки — закрываем её и открываем нужную модалку

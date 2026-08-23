@@ -492,6 +492,67 @@ function handleDetails(req, res, user, parsedUrl) {
   });
 }
 
+// ---- Галерея фото инструмента ----
+// POST /api/tools/photo       — добавить фото в галерею (первое станет аватаром)
+// POST /api/tools/set-avatar  — назначить аватаром фото ИЗ галереи этого инструмента
+
+const UPLOAD_PATH_RE = /^\/uploads\/[A-Za-z0-9._-]+$/;
+
+async function addToolPhoto(req, res, user) {
+  if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
+  try {
+    const body = await getJsonBody(req);
+    const toolId = parseInt(body.tool_id, 10);
+    const photoUrl = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+    if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан инструмент' });
+    if (!UPLOAD_PATH_RE.test(photoUrl)) return sendJson(res, 400, { success: false, message: 'Некорректный адрес фото' });
+
+    db.get("SELECT id, name, photo_url FROM tools WHERE id = ?", [toolId], (err, tool) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
+
+      db.run("INSERT INTO tool_photos (tool_id, photo_url, uploaded_by) VALUES (?, ?, ?)", [toolId, photoUrl, user.id], function (e2) {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить фото' });
+
+        // Первое фото инструмента автоматически становится аватаром.
+        const isFirst = !tool.photo_url;
+        const finish = () => {
+          logAction(user.username, `Добавил фото к инструменту «${tool.name}»${isFirst ? ' (стало аватаром)' : ''}`);
+          sendJson(res, 200, { success: true, photo_url: photoUrl, is_avatar: isFirst });
+        };
+        if (isFirst) db.run("UPDATE tools SET photo_url = ? WHERE id = ?", [photoUrl, toolId], finish);
+        else finish();
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
+}
+
+async function setToolAvatar(req, res, user) {
+  if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
+  try {
+    const body = await getJsonBody(req);
+    const toolId = parseInt(body.tool_id, 10);
+    const photoUrl = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+    if (!toolId || !photoUrl) return sendJson(res, 400, { success: false, message: 'Не указаны данные' });
+
+    // Аватаром можно назначить ТОЛЬКО фото из галереи этого инструмента.
+    db.get("SELECT id FROM tool_photos WHERE tool_id = ? AND photo_url = ?", [toolId, photoUrl], (err, row) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!row) return sendJson(res, 400, { success: false, message: 'Это фото не из галереи инструмента' });
+
+      db.run("UPDATE tools SET photo_url = ? WHERE id = ?", [photoUrl, toolId], function (e2) {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Не удалось обновить аватар' });
+        logAction(user.username, `Сменил аватар инструмента id=${toolId}`);
+        sendJson(res, 200, { success: true, photo_url: photoUrl });
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
+}
+
 // ---- QR-код инструмента (/api/tools/qr?id=) ----
 // Возвращает SVG, кодирующий ссылку на карточку инструмента (для наклейки).
 function handleQr(req, res, user, parsedUrl) {
@@ -530,6 +591,8 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (pathname === '/api/tools/history' && method === 'GET') return handleHistory(req, res, user, parsedUrl);
   if (pathname === '/api/tools/details' && method === 'GET') return handleDetails(req, res, user, parsedUrl);
   if (pathname === '/api/tools/qr' && method === 'GET') return handleQr(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/photo' && method === 'POST') return addToolPhoto(req, res, user);
+  if (pathname === '/api/tools/set-avatar' && method === 'POST') return setToolAvatar(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };

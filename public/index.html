@@ -43,6 +43,12 @@
             <span>Заявления <span id="requestsBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
+        <li class="nav-item" data-section="worktime">
+          <a href="#worktime" title="Учёт времени">
+            <i data-lucide="clock"></i>
+            <span>Учёт времени</span>
+          </a>
+        </li>
         <li class="nav-item active" data-section="articles">
           <a href="#articles" title="Статьи (CRUD)">
             <i data-lucide="file-text"></i>
@@ -379,6 +385,34 @@
         </div>
       </section>
 
+      <!-- WORK TIME SECTION -->
+      <section id="section-worktime" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Учёт рабочего времени</h2>
+            <p>Часы, внесённые сотрудниками. Нажмите на пользователя, чтобы увидеть записи.</p>
+          </div>
+        </div>
+        <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          <div id="workTimeSummary">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- WORK TIME DETAIL MODAL -->
+      <div class="modal-overlay" id="workTimeModalOverlay">
+        <div class="modal" style="display:flex; flex-direction:column; max-height:min(82vh,720px);">
+          <div class="modal-header">
+            <h3 id="workTimeModalTitle">Записи</h3>
+            <button class="modal-close" onclick="closeWorkTimeModal()">&times;</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto;">
+            <div id="workTimeEntries"><!-- populated --></div>
+          </div>
+        </div>
+      </div>
+
       <!-- SETTINGS SECTION -->
       <section id="section-settings" class="app-section">
         <div class="page-header">
@@ -463,9 +497,9 @@
           </div>
 
           <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color));">
-            <form id="replyForm" style="display: flex; gap: 10px;">
-              <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1;" required autocomplete="off">
-              <button type="submit" class="btn" style="padding: 0 20px;">Отправить</button>
+            <form id="replyForm" style="display: flex; gap: 10px; align-items: stretch;">
+              <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1; min-width: 0;" required autocomplete="off">
+              <button type="submit" class="btn" style="padding: 10px 22px; flex-shrink: 0; white-space: nowrap;">Отправить</button>
             </form>
           </div>
         </div>
@@ -786,19 +820,19 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Фото инструмента</label>
+            <label>Фото инструмента (аватар)</label>
             <div style="display:flex; align-items:center; gap:14px;">
               <div id="toolPhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
                 <i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить</button>
-                <button type="button" class="btn btn-secondary" id="toolPhotoPickBtn">Из медиатеки</button>
                 <button type="button" class="btn btn-secondary" id="toolPhotoClearBtn" style="display:none;">Убрать</button>
               </div>
               <input type="file" id="toolPhotoInput" accept="image/*" style="display:none;">
               <input type="hidden" id="toolPhotoUrl">
             </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">Первое загруженное фото становится аватаром. Аватар можно выбрать из фото инструмента в его карточке.</small>
           </div>
           <div class="form-group">
             <label for="toolNotes">Заметки</label>

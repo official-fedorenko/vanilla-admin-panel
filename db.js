@@ -382,6 +382,19 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
+  // администраторы видят данные по всем. Одна строка — одна запись за день.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS work_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      work_date DATE NOT NULL,
+      hours REAL NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // 6. Таблица сообщений техподдержки / обратной связи (Чат)
   db.run(`
     CREATE TABLE IF NOT EXISTS support_messages (
@@ -440,6 +453,9 @@ db.serialize(() => {
   stmt.run("public_card_show_serial", "true", "Публичная карточка: показывать серийный №");
   stmt.run("public_card_show_inventory", "true", "Публичная карточка: показывать инвентарный №");
   stmt.run("public_card_show_status", "true", "Публичная карточка: показывать статус");
+  stmt.run("public_card_show_category", "true", "Публичная карточка: показывать категорию");
+  stmt.run("public_card_show_purchase_date", "false", "Публичная карточка: показывать дату покупки");
+  stmt.run("public_card_show_notes", "false", "Публичная карточка: показывать заметки");
   stmt.finalize();
 
   // Заполняем тестовые статьи

@@ -121,11 +121,19 @@
           '" onerror="this.parentNode.innerHTML=\'&lt;div class=&quot;ph&quot;&gt;🔧&lt;/div&gt;\'">';
       }
 
+      let purchase = t.purchase_date || '';
+      if (purchase) {
+        const d = new Date(String(purchase).slice(0, 10) + 'T00:00:00');
+        if (!isNaN(d)) purchase = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+
       const rows = [
         ['Бренд', t.brand],
         ['Модель', t.model],
         ['Серийный №', t.serial_number],
-        ['Инвентарный №', t.inventory_number]
+        ['Инвентарный №', t.inventory_number],
+        ['Дата покупки', purchase],
+        ['Заметки', t.notes]
       ].filter(r => r[1]);
 
       document.getElementById('specs').innerHTML = rows.map(r =>

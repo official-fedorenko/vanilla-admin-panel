@@ -23,6 +23,7 @@ const handleTools = require('./src/routes/tools');
 const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
 const handleRequests = require('./src/routes/requests');
+const handleWorklogs = require('./src/routes/worklogs');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
@@ -193,6 +194,11 @@ const server = http.createServer(async (req, res) => {
   // Универсальные заявления (пользователь создаёт, админ одобряет)
   if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {
     return handleRequests(req, res, user, parsedUrl, method);
+  }
+
+  // Учёт рабочего времени (пользователь вносит свои часы, админ видит всех)
+  if (pathname.startsWith('/api/worklogs')) {
+    return handleWorklogs(req, res, user, parsedUrl, method);
   }
 
   // Media

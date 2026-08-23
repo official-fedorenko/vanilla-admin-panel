@@ -25,7 +25,7 @@ function getToolPublic(req, res, parsedUrl) {
   if (!id || id < 1) return sendJson(res, 400, { message: 'Не указан id' });
 
   const sql = `SELECT id, name, category, brand, model, serial_number,
-                      inventory_number, status, photo_url
+                      inventory_number, status, photo_url, purchase_date, notes
                FROM tools WHERE id = ?`;
   db.get(sql, [id], (err, tool) => {
     if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
@@ -45,14 +45,18 @@ function getToolPublic(req, res, parsedUrl) {
         return sendJson(res, 404, { message: 'Карточка недоступна' });
       }
 
-      // Название и категория показываются всегда (это база для идентификации).
-      const out = { id: tool.id, name: tool.name, category: tool.category };
-      if (on('public_card_show_photo'))     out.photo_url = tool.photo_url;
-      if (on('public_card_show_brand'))     out.brand = tool.brand;
-      if (on('public_card_show_model'))     out.model = tool.model;
-      if (on('public_card_show_serial'))    out.serial_number = tool.serial_number;
-      if (on('public_card_show_inventory')) out.inventory_number = tool.inventory_number;
-      if (on('public_card_show_status'))    out.status = tool.status;
+      // Название показывается всегда (это заголовок карточки). Остальные поля —
+      // по глобальным настройкам, чтобы супер-админ решал, что видно.
+      const out = { id: tool.id, name: tool.name };
+      if (on('public_card_show_category'))      out.category = tool.category;
+      if (on('public_card_show_photo'))         out.photo_url = tool.photo_url;
+      if (on('public_card_show_brand'))         out.brand = tool.brand;
+      if (on('public_card_show_model'))         out.model = tool.model;
+      if (on('public_card_show_serial'))        out.serial_number = tool.serial_number;
+      if (on('public_card_show_inventory'))     out.inventory_number = tool.inventory_number;
+      if (on('public_card_show_status'))        out.status = tool.status;
+      if (on('public_card_show_purchase_date')) out.purchase_date = tool.purchase_date;
+      if (on('public_card_show_notes'))         out.notes = tool.notes;
 
       sendJson(res, 200, { success: true, tool: out });
     });
