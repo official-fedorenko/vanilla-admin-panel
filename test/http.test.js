@@ -317,3 +317,51 @@ test('public tool card respects GLOBAL visibility settings and enable switch', a
   const pubOff = await api('/api/public/tool?id=1');
   assert.strictEqual(pubOff.status, 404);
 });
+
+test('worklogs: user adds own entry, sees it; admin sees summary; user is forbidden from summary', async () => {
+  // Регистрируем свежего пользователя (у дефолтного `user` включена 2FA
+  // предыдущим тестом, поэтому берём чистый аккаунт без 2FA).
+  const reg = await api('/api/auth/register', {
+    method: 'POST', ip: '10.20.1.1',
+    body: {
+      username: 'worker_wl', email: 'worker_wl@example.com', password: 'password123',
+      botNum1: 4, botNum2: 3, botOp: '+', botAnswer: 7
+    }
+  });
+  assert.strictEqual(reg.status, 200);
+  const uc = reg.cookie;
+  assert.ok(uc && uc.startsWith('session='));
+
+  // Добавляем запись
+  const add = await api('/api/worklogs', {
+    method: 'POST', cookie: uc,
+    body: { work_date: '2026-08-22', hours: 8, note: 'Тест' }
+  });
+  assert.strictEqual(add.status, 201);
+
+  // Некорректные часы отклоняются
+  const bad = await api('/api/worklogs', {
+    method: 'POST', cookie: uc, body: { work_date: '2026-08-22', hours: 99 }
+  });
+  assert.strictEqual(bad.status, 400);
+
+  // Свои записи + итог
+  const mine = await api('/api/worklogs/mine', { cookie: uc });
+  assert.strictEqual(mine.status, 200);
+  assert.ok(mine.json.entries.length >= 1);
+  assert.ok(mine.json.total >= 8);
+
+  // Пользователю нельзя смотреть сводку по всем
+  const denied = await api('/api/worklogs/summary', { cookie: uc });
+  assert.strictEqual(denied.status, 403);
+
+  // Админ видит сводку с этим пользователем
+  const alogin = await api('/api/auth/login', {
+    method: 'POST', ip: '10.20.2.2',
+    body: { username: 'admin', password: '1234qwer' }
+  });
+  assert.strictEqual(alogin.status, 200);
+  const sum = await api('/api/worklogs/summary', { cookie: alogin.cookie });
+  assert.strictEqual(sum.status, 200);
+  assert.ok(sum.json.users.some(u => u.username === 'worker_wl' && u.total_hours >= 8));
+});

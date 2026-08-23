@@ -43,6 +43,12 @@
             <span>Заявления <span id="requestsBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
+        <li class="nav-item" data-section="worktime">
+          <a href="#worktime" title="Учёт времени">
+            <i data-lucide="clock"></i>
+            <span>Учёт времени</span>
+          </a>
+        </li>
         <li class="nav-item active" data-section="articles">
           <a href="#articles" title="Статьи (CRUD)">
             <i data-lucide="file-text"></i>
@@ -378,6 +384,34 @@
           </div>
         </div>
       </section>
+
+      <!-- WORK TIME SECTION -->
+      <section id="section-worktime" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Учёт рабочего времени</h2>
+            <p>Часы, внесённые сотрудниками. Нажмите на пользователя, чтобы увидеть записи.</p>
+          </div>
+        </div>
+        <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          <div id="workTimeSummary">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- WORK TIME DETAIL MODAL -->
+      <div class="modal-overlay" id="workTimeModalOverlay">
+        <div class="modal" style="display:flex; flex-direction:column; max-height:min(82vh,720px);">
+          <div class="modal-header">
+            <h3 id="workTimeModalTitle">Записи</h3>
+            <button class="modal-close" onclick="closeWorkTimeModal()">&times;</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto;">
+            <div id="workTimeEntries"><!-- populated --></div>
+          </div>
+        </div>
+      </div>
 
       <!-- SETTINGS SECTION -->
       <section id="section-settings" class="app-section">

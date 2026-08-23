@@ -538,8 +538,78 @@ function loadSectionData(hash) {
     loadSupportTickets();
   } else if (hash === 'requests') {
     loadToolRequests();
+  } else if (hash === 'worktime') {
+    loadWorkTimeSummary();
   }
 }
+
+// ==== Учёт рабочего времени (админ) ====
+function fmtHoursAdmin(h) {
+  const n = Math.round((h || 0) * 100) / 100;
+  return (Number.isInteger(n) ? n : n.toFixed(2)) + ' ч';
+}
+
+async function loadWorkTimeSummary() {
+  const box = document.getElementById('workTimeSummary');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:20px; color:hsl(var(--text-muted));">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/worklogs/summary');
+    const d = await res.json();
+    const users = (d && d.users) || [];
+    if (!users.length) {
+      box.innerHTML = `<div style="padding:40px 20px; text-align:center; color:hsl(var(--text-muted)); display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <i data-lucide="clock" style="width:36px; height:36px; opacity:0.5;"></i>
+        <div>Пока никто не вносил рабочее время</div></div>`;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+    box.innerHTML = users.map(u => {
+      const last = u.last_date ? new Date(u.last_date + 'T00:00:00').toLocaleDateString('ru-RU', { day:'numeric', month:'short', year:'numeric' }) : '—';
+      return `
+      <div onclick="openWorkTimeUser(${u.user_id}, '${escapeHtml(u.username)}')" style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid hsl(var(--border-color)); cursor:pointer;"
+           onmouseover="this.style.background='hsl(var(--accent-purple) / 0.08)'" onmouseout="this.style.background='transparent'">
+        <div style="width:40px; height:40px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">${escapeHtml((u.username||'?').charAt(0).toUpperCase())}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:600;">${escapeHtml(u.username)}</div>
+          <div style="font-size:12px; color:hsl(var(--text-muted));">Записей: ${u.entries} · последняя: ${last}</div>
+        </div>
+        <div style="font-size:18px; font-weight:700; color:hsl(var(--accent-cyan));">${fmtHoursAdmin(u.total_hours)}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="padding:20px; color:#ff6b6b;">Не удалось загрузить</div>';
+  }
+}
+
+window.openWorkTimeUser = async (userId, username) => {
+  document.getElementById('workTimeModalTitle').textContent = 'Время: ' + username;
+  const box = document.getElementById('workTimeEntries');
+  box.innerHTML = '<div style="color:hsl(var(--text-muted));">Загрузка...</div>';
+  document.getElementById('workTimeModalOverlay').classList.add('active');
+  try {
+    const res = await fetch('/api/worklogs/all?user_id=' + userId);
+    const d = await res.json();
+    const list = (d && d.entries) || [];
+    if (!list.length) { box.innerHTML = '<div style="color:hsl(var(--text-muted));">Записей нет</div>'; return; }
+    box.innerHTML = `<div style="margin-bottom:12px; font-size:14px;">Итого: <strong style="color:hsl(var(--accent-cyan));">${fmtHoursAdmin(d.total)}</strong></div>`
+      + list.map(r => {
+        const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day:'numeric', month:'short', year:'numeric' });
+        return `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid hsl(var(--border-color)); border-radius:10px; margin-bottom:8px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:hsl(var(--accent-cyan));">${fmtHoursAdmin(r.hours)}</span></div>
+            ${r.note ? `<div style="font-size:12px; color:hsl(var(--text-muted));">${escapeHtml(r.note)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="color:#ff6b6b;">Ошибка загрузки</div>';
+  }
+};
+
+window.closeWorkTimeModal = () => {
+  document.getElementById('workTimeModalOverlay').classList.remove('active');
+};
 
 // ==== Заявления (админ) ====
 const REQ_STATUS = {
