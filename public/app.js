@@ -50,6 +50,51 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+// === Модальные диалоги вместо нативных alert/confirm/prompt ===
+// Возвращают Promise: confirm → boolean, prompt → string|null, alert → true.
+function uiDialog(opts) {
+  const { type = 'confirm', title = '', message = '', defaultValue = '',
+          okText, cancelText = 'Отмена', danger = false } = opts || {};
+  const isPrompt = type === 'prompt';
+  const isAlert = type === 'alert';
+  const ok = okText || (isAlert ? 'OK' : 'Подтвердить');
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'ui-dialog-overlay';
+    overlay.innerHTML = `
+      <div class="ui-dialog" role="dialog" aria-modal="true">
+        ${title ? `<div class="ui-dialog__title">${esc(title)}</div>` : ''}
+        <div class="ui-dialog__msg">${esc(message)}</div>
+        ${isPrompt ? `<input class="ui-dialog__input form-control" type="text">` : ''}
+        <div class="ui-dialog__actions">
+          ${isAlert ? '' : `<button type="button" class="ui-dialog__btn ui-dialog__btn--cancel">${esc(cancelText)}</button>`}
+          <button type="button" class="ui-dialog__btn ui-dialog__btn--ok${danger ? ' ui-dialog__btn--danger' : ''}">${esc(ok)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('.ui-dialog__input');
+    if (input) { input.value = defaultValue || ''; setTimeout(() => { input.focus(); input.select(); }, 30); }
+    const done = (val) => { document.removeEventListener('keydown', onKey); overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 150); resolve(val); };
+    const onOk = () => done(isPrompt ? (input ? input.value : '') : true);
+    const onCancel = () => done(isPrompt ? null : false);
+    overlay.querySelector('.ui-dialog__btn--ok').addEventListener('click', onOk);
+    const cancelBtn = overlay.querySelector('.ui-dialog__btn--cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) onCancel(); });
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      else if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+    };
+    document.addEventListener('keydown', onKey);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  });
+}
+const confirmDialog = (message, opts = {}) => uiDialog({ type: 'confirm', message, ...opts });
+const promptDialog = (message, defaultValue = '', opts = {}) => uiDialog({ type: 'prompt', message, defaultValue, ...opts });
+const alertDialog = (message, opts = {}) => uiDialog({ type: 'alert', message, ...opts });
+
 // Session Check
 async function checkSession() {
   try {
@@ -147,14 +192,14 @@ function initApp() {
               ['clean']
             ],
             handlers: {
-              image: function() {
+              image: async function() {
                 if (window.openMediaPicker) {
                   window.openMediaPicker((url) => {
                     const range = this.quill.getSelection() || { index: this.quill.getLength() };
                     this.quill.insertEmbed(range.index, 'image', url);
                   }, 'articles');
                 } else {
-                  const url = prompt('Введите URL изображения:');
+                  const url = await promptDialog('Введите URL изображения:');
                   if (url) {
                     const range = this.quill.getSelection() || { index: this.quill.getLength() };
                     this.quill.insertEmbed(range.index, 'image', url);
@@ -390,7 +435,7 @@ function initApp() {
   if (resetBox && resetBtn) {
     // Will be shown by checkSession for Superadmin (we toggle here too for safety)
     resetBtn.addEventListener('click', async () => {
-      if (!confirm('Сбросить все демо-данные? Это действие необратимо.')) return;
+      if (!await confirmDialog('Сбросить все демо-данные? Это действие необратимо.', { okText: 'Сбросить', danger: true })) return;
       try {
         const res = await fetch('/api/admin/reset-demo', { method: 'POST' });
         const data = await res.json();
@@ -499,7 +544,7 @@ function initApp() {
   const clearLogsBtn = document.getElementById('clearLogsBtn');
   if (clearLogsBtn) {
     clearLogsBtn.addEventListener('click', async () => {
-      if (confirm('Вы действительно хотите удалить все логи действий? Это действие необратимо.')) {
+      if (await confirmDialog('Вы действительно хотите удалить все логи действий? Это действие необратимо.', { okText: 'Удалить', danger: true })) {
         try {
           const res = await fetch('/api/logs', { method: 'DELETE' });
           if (res.ok) {
@@ -971,7 +1016,7 @@ window.closeJustification = function () {
 
 window.approveRequest = async (id, type) => {
   const msg = type === 'tool_add' ? 'Одобрить и создать инструмент в инвентаре?' : 'Одобрить заявление?';
-  if (!confirm(msg)) return;
+  if (!await confirmDialog(msg, { okText: 'Одобрить' })) return;
   try {
     const res = await fetch(`/api/requests/approve?id=${id}`, { method: 'POST' });
     const d = await res.json().catch(() => ({}));
@@ -981,7 +1026,7 @@ window.approveRequest = async (id, type) => {
 };
 
 window.rejectRequest = async (id) => {
-  const note = prompt('Причина отклонения (необязательно):', '');
+  const note = await promptDialog('Причина отклонения (необязательно):', '', { okText: 'Отклонить', danger: true });
   if (note === null) return;
   try {
     const res = await fetch(`/api/requests/reject?id=${id}`, {
@@ -1158,7 +1203,7 @@ window.editArticle = (id) => {
 };
 
 window.deleteArticle = async (id) => {
-  if (confirm('Вы действительно хотите удалить эту статью?')) {
+  if (await confirmDialog('Вы действительно хотите удалить эту статью?', { okText: 'Удалить', danger: true })) {
     try {
       const res = await fetch(`/api/crud/articles?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -1328,7 +1373,7 @@ window.changeCategoryIcon = (categoryEnc) => {
 
 window.resetCategoryIcon = async (categoryEnc) => {
   const category = decodeURIComponent(categoryEnc);
-  if (!confirm('Вернуть стандартную иконку для этой категории?')) return;
+  if (!await confirmDialog('Вернуть стандартную иконку для этой категории?', { okText: 'Вернуть' })) return;
   try {
     const res = await fetch(`/api/category-icons?category=${encodeURIComponent(category)}`, { method: 'DELETE' });
     if (res.ok) {
@@ -1426,7 +1471,7 @@ function renderMediaGrid(filter = '') {
 
 window.moveMedia = async (id, currentCategory, e) => {
   if (e) e.stopImmediatePropagation();
-  const targetCategory = prompt('Введите новую категорию (general, tools, avatars, articles):', currentCategory);
+  const targetCategory = await promptDialog('Введите новую категорию (general, tools, avatars, articles):', currentCategory, { okText: 'Переместить' });
   if (!targetCategory || targetCategory === currentCategory) return;
   try {
     const res = await fetch('/api/media', {
@@ -1460,8 +1505,8 @@ window.copyMediaUrl = async (url, e) => {
     await navigator.clipboard.writeText(window.location.origin + url);
     showToast('URL скопирован в буфер обмена', 'success');
   } catch {
-    // fallback
-    prompt('Скопируйте URL:', window.location.origin + url);
+    // fallback — показываем URL в поле, откуда его можно скопировать вручную
+    await promptDialog('Скопируйте URL:', window.location.origin + url, { okText: 'Готово' });
   }
 };
 
@@ -1551,7 +1596,7 @@ document.getElementById('mediaPickerCategorySelect')?.addEventListener('change',
 
 window.deleteMedia = async (id, e) => {
   if (e) e.stopImmediatePropagation();
-  if (!confirm('Вы уверены, что хотите удалить этот файл?')) return;
+  if (!await confirmDialog('Вы уверены, что хотите удалить этот файл?', { okText: 'Удалить', danger: true })) return;
 
   try {
     const res = await fetch(`/api/media?id=${id}`, { method: 'DELETE' });
@@ -1945,7 +1990,7 @@ window.deleteUser = async (id) => {
     showToast('Вы не можете удалить свою собственную учетную запись', 'error');
     return;
   }
-  if (confirm('Вы действительно хотите удалить этого пользователя?')) {
+  if (await confirmDialog('Вы действительно хотите удалить этого пользователя?', { okText: 'Удалить', danger: true })) {
     try {
       const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -2388,7 +2433,7 @@ window.editEmployee = (id) => {
 window.deleteEmployee = async (id) => {
   const emp = employeesList.find(e => e.id === id);
   const name = emp ? `${emp.last_name} ${emp.first_name}` : `id=${id}`;
-  if (!confirm(`Удалить сотрудника «${name}»? Это действие необратимо.`)) return;
+  if (!await confirmDialog(`Удалить сотрудника «${name}»? Это действие необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/employees?id=${id}`, { method: 'DELETE' });
     if (res.ok) {
@@ -2748,7 +2793,7 @@ function setupTools() {
   const addCategoryBtn = document.getElementById('addCategoryBtn');
   if (addCategoryBtn) {
     addCategoryBtn.addEventListener('click', async () => {
-      const name = prompt('Название новой категории инструмента:');
+      const name = await promptDialog('Название новой категории инструмента:', '', { okText: 'Добавить' });
       if (name === null) return;
       const trimmed = name.trim();
       if (trimmed.length < 2) return showToast('Название слишком короткое', 'error');
@@ -3010,7 +3055,7 @@ window.editTool = (id) => {
 window.deleteTool = async (id) => {
   const tool = toolsList.find(t => t.id === id);
   const name = tool ? tool.name : `id=${id}`;
-  if (!confirm(`Удалить инструмент «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`)) return;
+  if (!await confirmDialog(`Удалить инструмент «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/tools?id=${id}`, { method: 'DELETE' });
     if (res.ok) {
