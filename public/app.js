@@ -540,7 +540,157 @@ function loadSectionData(hash) {
     loadToolRequests();
   } else if (hash === 'worktime') {
     loadWorkTimeSummary();
+  } else if (hash === 'vacations') {
+    loadVacations();
   }
+}
+
+// ==== Отпуска (админ): кто и когда в отпуске ====
+let vacationsCache = [];
+
+const VAC_PHASE = {
+  current:  { label: 'Сейчас в отпуске', badge: 'badge-success', color: '34,197,94' },
+  upcoming: { label: 'Предстоит',        badge: 'badge-warning', color: '245,158,11' },
+  past:     { label: 'Завершён',         badge: 'badge-secondary', color: '148,163,184' },
+  unknown:  { label: '—',                badge: 'badge-secondary', color: '148,163,184' }
+};
+
+function vacDaysCount(start, end) {
+  if (!start || !end) return '';
+  const s = new Date(start + 'T00:00:00'), e = new Date(end + 'T00:00:00');
+  if (isNaN(s) || isNaN(e) || e < s) return '';
+  return Math.round((e - s) / 86400000) + 1; // включая оба дня
+}
+
+function vacFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadVacations() {
+  const tbody = document.getElementById('vacationsTableBody');
+  const cal = document.getElementById('vacationsCalendar');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const res = await fetch('/api/requests/vacations');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    vacationsCache = data.vacations || [];
+    renderVacations();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    if (cal) cal.innerHTML = '';
+  }
+}
+
+function renderVacations() {
+  const tbody = document.getElementById('vacationsTableBody');
+  const phaseFilter = document.getElementById('vacationsPhaseFilter')?.value || '';
+  const list = phaseFilter ? vacationsCache.filter(v => v.phase === phaseFilter) : vacationsCache;
+
+  // --- Мини-календарь (таймлайн) ---
+  renderVacationsCalendar(phaseFilter ? list : vacationsCache);
+
+  // --- Список ---
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
+    return;
+  }
+  list.forEach(v => {
+    const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
+    const days = vacDaysCount(v.start_date, v.end_date);
+    const pending = v.status === 'pending'
+      ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
+      : '';
+    const tr = document.createElement('tr');
+    if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(v.name)}</strong>${pending}</td>
+      <td>${vacFmtDate(v.start_date)}</td>
+      <td>${vacFmtDate(v.end_date)}</td>
+      <td>${days !== '' ? days : '—'}</td>
+      <td><span class="badge ${ph.badge}">${ph.label}</span></td>
+      <td><span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span></td>
+      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// Горизонтальный таймлайн: строка на сотрудника, полоска = период отпуска.
+// Окно — от самого раннего начала до самого позднего конца среди отпусков
+// (но не уже, чем ±текущий месяц), с вертикальной линией «сегодня».
+function renderVacationsCalendar(list) {
+  const cal = document.getElementById('vacationsCalendar');
+  if (!cal) return;
+  const dated = list.filter(v => v.start_date && v.end_date);
+  if (!dated.length) { cal.innerHTML = ''; return; }
+
+  const toTime = d => new Date(d + 'T00:00:00').getTime();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let min = Math.min(...dated.map(v => toTime(v.start_date)));
+  let max = Math.max(...dated.map(v => toTime(v.end_date)));
+  // Гарантируем, что «сегодня» попадает в окно, и добавляем поля по краям.
+  min = Math.min(min, today.getTime());
+  max = Math.max(max, today.getTime());
+  const pad = 3 * 86400000;
+  min -= pad; max += pad;
+  const span = Math.max(max - min, 86400000);
+  const pct = t => ((t - min) / span) * 100;
+
+  // Метки месяцев вдоль шкалы.
+  const marks = [];
+  const cur = new Date(min); cur.setDate(1); cur.setHours(0, 0, 0, 0);
+  while (cur.getTime() <= max) {
+    if (cur.getTime() >= min) {
+      marks.push({ pos: pct(cur.getTime()), label: cur.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }) });
+    }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const todayPos = pct(today.getTime());
+  const rows = dated.map(v => {
+    const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
+    const left = Math.max(0, pct(toTime(v.start_date)));
+    const right = Math.min(100, pct(toTime(v.end_date)));
+    const width = Math.max(right - left, 1.2);
+    const dim = v.status === 'pending' ? 'opacity:0.55; border:1px dashed rgba(255,255,255,0.5);' : '';
+    return `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
+        <div style="position:relative; flex:1; height:22px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;">
+          <div title="${escapeHtml(v.name)}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}"
+               style="position:absolute; top:3px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.85); border-radius:5px; ${dim}"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const markEls = marks.map(m => `<span style="position:absolute; left:${m.pos}%; transform:translateX(-50%); font-size:10px; color:hsl(var(--text-muted));">${m.label}</span>`).join('');
+
+  // Зона полосок и шкалы имеет левый отступ 150px (ширина колонки имён + gap);
+  // линия «сегодня» и метки месяцев позиционируются в процентах внутри этой зоны.
+  cal.innerHTML = `
+    <div class="table-container" style="padding:16px;">
+      <div style="padding-left:150px;">
+        <div style="position:relative; height:14px; margin-bottom:8px;">${markEls}</div>
+      </div>
+      <div style="position:relative;">
+        <div style="position:absolute; left:150px; right:0; top:-4px; bottom:0; pointer-events:none;">
+          <div style="position:absolute; left:${todayPos}%; top:0; bottom:0; width:2px; background:hsl(var(--accent-red, 0 84% 60%)); z-index:2;" title="Сегодня"></div>
+        </div>
+        ${rows}
+      </div>
+      <div style="display:flex; gap:16px; margin-top:10px; font-size:11px; color:hsl(var(--text-muted)); flex-wrap:wrap;">
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(245,158,11,0.85); vertical-align:middle;"></span> предстоит</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершён</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; border:1px dashed hsl(var(--text-muted)); vertical-align:middle;"></span> ожидает одобрения</span>
+        <span style="margin-left:auto;"><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>
+      </div>
+    </div>`;
 }
 
 // ==== Учёт рабочего времени (админ) ====
@@ -758,6 +908,7 @@ async function updateSupportBadge() {
 
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
 document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRequests);
+document.getElementById('vacationsPhaseFilter')?.addEventListener('change', renderVacations);
 
 // API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {

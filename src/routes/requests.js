@@ -177,6 +177,54 @@ function listAll(req, res, user, parsedUrl) {
   });
 }
 
+// --- Сводка отпусков (админ): кто и когда в отпуске ---
+// Возвращает заявления type='vacation' со статусами approved + pending,
+// с ФИО сотрудника (если есть карточка) и разобранными датами, по возрастанию
+// даты начала. Отдаётся без пагинации — отпусков в компании немного.
+function listVacations(req, res, user) {
+  const sql = `
+    SELECT r.id, r.payload, r.status, r.created_at, r.reviewed_at,
+           u.username AS requested_by_name,
+           e.first_name AS emp_first, e.last_name AS emp_last
+    FROM requests r
+    LEFT JOIN users u ON u.id = r.requested_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
+    WHERE r.type = 'vacation' AND r.status IN ('approved', 'pending')
+    ORDER BY r.status DESC, r.id DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    const today = new Date().toISOString().slice(0, 10);
+    const vacations = (rows || []).map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const start = payload.start_date || '';
+      const end = payload.end_date || '';
+      const name = (r.emp_first || r.emp_last)
+        ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
+        : (r.requested_by_name || '—');
+      // Фаза относительно сегодняшнего дня (для меток в UI).
+      let phase = 'unknown';
+      if (start && end) {
+        if (today < start) phase = 'upcoming';
+        else if (today > end) phase = 'past';
+        else phase = 'current';
+      }
+      return {
+        id: r.id, name, start_date: start, end_date: end,
+        notes: payload.notes || '', status: r.status, phase,
+        created_at: r.created_at, reviewed_at: r.reviewed_at
+      };
+    });
+    // Пересортировка по дате начала (по возрастанию), пустые даты — в конец.
+    vacations.sort((a, b) => {
+      if (!a.start_date) return 1;
+      if (!b.start_date) return -1;
+      return a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0;
+    });
+    sendJson(res, 200, { success: true, vacations });
+  });
+}
+
 // Побочный эффект одобрения по типу. cb(err|null, resultRef|null).
 // requestRow нужен, чтобы узнать заявителя (requested_by) и закрепить за ним
 // инструмент, если он сотрудник.
@@ -278,6 +326,11 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   }
   if (p === '/api/requests' && method === 'POST') return createRequest(req, res, user);
   if (p === '/api/requests/mine' && method === 'GET') return listMine(req, res, user);
+
+  if (p === '/api/requests/vacations' && method === 'GET') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return listVacations(req, res, user);
+  }
 
   if (p === '/api/requests' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });

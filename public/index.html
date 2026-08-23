@@ -43,6 +43,12 @@
             <span>Заявления <span id="requestsBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
+        <li class="nav-item" data-section="vacations">
+          <a href="#vacations" title="Отпуска">
+            <i data-lucide="palmtree"></i>
+            <span>Отпуска</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="worktime">
           <a href="#worktime" title="Учёт времени">
             <i data-lucide="clock"></i>
@@ -226,6 +232,49 @@
                 </tr>
               </thead>
               <tbody id="requestsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VACATIONS (ОТПУСКА) SECTION -->
+      <section id="section-vacations" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Отпуска</h2>
+            <p>Сводка: кто и когда в отпуске. Одобренные и ожидающие заявления на отпуск.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="vacationsPhaseFilter" class="form-control" style="width:200px;">
+              <option value="">Все периоды</option>
+              <option value="current">Сейчас в отпуске</option>
+              <option value="upcoming">Предстоящие</option>
+              <option value="past">Завершённые</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Мини-календарь (таймлайн отпусков по неделям) -->
+        <div id="vacationsCalendar" style="margin-bottom:20px;"></div>
+
+        <!-- Список -->
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th style="width:130px;">С</th>
+                  <th style="width:130px;">По</th>
+                  <th style="width:90px;">Дней</th>
+                  <th style="width:150px;">Период</th>
+                  <th style="width:130px;">Статус</th>
+                  <th>Комментарий</th>
+                </tr>
+              </thead>
+              <tbody id="vacationsTableBody">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
