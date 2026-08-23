@@ -21,6 +21,7 @@ const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
 const handleToolCatalog = require('./src/routes/toolCatalog');
+const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
@@ -207,10 +208,23 @@ const server = http.createServer(async (req, res) => {
     return handleTools(req, res, user, parsedUrl, method);
   }
 
-  // Справочник моделей (data/tool-catalog) для подсказок при добавлении инструмента
+  // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
   if (pathname === '/api/tool-catalog' && method === 'GET') {
     return handleToolCatalog(req, res, user);
   }
+
+  // Управление стандартным каталогом инструмента (Superadmin для изменений)
+  if (pathname === '/api/catalog-models') {
+    return handleCatalogModels(req, res, user, parsedUrl, method);
+  }
+
+  // Схема полей каталога по категориям (для адаптивной модалки)
+  if (pathname === '/api/catalog-schema' && method === 'GET') {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    const { FIELD_DEFS, CATEGORY_FIELDS, DEFAULT_FIELDS } = require('./src/catalogSchema');
+    return sendJson(res, 200, { success: true, fieldDefs: FIELD_DEFS, categoryFields: CATEGORY_FIELDS, defaultFields: DEFAULT_FIELDS });
+  }
+
 
   // Универсальные заявления (пользователь создаёт, админ одобряет)
   if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {

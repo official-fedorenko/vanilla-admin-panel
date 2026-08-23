@@ -254,6 +254,20 @@ aside.sidebar {
   color: hsl(var(--text-muted));
 }
 
+/* Кнопка-бургер — только для мобильной раскладки (по умолчанию скрыта). */
+.nav-burger {
+  display: none;
+  background: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-color));
+  color: hsl(var(--text-primary));
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.nav-burger i { width: 22px; height: 22px; }
+
 .logout-btn {
   background: none;
   border: none;
@@ -1017,24 +1031,44 @@ table.data-table tbody tr:hover {
     margin-bottom: 0;
   }
 
+  /* Бургер-меню: пункты — выпадающий вертикальный список под верхней панелью. */
+  .nav-burger { display: inline-flex; }
+
   .nav-list {
-    flex-direction: row;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
     gap: 4px;
     flex-grow: 0;
-    overflow: visible;
     min-height: auto;
     margin: 0;
-    padding: 0;
+    padding: 8px;
+    background: hsl(var(--bg-sidebar));
+    border-bottom: 1px solid hsl(var(--border-color));
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.4);
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
+  }
+  aside.sidebar.menu-open .nav-list { display: flex; }
+
+  .nav-item a {
+    justify-content: flex-start;
+    padding: 12px 16px;
   }
 
   main.main-content {
     height: auto;
     overflow-y: visible;
   }
-  
+
   .sidebar-footer {
     border-top: none;
     padding-top: 0;
+    gap: 8px;
   }
   
   .user-info {
@@ -1047,21 +1081,6 @@ table.data-table tbody tr:hover {
 }
 
 @media (max-width: 768px) {
-  aside.sidebar {
-    flex-direction: column;
-    gap: 16px;
-  }
-  /* Сетка вместо flex+space-around: пункты заполняются слева-направо и
-     сверху-вниз ровными столбцами, без «пирамиды» на неполной строке. */
-  .nav-list {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 8px;
-  }
-  .nav-item a {
-    justify-content: flex-start;
-  }
   .page-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1084,25 +1103,6 @@ table.data-table tbody tr:hover {
 @media (max-width: 480px) {
   aside.sidebar {
     padding: 12px 16px;
-  }
-
-  .brand span {
-    display: none;
-  }
-
-  /* Icon-only nav: text labels would make 4-6 items unreadable at this
-     width. The <a title="..."> added in index.html keeps a hover/long-press
-     hint, and lucide icons stay legible at small sizes. */
-  .nav-item a span {
-    display: none;
-  }
-  .nav-item a {
-    padding: 10px;
-    justify-content: center;
-  }
-  /* Иконки узкие — делаем колонки компактнее, чтобы влезало больше в ряд. */
-  .nav-list {
-    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
   }
 
   .page-title h2 {

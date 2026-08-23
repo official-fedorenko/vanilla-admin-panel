@@ -1,5 +1,5 @@
 const { sendJson, getJsonBody, logAction, parsePagination } = require('../utils');
-const { db } = require('../../db');
+const { db, hashPassword } = require('../../db');
 
 /**
  * CRUD сотрудников — базовый справочник персонала компании.
@@ -64,8 +64,175 @@ function extractEmployeeFields(body) {
   };
 }
 
+// ================= Связка «сотрудник ↔ аккаунт» =================
+// Все под /api/crud/employees/... — навигация и связывание карточки сотрудника
+// с учётной записью. Просмотр/связывание — Admin+Superadmin; создание аккаунта
+// (задаёт пароль) — только Superadmin.
+
+// Инфо о связке: по employee_id ИЛИ user_id вернуть карточку и аккаунт (если есть).
+function getLinkInfo(res, parsedUrl) {
+  const empId = parseInt(parsedUrl.searchParams.get('employee_id'), 10);
+  const usrId = parseInt(parsedUrl.searchParams.get('user_id'), 10);
+  const accountFields = 'id, username, email, role, account_type';
+  const empFields = 'id, first_name, last_name, position, status, user_id';
+  const send = (emp, acc) => sendJson(res, 200, { success: true, employee: emp || null, account: acc || null });
+
+  if (Number.isInteger(empId) && empId > 0) {
+    db.get(`SELECT ${empFields} FROM employees WHERE id = ?`, [empId], (e, emp) => {
+      if (e) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+      if (!emp.user_id) return send(emp, null);
+      db.get(`SELECT ${accountFields} FROM users WHERE id = ?`, [emp.user_id], (e2, acc) => send(emp, acc || null));
+    });
+  } else if (Number.isInteger(usrId) && usrId > 0) {
+    db.get(`SELECT ${accountFields} FROM users WHERE id = ?`, [usrId], (e, acc) => {
+      if (e) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!acc) return sendJson(res, 404, { success: false, message: 'Аккаунт не найден' });
+      db.get(`SELECT ${empFields} FROM employees WHERE user_id = ?`, [usrId], (e2, emp) => send(emp || null, acc));
+    });
+  } else {
+    sendJson(res, 400, { success: false, message: 'Укажите employee_id или user_id' });
+  }
+}
+
+// Кандидаты для привязки: for=account → аккаунты без карточки; for=card → карточки без аккаунта.
+function getCandidates(res, parsedUrl) {
+  const kind = parsedUrl.searchParams.get('for');
+  if (kind === 'account') {
+    db.all(
+      `SELECT id, username, email, role, account_type FROM users
+       WHERE id NOT IN (SELECT user_id FROM employees WHERE user_id IS NOT NULL)
+       ORDER BY username COLLATE NOCASE`, [],
+      (err, rows) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, users: rows || [] });
+      });
+  } else if (kind === 'card') {
+    db.all(
+      `SELECT id, first_name, last_name, position FROM employees
+       WHERE user_id IS NULL
+       ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE`, [],
+      (err, rows) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, employees: rows || [] });
+      });
+  } else {
+    sendJson(res, 400, { success: false, message: 'Параметр for: account | card' });
+  }
+}
+
+// Привязать существующий аккаунт к карточке.
+async function linkAccount(req, res, user) {
+  const body = await getJsonBody(req);
+  const empId = parseInt(body.employee_id, 10);
+  const usrId = parseInt(body.user_id, 10);
+  if (!(empId > 0) || !(usrId > 0)) return sendJson(res, 400, { success: false, message: 'Нужны employee_id и user_id' });
+  db.get("SELECT id FROM employees WHERE user_id = ? AND id != ?", [usrId, empId], (e, other) => {
+    if (e) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (other) return sendJson(res, 409, { success: false, message: 'Этот аккаунт уже привязан к другому сотруднику' });
+    db.run("UPDATE employees SET user_id = ? WHERE id = ?", [usrId, empId], function (uErr) {
+      if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось привязать' });
+      if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+      db.run("UPDATE users SET account_type = 'employee' WHERE id = ?", [usrId], () => {
+        logAction(user.username, `Привязал аккаунт user_id=${usrId} к сотруднику id=${empId}`);
+        sendJson(res, 200, { success: true });
+      });
+    });
+  });
+}
+
+// Отвязать аккаунт от карточки (сам аккаунт и карточка остаются).
+async function unlinkAccount(req, res, user) {
+  const body = await getJsonBody(req);
+  const empId = parseInt(body.employee_id, 10);
+  if (!(empId > 0)) return sendJson(res, 400, { success: false, message: 'Нужен employee_id' });
+  db.run("UPDATE employees SET user_id = NULL WHERE id = ?", [empId], function (err) {
+    if (err) return sendJson(res, 500, { success: false, message: 'Не удалось отвязать' });
+    if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+    logAction(user.username, `Отвязал аккаунт от сотрудника id=${empId}`);
+    sendJson(res, 200, { success: true });
+  });
+}
+
+// Создать карточку сотрудника для аккаунта, который её ещё не имеет.
+async function createCardForUser(req, res, user) {
+  const body = await getJsonBody(req);
+  const usrId = parseInt(body.user_id, 10);
+  if (!(usrId > 0)) return sendJson(res, 400, { success: false, message: 'Нужен user_id' });
+  db.get("SELECT id, username, email FROM users WHERE id = ?", [usrId], (e, u) => {
+    if (e) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!u) return sendJson(res, 404, { success: false, message: 'Аккаунт не найден' });
+    db.get("SELECT id FROM employees WHERE user_id = ?", [usrId], (e2, existing) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (existing) return sendJson(res, 409, { success: false, message: 'У аккаунта уже есть карточка сотрудника' });
+      db.run(
+        "INSERT INTO employees (first_name, last_name, email, user_id, status) VALUES (?, '', ?, ?, 'active')",
+        [u.username, u.email, usrId],
+        function (insErr) {
+          if (insErr) return sendJson(res, 500, { success: false, message: 'Не удалось создать карточку' });
+          db.run("UPDATE users SET account_type = 'employee' WHERE id = ?", [usrId], () => {
+            logAction(user.username, `Создал карточку сотрудника для аккаунта user_id=${usrId} (id=${this.lastID})`);
+            sendJson(res, 201, { success: true, id: this.lastID });
+          });
+        }
+      );
+    });
+  });
+}
+
+// Создать аккаунт для карточки сотрудника и сразу привязать. Только Superadmin.
+async function createAccountForEmployee(req, res, user) {
+  const body = await getJsonBody(req);
+  const empId = parseInt(body.employee_id, 10);
+  const username = (body.username || '').trim();
+  const email = (body.email || '').trim();
+  const password = String(body.password || '');
+  const role = ['User', 'Admin', 'Superadmin'].includes(body.role) ? body.role : 'User';
+  if (!(empId > 0)) return sendJson(res, 400, { success: false, message: 'Нужен employee_id' });
+  if (!username || !email || !password) return sendJson(res, 400, { success: false, message: 'Логин, email и пароль обязательны' });
+  if (password.length < 8) return sendJson(res, 400, { success: false, message: 'Пароль минимум 8 символов' });
+
+  db.get("SELECT id, user_id FROM employees WHERE id = ?", [empId], (e, emp) => {
+    if (e) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+    if (emp.user_id) return sendJson(res, 409, { success: false, message: 'У сотрудника уже есть аккаунт' });
+    db.run(
+      "INSERT INTO users (username, email, password_hash, role, account_type) VALUES (?, ?, ?, ?, 'employee')",
+      [username, email, hashPassword(password), role],
+      function (insErr) {
+        if (insErr) {
+          const msg = insErr.message.includes('UNIQUE') ? 'Логин или email уже заняты' : 'Не удалось создать аккаунт';
+          return sendJson(res, 400, { success: false, message: msg });
+        }
+        const newUserId = this.lastID;
+        db.run("UPDATE employees SET user_id = ? WHERE id = ?", [newUserId, empId], (uErr) => {
+          if (uErr) return sendJson(res, 500, { success: false, message: 'Аккаунт создан, но не удалось привязать' });
+          logAction(user.username, `Создал аккаунт ${username} (${role}) и привязал к сотруднику id=${empId}`);
+          sendJson(res, 201, { success: true, user_id: newUserId });
+        });
+      }
+    );
+  });
+}
+
 async function handleEmployees(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+
+  // --- Под-маршруты связки «сотрудник ↔ аккаунт» ---
+  const p = parsedUrl.pathname;
+  if (p === '/api/crud/employees/link' && method === 'GET') return getLinkInfo(res, parsedUrl);
+  if (p === '/api/crud/employees/candidates' && method === 'GET') return getCandidates(res, parsedUrl);
+  if (p.startsWith('/api/crud/employees/') && method === 'POST') {
+    if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
+    if (p === '/api/crud/employees/link') return linkAccount(req, res, user);
+    if (p === '/api/crud/employees/unlink') return unlinkAccount(req, res, user);
+    if (p === '/api/crud/employees/create-card') return createCardForUser(req, res, user);
+    if (p === '/api/crud/employees/create-account') {
+      if (user.role !== 'Superadmin') return sendJson(res, 403, { success: false, message: 'Создавать аккаунты может только Superadmin' });
+      return createAccountForEmployee(req, res, user);
+    }
+    return sendJson(res, 404, { success: false, message: 'Не найдено' });
+  }
 
   if (method === 'GET') {
     const { limit, offset } = parsePagination(parsedUrl);

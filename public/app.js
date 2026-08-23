@@ -129,18 +129,38 @@ async function checkSession() {
 
 // SPA Routing / Navigation
 function setupNavigation() {
+  // Бургер-меню (мобильные): выпадающий список пунктов по кнопке.
+  const sidebar = document.querySelector('aside.sidebar');
+  const burger = document.getElementById('navBurger');
+  const closeMenu = () => {
+    if (!sidebar) return;
+    sidebar.classList.remove('menu-open');
+    if (burger) burger.setAttribute('aria-expanded', 'false');
+  };
+  if (burger && sidebar) {
+    burger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = sidebar.classList.toggle('menu-open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Клик вне меню — закрыть.
+    document.addEventListener('click', (e) => {
+      if (sidebar.classList.contains('menu-open') && !sidebar.contains(e.target)) closeMenu();
+    });
+  }
+
   const handleHashChange = () => {
     const hash = window.location.hash.replace('#', '') || 'articles';
     let targetSection = document.getElementById(`section-${hash}`);
-    
+
     if (!targetSection) {
       targetSection = document.getElementById('section-dashboard');
     }
-    
+
     // Toggle active section
     sections.forEach(sec => sec.classList.remove('active'));
     targetSection.classList.add('active');
-    
+
     // Toggle active sidebar item
     navItems.forEach(item => {
       item.classList.remove('active');
@@ -155,6 +175,9 @@ function setupNavigation() {
     if (hash === 'articles') {
       loadDashboardStats();
     }
+
+    // Выбор пункта закрывает бургер-меню.
+    closeMenu();
   };
 
   window.addEventListener('hashchange', handleHashChange);
@@ -490,6 +513,7 @@ function initApp() {
       : 'Пароль обязателен для создания нового пользователя.';
     document.getElementById('userRole').value = role;
     document.getElementById('userAccountType').value = accountType || 'client';
+    renderUserEmployeePanel(id || null);
     userModal.classList.add('active');
   };
 
@@ -572,6 +596,8 @@ function loadSectionData(hash) {
     loadEmployees();
   } else if (hash === 'tools') {
     loadTools();
+  } else if (hash === 'catalog') {
+    loadCatalogModels();
   } else if (hash === 'articles') {
     loadArticles();
   } else if (hash === 'media') {
@@ -1192,6 +1218,21 @@ document.getElementById('justificationModalOverlay')?.addEventListener('click', 
 document.getElementById('vacationModalOverlay')?.addEventListener('click', (e) => {
   if (e.target.id === 'vacationModalOverlay') window.closeVacationForm();
 });
+document.getElementById('catalogModelModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'catalogModelModalOverlay') window.closeCatalogModelModal();
+});
+document.getElementById('cmCategory')?.addEventListener('change', () => {
+  const cat = document.getElementById('cmCategory').value;
+  const collected = collectCatalogModelFields(cat);
+  const flat = Object.assign({}, collected, collected.specs);
+  delete flat.specs;
+  renderCatalogModelFields(cat, flat);
+});
+document.getElementById('categoriesModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'categoriesModalOverlay') window.closeCategoriesManager();
+});
+document.getElementById('catalogModelsCatFilter')?.addEventListener('change', renderCatalogModelsTable);
+document.getElementById('catalogModelsSearch')?.addEventListener('input', renderCatalogModelsTable);
 
 // API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {
@@ -2094,6 +2135,7 @@ window.editUser = (id) => {
     document.getElementById('passwordHelp').textContent = 'Оставьте пустым, чтобы не менять пароль.';
     document.getElementById('userRole').value = u.role;
     document.getElementById('userAccountType').value = u.account_type || 'client';
+    renderUserEmployeePanel(u.id);
     modal.classList.add('active');
   }
 };
@@ -2535,6 +2577,7 @@ function openEmployeeModal(emp = null) {
   document.getElementById('empHireDate').value = emp && emp.hire_date ? String(emp.hire_date).slice(0, 10) : '';
   document.getElementById('empStatus').value = emp ? emp.status : 'active';
   document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
+  renderEmpAccountPanel(emp ? emp.id : null);
   modal.classList.add('active');
 }
 
@@ -2559,6 +2602,190 @@ window.deleteEmployee = async (id) => {
   } catch (err) {
     showToast('Ошибка сети', 'error');
   }
+};
+
+// =====================================================================
+//  Связка «сотрудник ↔ аккаунт» — навигация и связывание в карточках
+// =====================================================================
+function linkPanelBox(inner) {
+  return `<div style="border:1px solid hsl(var(--border-color)); border-radius:10px; padding:12px 14px; margin-bottom:16px; background:hsl(var(--bg-main));">
+    <div style="font-size:12px; font-weight:700; color:hsl(var(--text-muted)); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Связь</div>
+    ${inner}
+  </div>`;
+}
+function linkActionsHtml(buttons) {
+  return `<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">${buttons}</div>`;
+}
+function isSuperUser() { return currentUser && currentUser.role === 'Superadmin'; }
+
+// ---- Панель «Аккаунт» в карточке сотрудника ----
+async function renderEmpAccountPanel(employeeId) {
+  const box = document.getElementById('empAccountPanel');
+  if (!box) return;
+  if (!employeeId) { box.innerHTML = ''; return; } // новый сотрудник — панели нет
+  box.innerHTML = linkPanelBox('<div style="font-size:13px;color:hsl(var(--text-muted));">Загрузка…</div>');
+  try {
+    const res = await fetch('/api/crud/employees/link?employee_id=' + employeeId);
+    const d = await res.json();
+    const acc = d.account;
+    if (acc) {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px;">🔗 Аккаунт: <strong>${escapeHtml(acc.username)}</strong>
+          <span style="margin-left:6px; font-size:11px; padding:2px 8px; border-radius:6px; background:hsl(var(--border-color) / 0.5); color:hsl(var(--text-primary));">${escapeHtml(acc.role)}</span></div>
+        <div style="font-size:12px; color:hsl(var(--text-muted)); margin-top:2px;">${escapeHtml(acc.email || '')}</div>
+        ${linkActionsHtml(`
+          ${isSuperUser() ? `<button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="openLinkedAccount(${acc.id})">Открыть карточку аккаунта</button>` : ''}
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="unlinkEmpAccount(${employeeId})">Отвязать</button>
+        `)}`);
+    } else {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px; color:hsl(var(--text-muted));">Аккаунт не привязан</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="showLinkAccountPicker(${employeeId})">Привязать существующий</button>
+          ${isSuperUser() ? `<button type="button" class="btn" style="padding:6px 12px;font-size:12px;" onclick="showCreateAccountForm(${employeeId})">Создать аккаунт</button>` : ''}
+        `)}
+        <div id="empLinkExtra"></div>`);
+    }
+  } catch (e) { box.innerHTML = ''; }
+}
+
+window.openLinkedAccount = async (userId) => {
+  document.getElementById('employeeModalOverlay').classList.remove('active');
+  location.hash = 'users';
+  await loadUsers();
+  editUser(userId);
+};
+window.unlinkEmpAccount = async (employeeId) => {
+  if (!await confirmDialog('Отвязать аккаунт от этой карточки? Сам аккаунт и карточка сохранятся.', { okText: 'Отвязать' })) return;
+  const res = await fetch('/api/crud/employees/unlink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт отвязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showLinkAccountPicker = async (employeeId) => {
+  const extra = document.getElementById('empLinkExtra');
+  extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Загрузка…</div>';
+  const res = await fetch('/api/crud/employees/candidates?for=account');
+  const d = await res.json().catch(() => ({}));
+  const users = d.users || [];
+  if (!users.length) { extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Нет свободных аккаунтов (все уже привязаны).</div>'; return; }
+  extra.innerHTML = `<div style="display:flex; gap:8px; margin-top:10px;">
+    <select id="empLinkSelect" class="form-control" style="flex:1;">
+      ${users.map(u => `<option value="${u.id}">${escapeHtml(u.username)} — ${escapeHtml(u.email || '')}</option>`).join('')}
+    </select>
+    <button type="button" class="btn" onclick="doLinkAccount(${employeeId})">Привязать</button>
+  </div>`;
+};
+window.doLinkAccount = async (employeeId) => {
+  const uid = document.getElementById('empLinkSelect')?.value;
+  if (!uid) return;
+  const res = await fetch('/api/crud/employees/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId, user_id: uid }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт привязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showCreateAccountForm = (employeeId) => {
+  const extra = document.getElementById('empLinkExtra');
+  const empEmail = document.getElementById('empEmail')?.value || '';
+  extra.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+    <input id="caUsername" class="form-control" placeholder="Логин">
+    <input id="caEmail" class="form-control" placeholder="E-mail" value="${escapeHtml(empEmail)}">
+    <input id="caPassword" type="password" class="form-control" placeholder="Пароль (мин. 8 символов)">
+    <select id="caRole" class="form-control">
+      <option value="User">Пользователь (User)</option>
+      <option value="Admin">Администратор (Admin)</option>
+      <option value="Superadmin">Суперадмин (Superadmin)</option>
+    </select>
+    <button type="button" class="btn" onclick="doCreateAccount(${employeeId})">Создать и привязать</button>
+  </div>`;
+};
+window.doCreateAccount = async (employeeId) => {
+  const body = {
+    employee_id: employeeId,
+    username: document.getElementById('caUsername')?.value.trim(),
+    email: document.getElementById('caEmail')?.value.trim(),
+    password: document.getElementById('caPassword')?.value,
+    role: document.getElementById('caRole')?.value
+  };
+  if (!body.username || !body.email || !body.password) { showToast('Заполните логин, email и пароль', 'error'); return; }
+  const res = await fetch('/api/crud/employees/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт создан и привязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+
+// ---- Панель «Сотрудник» в карточке аккаунта ----
+async function renderUserEmployeePanel(userId) {
+  const box = document.getElementById('userEmployeePanel');
+  if (!box) return;
+  if (!userId) { box.innerHTML = ''; return; }
+  box.innerHTML = linkPanelBox('<div style="font-size:13px;color:hsl(var(--text-muted));">Загрузка…</div>');
+  try {
+    const res = await fetch('/api/crud/employees/link?user_id=' + userId);
+    const d = await res.json();
+    const emp = d.employee;
+    if (emp) {
+      const fio = [emp.last_name, emp.first_name].filter(Boolean).join(' ') || '(без имени)';
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px;">👤 Карточка: <strong>${escapeHtml(fio)}</strong>
+          ${emp.position ? `<span style="color:hsl(var(--text-muted));"> — ${escapeHtml(emp.position)}</span>` : ''}</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="openLinkedCard(${emp.id})">Открыть карточку сотрудника</button>
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="unlinkUserCard(${emp.id}, ${userId})">Отвязать</button>
+        `)}`);
+    } else {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px; color:hsl(var(--text-muted));">Карточка сотрудника не привязана</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="showLinkCardPicker(${userId})">Привязать существующую</button>
+          <button type="button" class="btn" style="padding:6px 12px;font-size:12px;" onclick="doCreateCard(${userId})">Создать карточку</button>
+        `)}
+        <div id="userLinkExtra"></div>`);
+    }
+  } catch (e) { box.innerHTML = ''; }
+}
+
+window.openLinkedCard = async (employeeId) => {
+  document.getElementById('userModalOverlay').classList.remove('active');
+  location.hash = 'employees';
+  await loadEmployees();
+  const emp = employeesList.find(e => e.id === employeeId);
+  if (emp) openEmployeeModal(emp);
+};
+window.unlinkUserCard = async (employeeId, userId) => {
+  if (!await confirmDialog('Отвязать карточку сотрудника от этого аккаунта?', { okText: 'Отвязать' })) return;
+  const res = await fetch('/api/crud/employees/unlink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Отвязано', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showLinkCardPicker = async (userId) => {
+  const extra = document.getElementById('userLinkExtra');
+  extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Загрузка…</div>';
+  const res = await fetch('/api/crud/employees/candidates?for=card');
+  const d = await res.json().catch(() => ({}));
+  const emps = d.employees || [];
+  if (!emps.length) { extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Нет свободных карточек (все уже привязаны).</div>'; return; }
+  extra.innerHTML = `<div style="display:flex; gap:8px; margin-top:10px;">
+    <select id="userLinkSelect" class="form-control" style="flex:1;">
+      ${emps.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('')}
+    </select>
+    <button type="button" class="btn" onclick="doLinkCard(${userId})">Привязать</button>
+  </div>`;
+};
+window.doLinkCard = async (userId) => {
+  const eid = document.getElementById('userLinkSelect')?.value;
+  if (!eid) return;
+  const res = await fetch('/api/crud/employees/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: eid, user_id: userId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Карточка привязана', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.doCreateCard = async (userId) => {
+  const res = await fetch('/api/crud/employees/create-card', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Карточка создана и привязана', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
 };
 
 // =====================================================================
@@ -2796,6 +3023,11 @@ function renderCatalogList() {
     ? catalogFlat
     : catalogFlat.filter(m => m.category === catalogActiveFilter);
 
+  if (!items.length) {
+    list.innerHTML = '<div style="grid-column:1/-1;color:hsl(var(--text-muted));text-align:center;padding:24px;">В этой категории пока нет моделей.<br>Добавьте их в разделе «Каталог» (Superadmin).</div>';
+    return;
+  }
+
   list.innerHTML = items.map((m, i) => {
     const idx = catalogFlat.indexOf(m);
     const specs = [];
@@ -2825,6 +3057,333 @@ window.pickCatalogModel = (idx) => {
   setToolPhotoPreview(m.image);
   document.getElementById('catalogModalOverlay').classList.remove('active');
   showToast('Модель подставлена — впишите серийный № и сохраните', 'success');
+};
+
+// =====================================================================
+//  Управление стандартным каталогом (раздел «Каталог») — Superadmin
+// =====================================================================
+let catalogModelsCache = [];
+
+function catalogModelSpecs(m) {
+  const s = [];
+  if (m.line) s.push(m.line);
+  if (m.power_type === 'cordless' && m.voltage_v) s.push(m.voltage_v + ' В');
+  if (m.power_type === 'corded' && m.power_w) s.push(m.power_w + ' Вт');
+  if (m.brushless) s.push('бесщёт.');
+  if (m.impact) s.push('ударный');
+  if (m.disc_mm) s.push('⌀' + m.disc_mm);
+  if (m.chuck) s.push(m.chuck);
+  const sp = m.specs || {};
+  if (sp.impact_energy_j) s.push(sp.impact_energy_j + ' Дж');
+  if (sp.max_drill_mm) s.push('бур. ' + sp.max_drill_mm + ' мм');
+  if (sp.bpm) s.push(sp.bpm + ' уд/мин');
+  if (sp.weight_kg) s.push(sp.weight_kg + ' кг');
+  return s.join(' · ');
+}
+
+let catalogAllCategories = []; // все категории справочника (для левой панели)
+let catalogSelectedCat = '';   // '' = Все категории
+
+async function loadCatalogModels() {
+  const tbody = document.getElementById('catalogModelsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка…</td></tr>';
+  try {
+    const [mRes, cRes] = await Promise.all([
+      fetch('/api/catalog-models'),
+      fetch('/api/crud/tool-categories')
+    ]);
+    if (!mRes.ok) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    catalogModelsCache = (await mRes.json()).models || [];
+    catalogAllCategories = cRes.ok ? await cRes.json() : [];
+    renderCatalogCatPanel();
+    renderCatalogModelsTable();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+function catalogCategoryCounts() {
+  const counts = {};
+  catalogModelsCache.forEach(m => { counts[m.category] = (counts[m.category] || 0) + 1; });
+  return counts;
+}
+
+// Левая панель: все категории справочника с числом моделей.
+function renderCatalogCatPanel() {
+  const panel = document.getElementById('catalogCatPanel');
+  if (!panel) return;
+  const counts = catalogCategoryCounts();
+  const dictNames = catalogAllCategories.map(c => c.name);
+  const extra = Object.keys(counts).filter(n => !dictNames.includes(n)); // категории моделей вне справочника
+  const names = [...new Set([...dictNames, ...extra])].sort((a, b) => a.localeCompare(b, 'ru'));
+
+  const item = (val, label, count, active) => `
+    <button type="button" data-cat="${escapeHtml(val)}"
+      style="display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; padding:10px 12px;
+             border:1px solid ${active ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};
+             background:${active ? 'hsl(var(--accent-purple) / 0.14)' : 'hsl(var(--bg-card))'};
+             color:hsl(var(--text-primary)); border-radius:8px; cursor:pointer; font-size:13px; font-family:inherit;">
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(label)}</span>
+      <span style="flex-shrink:0; font-size:11px; font-weight:600; color:hsl(var(--text-muted)); background:hsl(var(--bg-main)); border-radius:10px; padding:1px 8px;">${count}</span>
+    </button>`;
+
+  panel.innerHTML =
+    item('', 'Все категории', catalogModelsCache.length, catalogSelectedCat === '') +
+    names.map(n => item(n, n, counts[n] || 0, catalogSelectedCat === n)).join('');
+
+  panel.onclick = (e) => {
+    const b = e.target.closest('[data-cat]');
+    if (b) setCatalogCategory(b.getAttribute('data-cat'));
+  };
+}
+
+window.setCatalogCategory = (name) => {
+  catalogSelectedCat = name || '';
+  renderCatalogCatPanel();
+  renderCatalogModelsTable();
+};
+
+function renderCatalogModelsTable() {
+  const tbody = document.getElementById('catalogModelsTableBody');
+  if (!tbody) return;
+  const heading = document.getElementById('catalogModelsHeading');
+  const countEl = document.getElementById('catalogModelsCount');
+  const q = (document.getElementById('catalogModelsSearch')?.value || '').trim().toLowerCase();
+  let list = catalogModelsCache;
+  if (catalogSelectedCat) list = list.filter(m => m.category === catalogSelectedCat);
+  if (q) list = list.filter(m => (m.brand + ' ' + m.model + ' ' + (m.name || '')).toLowerCase().includes(q));
+
+  if (heading) heading.textContent = catalogSelectedCat || 'Все категории';
+  if (countEl) countEl.textContent = `${list.length} шт.`;
+
+  tbody.innerHTML = '';
+  if (!list.length) {
+    const msg = catalogSelectedCat ? 'В этой категории пока нет моделей' : 'Моделей нет';
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">${msg}</td></tr>`;
+    return;
+  }
+  list.forEach(m => {
+    const img = m.image_url ? `<img src="${iconVer(m.image_url)}" style="width:34px;height:28px;object-fit:contain;flex-shrink:0;vertical-align:middle;margin-right:8px;">` : '';
+    // В режиме «Все» показываем категорию подписью под моделью.
+    const catLine = !catalogSelectedCat ? `<div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${escapeHtml(m.category)}</div>` : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${img}<strong>${escapeHtml(m.name || (m.brand + ' ' + m.model))}</strong>${catLine}</td>
+      <td>${escapeHtml(m.brand)}</td>
+      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(catalogModelSpecs(m))}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <button class="action-btn edit" onclick="editCatalogModel(${m.id})"><i data-lucide="edit-3"></i></button>
+        <button class="action-btn delete" onclick="deleteCatalogModel(${m.id})"><i data-lucide="trash-2"></i></button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+// Схема полей каталога по категориям (адаптивная модалка).
+let catalogSchema = null;
+async function ensureCatalogSchema() {
+  if (catalogSchema) return catalogSchema;
+  try {
+    const res = await fetch('/api/catalog-schema');
+    catalogSchema = res.ok ? await res.json() : { fieldDefs: {}, categoryFields: {}, defaultFields: [] };
+  } catch (e) { catalogSchema = { fieldDefs: {}, categoryFields: {}, defaultFields: [] }; }
+  return catalogSchema;
+}
+function catalogFieldKeys(category) {
+  const s = catalogSchema || { categoryFields: {}, defaultFields: [] };
+  return (s.categoryFields[category] || s.defaultFields || []);
+}
+
+// Рендерит поля характеристик в модалке под выбранную категорию.
+function renderCatalogModelFields(category, values = {}) {
+  const box = document.getElementById('cmDynFields');
+  if (!box) return;
+  const defs = (catalogSchema || {}).fieldDefs || {};
+  const keys = catalogFieldKeys(category);
+  box.innerHTML = keys.map((k) => {
+    const def = defs[k];
+    if (!def) return '';
+    const v = values[k];
+    const id = 'cmf_' + k;
+    if (def.type === 'checkbox') {
+      return `<div class="form-group" style="display:flex; align-items:center;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+          <input type="checkbox" id="${id}" data-cmf="${k}" ${v ? 'checked' : ''}> ${escapeHtml(def.label)}
+        </label></div>`;
+    }
+    if (def.type === 'select') {
+      const opts = (def.options || []).map(([val, lbl]) => `<option value="${escapeHtml(val)}" ${String(v) === val ? 'selected' : ''}>${escapeHtml(lbl)}</option>`).join('');
+      return `<div class="form-group"><label for="${id}">${escapeHtml(def.label)}</label>
+        <select id="${id}" data-cmf="${k}" class="form-control"><option value="">—</option>${opts}</select></div>`;
+    }
+    const dl = def.suggest ? `list="${id}_dl"` : '';
+    const dlEl = def.suggest ? `<datalist id="${id}_dl">${def.suggest.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>` : '';
+    const inputType = def.type === 'number' ? 'number' : 'text';
+    return `<div class="form-group"><label for="${id}">${escapeHtml(def.label)}</label>
+      <input type="${inputType}" id="${id}" data-cmf="${k}" class="form-control" ${dl} value="${v != null ? escapeHtml(String(v)) : ''}">${dlEl}</div>`;
+  }).join('');
+}
+
+// Собирает значения полей: колоночные → в тело верхним уровнем, спец. → в specs.
+function collectCatalogModelFields(category) {
+  const defs = (catalogSchema || {}).fieldDefs || {};
+  const box = document.getElementById('cmDynFields');
+  const out = { specs: {} };
+  if (!box) return out;
+  box.querySelectorAll('[data-cmf]').forEach((el) => {
+    const k = el.getAttribute('data-cmf');
+    const def = defs[k] || {};
+    let val;
+    if (el.type === 'checkbox') val = el.checked;
+    else val = el.value;
+    if (def.col) out[k] = val;
+    else if (val !== '' && val !== false) out.specs[k] = val;
+  });
+  return out;
+}
+
+window.openCatalogModelModal = async (model = null) => {
+  await Promise.all([loadToolCategories(), ensureCatalogSchema()]);
+  const sel = document.getElementById('cmCategory');
+  const names = (toolCategories || []).map(c => c.name);
+  const cur = model ? model.category : '';
+  let html = '<option value="">— выберите —</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  if (cur && !names.includes(cur)) html += `<option value="${escapeHtml(cur)}">${escapeHtml(cur)} (своя)</option>`;
+  sel.innerHTML = html;
+
+  document.getElementById('catalogModelModalTitle').textContent = model ? 'Изменить модель' : 'Добавить модель';
+  document.getElementById('cmId').value = model ? model.id : '';
+  sel.value = cur;
+  document.getElementById('cmLine').value = model ? (model.line || '') : '';
+  document.getElementById('cmBrand').value = model ? model.brand : '';
+  document.getElementById('cmModel').value = model ? model.model : '';
+  document.getElementById('cmName').value = model ? (model.name || '') : '';
+  // Значения характеристик: колонки модели + её specs.
+  const vals = Object.assign({}, model || {}, (model && model.specs) || {});
+  renderCatalogModelFields(cur, vals);
+  setCatalogModelImage(model ? model.image_url : '');
+  document.getElementById('catalogModelModalOverlay').classList.add('active');
+};
+window.editCatalogModel = (id) => {
+  const m = catalogModelsCache.find(x => x.id === id);
+  if (m) openCatalogModelModal(m);
+};
+window.closeCatalogModelModal = () => document.getElementById('catalogModelModalOverlay').classList.remove('active');
+
+function setCatalogModelImage(url) {
+  document.getElementById('cmImageUrl').value = url || '';
+  const prev = document.getElementById('cmImagePreview');
+  if (url) { prev.src = iconVer(url); prev.style.display = 'inline-block'; }
+  else { prev.src = ''; prev.style.display = 'none'; }
+}
+window.pickCatalogModelImage = () => {
+  if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+  window.openMediaPicker((url) => setCatalogModelImage(url), 'tools');
+};
+window.clearCatalogModelImage = () => setCatalogModelImage('');
+
+window.submitCatalogModel = async (e) => {
+  if (e) e.preventDefault();
+  const id = document.getElementById('cmId').value;
+  const category = document.getElementById('cmCategory').value;
+  const dyn = collectCatalogModelFields(category); // колоночные поля верхним уровнем + { specs }
+  const body = Object.assign({
+    category,
+    brand: document.getElementById('cmBrand').value.trim(),
+    model: document.getElementById('cmModel').value.trim(),
+    name: document.getElementById('cmName').value.trim(),
+    line: document.getElementById('cmLine').value.trim(),
+    image_url: document.getElementById('cmImageUrl').value
+  }, dyn);
+  if (!body.category || !body.brand || !body.model) { showToast('Категория, бренд и модель обязательны', 'error'); return false; }
+  const url = id ? `/api/catalog-models?id=${id}` : '/api/catalog-models';
+  try {
+    const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast(id ? 'Модель обновлена' : 'Модель добавлена', 'success');
+      closeCatalogModelModal();
+      catalogData = null; // сбросить кэш пикера, чтобы подтянулись изменения
+      loadCatalogModels();
+    } else showToast(d.message || 'Ошибка', 'error');
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+  return false;
+};
+window.deleteCatalogModel = async (id) => {
+  const m = catalogModelsCache.find(x => x.id === id);
+  if (!await confirmDialog(`Удалить модель «${m ? (m.name || m.brand + ' ' + m.model) : id}» из каталога?`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/catalog-models?id=${id}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Модель удалена', 'success'); catalogData = null; loadCatalogModels(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+};
+
+// ---- Менеджер категорий инструмента (единый справочник) ----
+window.openCategoriesManager = async () => {
+  await loadToolCategories();
+  renderCategoriesList();
+  document.getElementById('categoriesModalOverlay').classList.add('active');
+};
+window.closeCategoriesManager = () => document.getElementById('categoriesModalOverlay').classList.remove('active');
+
+function renderCategoriesList() {
+  const box = document.getElementById('categoriesList');
+  if (!box) return;
+  const cats = (toolCategories || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  if (!cats.length) { box.innerHTML = '<div style="font-size:13px;color:hsl(var(--text-muted));">Категорий пока нет</div>'; return; }
+  box.innerHTML = cats.map(c => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid hsl(var(--border-color)); border-radius:8px;">
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.name)}${c.is_default ? ' <span style="font-size:10px;color:hsl(var(--text-muted));">(стд)</span>' : ''}</span>
+      <button type="button" class="action-btn edit" title="Переименовать" onclick="renameCategory(${c.id})"><i data-lucide="edit-3"></i></button>
+      <button type="button" class="action-btn delete" title="Удалить" onclick="deleteCategory(${c.id})"><i data-lucide="trash-2"></i></button>
+    </div>`).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function afterCategoryChange() {
+  await loadToolCategories();
+  renderCategoriesList();
+  catalogData = null; // сбросить кэш пикера
+  const catalogSection = document.getElementById('section-catalog');
+  if (catalogSection && catalogSection.classList.contains('active')) loadCatalogModels();
+}
+
+window.addCategoryFromManager = async () => {
+  const input = document.getElementById('newCategoryName');
+  const name = input.value.trim();
+  if (name.length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch('/api/crud/tool-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Категория добавлена', 'success'); input.value = ''; afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.renameCategory = async (id) => {
+  const cat = (toolCategories || []).find(c => c.id === id);
+  const newName = await promptDialog('Новое название категории:', cat ? cat.name : '', { okText: 'Переименовать' });
+  if (newName === null) return;
+  if (newName.trim().length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch(`/api/crud/tool-categories?id=${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Переименовано (обновлено везде)', 'success'); afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.deleteCategory = async (id) => {
+  const cat = (toolCategories || []).find(c => c.id === id);
+  if (!await confirmDialog(`Удалить категорию «${cat ? cat.name : id}»?`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/tool-categories?id=${id}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Категория удалена', 'success'); afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
 // Проверка дублей серийного/инвентарного номера в реальном времени

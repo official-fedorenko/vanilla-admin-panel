@@ -403,18 +403,71 @@ async function handleCategories(req, res, user, parsedUrl, method) {
     return;
   }
 
+  // Переименование категории: новое имя распространяется на все места, где
+  // категория используется по названию (инструменты, каталог, иконки) — чтобы
+  // список категорий оставался единым и синхронным.
+  if (method === 'PUT') {
+    try {
+      const id = parseId(parsedUrl);
+      if (!id) return sendJson(res, 400, { success: false, message: 'Не указан корректный id' });
+      const body = await getJsonBody(req);
+      const newName = (body.name || '').trim().slice(0, 100);
+      if (newName.length < 2) return sendJson(res, 400, { success: false, message: 'Название категории слишком короткое' });
+
+      db.get("SELECT name FROM tool_categories WHERE id = ?", [id], (err, row) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!row) return sendJson(res, 404, { success: false, message: 'Категория не найдена' });
+        const oldName = row.name;
+        if (oldName === newName) return sendJson(res, 200, { success: true, name: newName });
+
+        db.run("UPDATE tool_categories SET name = ? WHERE id = ?", [newName, id], function (uErr) {
+          if (uErr) {
+            const msg = uErr.message.includes('UNIQUE') ? 'Такая категория уже есть' : 'Ошибка переименования';
+            return sendJson(res, 400, { success: false, message: msg });
+          }
+          // Распространяем новое имя на все ссылки по названию.
+          db.serialize(() => {
+            db.run("UPDATE tools SET category = ? WHERE category = ?", [newName, oldName]);
+            db.run("UPDATE catalog_models SET category = ? WHERE category = ?", [newName, oldName]);
+            db.run("UPDATE category_icons SET category = ? WHERE category = ?", [newName, oldName], () => {
+              logAction(user.username, `Категория переименована «${oldName}» → «${newName}»`);
+              sendJson(res, 200, { success: true, name: newName });
+            });
+          });
+        });
+      });
+    } catch (e) {
+      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+    }
+    return;
+  }
+
   if (method === 'DELETE') {
     const id = parseId(parsedUrl);
     if (!id) return sendJson(res, 400, { success: false, message: 'Не указан корректный id' });
-    db.get("SELECT is_default FROM tool_categories WHERE id = ?", [id], (err, row) => {
+    db.get("SELECT name FROM tool_categories WHERE id = ?", [id], (err, row) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       if (!row) return sendJson(res, 404, { success: false, message: 'Категория не найдена' });
-      if (row.is_default) return sendJson(res, 400, { success: false, message: 'Стандартную категорию удалить нельзя' });
-      db.run("DELETE FROM tool_categories WHERE id = ?", [id], function (dErr) {
-        if (dErr) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
-        logAction(user.username, `Удалена категория инструмента id=${id}`);
-        sendJson(res, 200, { success: true });
-      });
+      const name = row.name;
+      // Не удаляем категорию, пока она используется — иначе появятся «висячие»
+      // категории у инструментов и моделей каталога.
+      db.get(
+        "SELECT (SELECT COUNT(*) FROM tools WHERE category = ?) + (SELECT COUNT(*) FROM catalog_models WHERE category = ?) AS c",
+        [name, name],
+        (e2, cnt) => {
+          if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          const used = (cnt && cnt.c) || 0;
+          if (used > 0) return sendJson(res, 409, { success: false, message: `Категория используется (${used}). Сначала переназначьте инструменты и модели каталога.` });
+          db.serialize(() => {
+            db.run("DELETE FROM tool_categories WHERE id = ?", [id]);
+            db.run("DELETE FROM category_icons WHERE category = ?", [name], function (dErr) {
+              if (dErr) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
+              logAction(user.username, `Удалена категория инструмента «${name}»`);
+              sendJson(res, 200, { success: true });
+            });
+          });
+        }
+      );
     });
     return;
   }

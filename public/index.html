@@ -37,6 +37,12 @@
             <span>Инструмент</span>
           </a>
         </li>
+        <li class="nav-item superadmin-only" data-section="catalog" style="display: none;">
+          <a href="#catalog" title="Каталог инструмента">
+            <i data-lucide="book-open"></i>
+            <span>Каталог</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="requests">
           <a href="#requests" title="Заявления">
             <i data-lucide="clipboard-list"></i>
@@ -100,6 +106,9 @@
       </ul>
       
       <div class="sidebar-footer">
+        <button class="nav-burger" id="navBurger" aria-label="Меню" aria-expanded="false">
+          <i data-lucide="menu"></i>
+        </button>
         <div class="user-info">
           <div class="user-avatar" id="avatarLetter">A</div>
           <div class="user-details">
@@ -322,6 +331,43 @@
                 <!-- Dynamically populated -->
               </tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- CATALOG (СТАНДАРТНЫЙ КАТАЛОГ ИНСТРУМЕНТА) SECTION -->
+      <section id="section-catalog" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Каталог инструмента</h2>
+            <p>Стандартные модели для подсказок при добавлении инструмента (в админке и в заявках). Редактирует Superadmin.</p>
+          </div>
+          <div class="page-header-actions">
+            <input type="text" id="catalogModelsSearch" class="form-control" placeholder="Поиск по бренду/модели…" style="width:220px;">
+            <button class="btn btn-secondary" onclick="openCategoriesManager()"><i data-lucide="tags"></i> Категории</button>
+            <button class="btn" onclick="openCatalogModelModal()"><i data-lucide="plus"></i> Добавить модель</button>
+          </div>
+        </div>
+        <div class="catalog-browser" style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
+          <!-- Слева — категории с числом моделей -->
+          <aside id="catalogCatPanel" style="width:260px; flex-shrink:0; max-height:70vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></aside>
+          <!-- Справа — модели выбранной категории -->
+          <div style="flex:1; min-width:300px;">
+            <div class="table-container" style="margin-top:0;">
+              <div class="table-scroll">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Модель</th>
+                      <th style="width:120px;">Бренд</th>
+                      <th>Характеристики</th>
+                      <th style="width:120px; text-align:right;">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="catalogModelsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -712,6 +758,76 @@
     </div>
   </div>
 
+  <!-- CATEGORIES MANAGER (КАТЕГОРИИ ИНСТРУМЕНТА) MODAL -->
+  <div class="modal-overlay" id="categoriesModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>Категории инструмента</h3>
+        <button class="modal-close" onclick="closeCategoriesManager()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:12px;">Единый список категорий — используется и в инструменте, и в каталоге. Переименование меняет категорию везде. Удалить можно только неиспользуемую.</p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="newCategoryName" class="form-control" placeholder="Новая категория…" style="flex:1;">
+          <button type="button" class="btn" onclick="addCategoryFromManager()">Добавить</button>
+        </div>
+        <div id="categoriesList" style="display:flex; flex-direction:column; gap:6px; max-height:340px; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CATALOG MODEL (МОДЕЛЬ КАТАЛОГА) MODAL -->
+  <div class="modal-overlay" id="catalogModelModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="catalogModelModalTitle">Добавить модель</h3>
+        <button class="modal-close" onclick="closeCatalogModelModal()">&times;</button>
+      </div>
+      <form id="catalogModelForm" onsubmit="return submitCatalogModel(event)">
+        <input type="hidden" id="cmId">
+        <div class="modal-body">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+              <label for="cmCategory">Категория</label>
+              <select id="cmCategory" class="form-control" required><option value="">— выберите —</option></select>
+            </div>
+            <div class="form-group">
+              <label for="cmLine">Линейка</label>
+              <input type="text" id="cmLine" class="form-control" placeholder="Professional / XR">
+            </div>
+            <div class="form-group">
+              <label for="cmBrand">Бренд</label>
+              <input type="text" id="cmBrand" class="form-control" placeholder="Bosch" required>
+            </div>
+            <div class="form-group">
+              <label for="cmModel">Модель</label>
+              <input type="text" id="cmModel" class="form-control" placeholder="GBH 2-28 F" required>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="cmName">Название (необязательно — иначе «Бренд Модель»)</label>
+              <input type="text" id="cmName" class="form-control" placeholder="Bosch GBH 2-28 F">
+            </div>
+            <!-- Характеристики зависят от категории (рендерятся динамически) -->
+            <div id="cmDynFields" style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:14px;"></div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label>Картинка (необязательно)</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <img id="cmImagePreview" src="" style="width:44px; height:36px; object-fit:contain; border:1px solid hsl(var(--border-color)); border-radius:6px; display:none;">
+                <input type="hidden" id="cmImageUrl">
+                <button type="button" class="btn btn-secondary" onclick="pickCatalogModelImage()">Выбрать из медиатеки</button>
+                <button type="button" class="btn btn-secondary" onclick="clearCatalogModelImage()">Убрать</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeCatalogModelModal()">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- VACATION (ОТПУСК СОТРУДНИКУ) MODAL -->
   <div class="modal-overlay" id="vacationModalOverlay">
     <div class="modal" style="max-width:480px;">
@@ -804,6 +920,7 @@
       <form id="userForm">
         <input type="hidden" id="userId">
         <div class="modal-body">
+          <div id="userEmployeePanel"></div>
           <div class="form-group">
             <label for="userUsername">Имя пользователя</label>
             <input type="text" id="userUsername" class="form-control" placeholder="Например: editor1" required>
@@ -852,6 +969,7 @@
       <form id="employeeForm">
         <input type="hidden" id="employeeId">
         <div class="modal-body">
+          <div id="empAccountPanel"></div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div class="form-group">
               <label for="empFirstName">Имя</label>

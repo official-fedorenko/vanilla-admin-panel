@@ -163,6 +163,76 @@ const MIGRATIONS = [
       // «Получил» → проставляется received_at. Пока NULL — заявка «висит».
       db.run("ALTER TABLE requests ADD COLUMN received_at DATETIME", () => {});
     }
+  },
+  {
+    version: 13,
+    description: 'Create catalog_models (редактируемый каталог стандартного инструмента) + seed из tools.json',
+    up: () => {
+      // Стандартный каталог моделей для подсказок при добавлении инструмента
+      // (и в админке, и в заявке). Раньше — статичный файл data/tool-catalog;
+      // теперь редактируется из админпанели. Сидим первоначальным содержимым.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS catalog_models (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category TEXT NOT NULL,
+          brand TEXT NOT NULL,
+          model TEXT NOT NULL,
+          name TEXT,
+          line TEXT,
+          power_type TEXT,
+          power_w INTEGER,
+          voltage_v INTEGER,
+          brushless INTEGER NOT NULL DEFAULT 0,
+          impact INTEGER NOT NULL DEFAULT 0,
+          chuck TEXT,
+          disc_mm INTEGER,
+          image_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {
+        try {
+          const cat = require('./data/tool-catalog');
+          const toUrl = (img) => img ? '/catalog/' + String(img).replace(/^\/+/, '') : null;
+          const stmt = db.prepare(`INSERT INTO catalog_models
+            (category, brand, model, name, line, power_type, power_w, voltage_v, brushless, impact, chuck, disc_mm, image_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+          (cat.raw.categories || []).forEach((c) => {
+            const catImg = toUrl(c.image);
+            (c.tools || []).forEach((t) => {
+              stmt.run([
+                c.category, t.brand, t.model, t.name || `${t.brand} ${t.model}`,
+                t.line || null, t.powerType || null, t.powerW || null, t.voltageV || null,
+                t.brushless ? 1 : 0, t.impact ? 1 : 0, t.chuck || null, t.discMm || null,
+                t.image ? toUrl(t.image) : catImg
+              ]);
+            });
+          });
+          stmt.finalize();
+          logger.info('[db] catalog_models засеян из data/tool-catalog');
+        } catch (e) {
+          logger.error('[db] Не удалось засеять catalog_models:', e.message);
+        }
+      });
+    }
+  },
+  {
+    version: 14,
+    description: 'Add specs (JSON) to tools — характеристики по категории',
+    up: () => {
+      // Характеристики инструмента, зависящие от категории (диск, патрон,
+      // мощность, вольтаж…). Хранятся как JSON, набор полей задаёт схема
+      // src/toolSpecs.js. NULL/'{}' — характеристик нет.
+      db.run("ALTER TABLE tools ADD COLUMN specs TEXT", () => {});
+    }
+  },
+  {
+    version: 15,
+    description: 'Add specs (JSON) to catalog_models — характеристики модели по категории',
+    up: () => {
+      // Узкоспециальные характеристики модели каталога, зависящие от категории
+      // (энергия удара, Ø бурения…). Общие поля остаются колонками; здесь — JSON.
+      db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", () => {});
+    }
   }
 ];
 
