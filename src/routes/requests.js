@@ -201,7 +201,7 @@ function listVacations(req, res, user) {
       const end = payload.end_date || '';
       const name = (r.emp_first || r.emp_last)
         ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
-        : (r.requested_by_name || '—');
+        : (payload.employee_name || r.requested_by_name || '—');
       // Фаза относительно сегодняшнего дня (для меток в UI).
       let phase = 'unknown';
       if (start && end) {
@@ -223,6 +223,46 @@ function listVacations(req, res, user) {
     });
     sendJson(res, 200, { success: true, vacations });
   });
+}
+
+// --- Оформление отпуска админом за сотрудника ---
+// Создаёт сразу одобренный отпуск (type='vacation', status='approved').
+// requested_by = user_id сотрудника (если есть аккаунт), имя дублируется в
+// payload.employee_name на случай сотрудника без учётной записи.
+async function createVacationForEmployee(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const empId = parseInt(body.employee_id, 10);
+    if (!Number.isInteger(empId) || empId <= 0) {
+      return sendJson(res, 400, { success: false, message: 'Не выбран сотрудник' });
+    }
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(body.start_date || '')) ? body.start_date : '';
+    const end = /^\d{4}-\d{2}-\d{2}$/.test(String(body.end_date || '')) ? body.end_date : '';
+    if (!start || !end) return sendJson(res, 400, { success: false, message: 'Укажите даты начала и окончания' });
+    if (end < start) return sendJson(res, 400, { success: false, message: 'Дата окончания раньше даты начала' });
+    const notes = str(body.notes, 2000);
+
+    db.get("SELECT id, first_name, last_name, user_id FROM employees WHERE id = ?", [empId], (err, emp) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+
+      const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+      const payload = { start_date: start, end_date: end, notes, employee_id: emp.id, employee_name: empName };
+      const title = buildTitle('vacation', payload);
+      db.run(
+        `INSERT INTO requests (type, title, payload, status, requested_by, reviewed_by, reviewed_at)
+         VALUES ('vacation', ?, ?, 'approved', ?, ?, CURRENT_TIMESTAMP)`,
+        [title, JSON.stringify(payload), emp.user_id || null, user.id],
+        function (insErr) {
+          if (insErr) return sendJson(res, 500, { success: false, message: 'Не удалось создать отпуск' });
+          logAction(user.username, `Оформил отпуск сотруднику ${empName}: ${start} — ${end} (id=${this.lastID})`);
+          sendJson(res, 201, { success: true, id: this.lastID });
+        }
+      );
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
 }
 
 // --- Сводка заказов инструмента (админ): кому и что одобрили ---
@@ -391,6 +431,10 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   if (p === '/api/requests/vacations' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return listVacations(req, res, user);
+  }
+  if (p === '/api/requests/vacation-for' && method === 'POST') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return createVacationForEmployee(req, res, user);
   }
   if (p === '/api/requests/tool-orders' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });

@@ -284,10 +284,12 @@ main.main-content {
   overflow-y: auto;
 }
 
+/* Единый заголовок раздела: сверху — название и описание, снизу — вся
+   навигация (кнопки и фильтры) в один ряд с переносом. */
 .page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 32px;
 }
 
@@ -529,7 +531,11 @@ main.main-content {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--border-color));
 }
+/* Нет кнопок/фильтров — не рисуем разделитель. */
+.page-header-actions:empty { display: none; }
 
 .table-toolbar {
   padding: 20px 24px;

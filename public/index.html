@@ -250,15 +250,17 @@
         <div class="page-header">
           <div class="page-title">
             <h2>Отпуска</h2>
-            <p>Сводка: кто и когда в отпуске. Одобренные и ожидающие заявления на отпуск.</p>
+            <p>Сводка: кто и когда в отпуске. По умолчанию — текущие и предстоящие; прошедшие доступны в архиве с выбором года.</p>
           </div>
           <div class="page-header-actions">
             <select id="vacationsPhaseFilter" class="form-control" style="width:200px;">
-              <option value="">Все периоды</option>
+              <option value="">Текущие и предстоящие</option>
               <option value="current">Сейчас в отпуске</option>
               <option value="upcoming">Предстоящие</option>
-              <option value="past">Завершённые</option>
+              <option value="past">Прошедшие (архив)</option>
             </select>
+            <select id="vacationsYearFilter" class="form-control" style="width:120px; display:none;"></select>
+            <button class="btn" onclick="openVacationForm()"><i data-lucide="palmtree"></i> Отправить в отпуск</button>
           </div>
         </div>
 
@@ -705,6 +707,44 @@
           <button type="button" class="btn btn-secondary" id="cancelModalBtn">Отмена</button>
           <button type="button" class="btn btn-secondary" id="previewArticleBtn">Предпросмотр</button>
           <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- VACATION (ОТПУСК СОТРУДНИКУ) MODAL -->
+  <div class="modal-overlay" id="vacationModalOverlay">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h3>Отправить в отпуск</h3>
+        <button class="modal-close" onclick="closeVacationForm()">&times;</button>
+      </div>
+      <form id="vacationForm" onsubmit="return submitVacation(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="vacationEmployee">Сотрудник</label>
+            <select id="vacationEmployee" class="form-control" required>
+              <option value="">— выберите —</option>
+            </select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+              <label for="vacationStart">С</label>
+              <input type="date" id="vacationStart" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="vacationEnd">По</label>
+              <input type="date" id="vacationEnd" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="vacationNotes">Комментарий (необязательно)</label>
+            <textarea id="vacationNotes" class="form-control" rows="2" placeholder="Например: ежегодный оплачиваемый"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeVacationForm()">Отмена</button>
+          <button type="submit" class="btn">Оформить отпуск</button>
         </div>
       </form>
     </div>

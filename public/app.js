@@ -709,13 +709,86 @@ async function loadVacations() {
   }
 }
 
+// --- Оформление отпуска админом за сотрудника ---
+window.openVacationForm = async function () {
+  const sel = document.getElementById('vacationEmployee');
+  if (sel) {
+    sel.innerHTML = '<option value="">Загрузка...</option>';
+    try {
+      const res = await fetch('/api/crud/employees');
+      const emps = res.ok ? await res.json() : [];
+      const active = (emps || []).filter(e => e.status !== 'fired' && e.status !== 'уволен');
+      sel.innerHTML = '<option value="">— выберите —</option>' +
+        active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+    } catch (e) { sel.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+  }
+  document.getElementById('vacationForm').reset();
+  document.getElementById('vacationModalOverlay').classList.add('active');
+};
+window.closeVacationForm = function () {
+  document.getElementById('vacationModalOverlay').classList.remove('active');
+};
+window.submitVacation = async function (e) {
+  if (e) e.preventDefault();
+  const employee_id = document.getElementById('vacationEmployee').value;
+  const start_date = document.getElementById('vacationStart').value;
+  const end_date = document.getElementById('vacationEnd').value;
+  const notes = document.getElementById('vacationNotes').value;
+  if (!employee_id) { showToast('Выберите сотрудника', 'error'); return false; }
+  if (!start_date || !end_date) { showToast('Укажите даты', 'error'); return false; }
+  if (end_date < start_date) { showToast('Дата окончания раньше начала', 'error'); return false; }
+  try {
+    const res = await fetch('/api/requests/vacation-for', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_id, start_date, end_date, notes })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast('Отпуск оформлен', 'success');
+      closeVacationForm();
+      loadVacations();
+    } else {
+      showToast(d.message || 'Не удалось оформить отпуск', 'error');
+    }
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+  return false;
+};
+
+// Год отпуска — по дате начала.
+function vacYear(v) { return (v.start_date || '').slice(0, 4); }
+
 function renderVacations() {
   const tbody = document.getElementById('vacationsTableBody');
   const phaseFilter = document.getElementById('vacationsPhaseFilter')?.value || '';
-  const list = phaseFilter ? vacationsCache.filter(v => v.phase === phaseFilter) : vacationsCache;
+  const yearSel = document.getElementById('vacationsYearFilter');
+  const isPast = phaseFilter === 'past';
+
+  // Селектор года показываем только в режиме архива прошедших.
+  if (yearSel) yearSel.style.display = isPast ? '' : 'none';
+
+  let base, pastMode = false;
+  if (isPast) {
+    pastMode = true;
+    const pastVacs = vacationsCache.filter(v => v.phase === 'past');
+    // Наполняем список годов (по убыванию), сохраняя выбор.
+    const years = [...new Set(pastVacs.map(vacYear).filter(Boolean))].sort().reverse();
+    if (yearSel) {
+      const prev = yearSel.value;
+      yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('')
+        || '<option value="">—</option>';
+      if (years.includes(prev)) yearSel.value = prev;
+    }
+    const year = yearSel ? yearSel.value : (years[0] || '');
+    base = pastVacs.filter(v => vacYear(v) === year);
+  } else {
+    // Текущие и предстоящие (прошедшие скрыты).
+    const active = vacationsCache.filter(v => v.phase !== 'past');
+    base = phaseFilter ? active.filter(v => v.phase === phaseFilter) : active;
+  }
+  const list = base;
 
   // --- Мини-календарь (таймлайн) ---
-  renderVacationsCalendar(phaseFilter ? list : vacationsCache);
+  renderVacationsCalendar(base, { pastMode });
 
   // --- Список ---
   tbody.innerHTML = '';
@@ -746,7 +819,8 @@ function renderVacations() {
 // Горизонтальный таймлайн: строка на сотрудника, полоска = период отпуска.
 // Окно — от самого раннего начала до самого позднего конца среди отпусков
 // (но не уже, чем ±текущий месяц), с вертикальной линией «сегодня».
-function renderVacationsCalendar(list) {
+function renderVacationsCalendar(list, opts = {}) {
+  const pastMode = !!opts.pastMode;
   const cal = document.getElementById('vacationsCalendar');
   if (!cal) return;
   const dated = list.filter(v => v.start_date && v.end_date);
@@ -754,13 +828,18 @@ function renderVacationsCalendar(list) {
 
   const toTime = d => new Date(d + 'T00:00:00').getTime();
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  let min = Math.min(...dated.map(v => toTime(v.start_date)));
-  let max = Math.max(...dated.map(v => toTime(v.end_date)));
-  // Гарантируем, что «сегодня» попадает в окно, и добавляем поля по краям.
-  min = Math.min(min, today.getTime());
-  max = Math.max(max, today.getTime());
-  const pad = 3 * 86400000;
-  min -= pad; max += pad;
+  // Обычный режим: окно от сегодня вперёд (в прошлое не тянем).
+  // Архив прошедших: окно по самим отпускам (от раннего начала до позднего конца).
+  let min, max;
+  if (pastMode) {
+    min = Math.min(...dated.map(v => toTime(v.start_date)));
+    max = Math.max(...dated.map(v => toTime(v.end_date)));
+    min -= 3 * 86400000; max += 3 * 86400000;
+  } else {
+    min = today.getTime();
+    max = Math.max(...dated.map(v => toTime(v.end_date)), today.getTime());
+    min -= 1 * 86400000; max += 3 * 86400000;
+  }
   const span = Math.max(max - min, 86400000);
   const pct = t => ((t - min) / span) * 100;
 
@@ -775,23 +854,52 @@ function renderVacationsCalendar(list) {
   }
 
   const todayPos = pct(today.getTime());
+  const shortDate = d => new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+
+  // Архив: хронологически по дате начала. Обычный режим: «ближайшие к отпуску
+  // сверху» — сейчас в отпуске → предстоящие (по началу) → (past здесь не бывает).
+  if (pastMode) {
+    dated.sort((a, b) => toTime(a.start_date) - toTime(b.start_date));
+  } else {
+    const rank = (v) => {
+      const s = toTime(v.start_date);
+      if (v.phase === 'current') return -1e15 + s;
+      if (v.phase === 'upcoming') return s;
+      return 1e15 - toTime(v.end_date);
+    };
+    dated.sort((a, b) => rank(a) - rank(b));
+  }
+
   const rows = dated.map(v => {
     const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
     const left = Math.max(0, pct(toTime(v.start_date)));
     const right = Math.min(100, pct(toTime(v.end_date)));
     const width = Math.max(right - left, 1.2);
     const dim = v.status === 'pending' ? 'opacity:0.55; border:1px dashed rgba(255,255,255,0.5);' : '';
+    const days = vacDaysCount(v.start_date, v.end_date);
+    // Подпись с датами над полосой — по центру полосы, но с зажимом у краёв,
+    // чтобы не уезжала за пределы шкалы.
+    const mid = Math.min(94, Math.max(6, (left + right) / 2));
+    const label = `${shortDate(v.start_date)}–${shortDate(v.end_date)}${days ? ` · ${days} дн` : ''}`;
+    const tip = `${v.name}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
     return `
-      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
         <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
-        <div style="position:relative; flex:1; height:22px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;">
-          <div title="${escapeHtml(v.name)}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}"
-               style="position:absolute; top:3px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.85); border-radius:5px; ${dim}"></div>
+        <div style="position:relative; flex:1; height:38px;">
+          <div style="position:absolute; top:18px; left:0; right:0; height:16px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;"></div>
+          <div style="position:absolute; top:0; left:${mid}%; transform:translateX(-50%); font-size:10px; font-weight:700; color:rgba(${ph.color},1); white-space:nowrap; pointer-events:none;">${label}</div>
+          <div title="${escapeHtml(tip)}"
+               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-radius:5px; ${dim}"></div>
         </div>
       </div>`;
   }).join('');
 
   const markEls = marks.map(m => `<span style="position:absolute; left:${m.pos}%; transform:translateX(-50%); font-size:10px; color:hsl(var(--text-muted));">${m.label}</span>`).join('');
+
+  // Линию «сегодня» рисуем только если сегодня попадает в окно (в архиве прошлых лет — нет).
+  const todayLine = (todayPos >= 0 && todayPos <= 100)
+    ? `<div style="position:absolute; left:${todayPos}%; top:0; bottom:0; width:2px; background:hsl(var(--accent-red, 0 84% 60%)); z-index:2;" title="Сегодня"></div>`
+    : '';
 
   // Зона полосок и шкалы имеет левый отступ 150px (ширина колонки имён + gap);
   // линия «сегодня» и метки месяцев позиционируются в процентах внутри этой зоны.
@@ -800,18 +908,19 @@ function renderVacationsCalendar(list) {
       <div style="padding-left:150px;">
         <div style="position:relative; height:14px; margin-bottom:8px;">${markEls}</div>
       </div>
-      <div style="position:relative;">
-        <div style="position:absolute; left:150px; right:0; top:-4px; bottom:0; pointer-events:none;">
-          <div style="position:absolute; left:${todayPos}%; top:0; bottom:0; width:2px; background:hsl(var(--accent-red, 0 84% 60%)); z-index:2;" title="Сегодня"></div>
+      <div style="max-height:240px; overflow-y:auto; padding-right:4px;">
+        <div style="position:relative;">
+          <div style="position:absolute; left:150px; right:0; top:0; bottom:0; pointer-events:none;">${todayLine}</div>
+          ${rows}
         </div>
-        ${rows}
       </div>
       <div style="display:flex; gap:16px; margin-top:10px; font-size:11px; color:hsl(var(--text-muted)); flex-wrap:wrap;">
-        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
+        ${pastMode
+          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершённый отпуск</span>'
+          : `<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(245,158,11,0.85); vertical-align:middle;"></span> предстоит</span>
-        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершён</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; border:1px dashed hsl(var(--text-muted)); vertical-align:middle;"></span> ожидает одобрения</span>
-        <span style="margin-left:auto;"><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>
+        <span><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>`}
       </div>
     </div>`;
 }
@@ -1075,9 +1184,13 @@ async function updateSupportBadge() {
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
 document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRequests);
 document.getElementById('vacationsPhaseFilter')?.addEventListener('change', renderVacations);
+document.getElementById('vacationsYearFilter')?.addEventListener('change', renderVacations);
 document.getElementById('toolOrdersReceiptFilter')?.addEventListener('change', renderToolOrders);
 document.getElementById('justificationModalOverlay')?.addEventListener('click', (e) => {
   if (e.target.id === 'justificationModalOverlay') window.closeJustification();
+});
+document.getElementById('vacationModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'vacationModalOverlay') window.closeVacationForm();
 });
 
 // API: Dashboard stats loader (улучшено для главной страницы)
