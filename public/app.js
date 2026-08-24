@@ -674,7 +674,7 @@ function renderToolOrders() {
 
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Заказов нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Заказов нет</td></tr>';
     return;
   }
   list.forEach(o => {
@@ -683,12 +683,21 @@ function renderToolOrders() {
       : `<span class="badge badge-warning">Ожидает получения</span>`;
     const tr = document.createElement('tr');
     if (!o.received) tr.style.background = 'hsl(var(--accent-purple) / 0.05)';
+    tr.onclick = mobileRowTap(() => showRowDetail(o.item || o.title || 'Заказ', [
+      ['Сотрудник', o.name],
+      ['Что заказано', o.item || o.title || '—'],
+      ['Заметка', o.notes],
+      ['Кол-во', o.quantity !== '' ? String(o.quantity) : '—'],
+      ['Категория', o.category || '—'],
+      ['Одобрил', `${escapeHtml(o.reviewed_by_name || '—')} · ${toolOrderFmtDate(o.reviewed_at)}`, true],
+      ['Получение', receipt, true]
+    ]));
     tr.innerHTML = `
-      <td><strong>${escapeHtml(o.name)}</strong></td>
-      <td>${escapeHtml(o.item || o.title || '—')}${o.notes ? `<div style="font-size:11px;color:hsl(var(--text-muted));">${escapeHtml(o.notes)}</div>` : ''}</td>
-      <td>${o.quantity !== '' ? escapeHtml(String(o.quantity)) : '—'}</td>
-      <td>${escapeHtml(o.category || '—')}</td>
-      <td>${escapeHtml(o.reviewed_by_name || '—')}<div style="font-size:11px;color:hsl(var(--text-muted));">${toolOrderFmtDate(o.reviewed_at)}</div></td>
+      <td class="mobile-hidden"><strong>${escapeHtml(o.name || '—')}</strong></td>
+      <td class="mobile-primary"><strong>${escapeHtml(o.item || o.title || '—')}</strong><div style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(o.name || '')}</div></td>
+      <td class="mobile-hidden">${o.quantity !== '' ? escapeHtml(String(o.quantity)) : '—'}</td>
+      <td class="mobile-hidden">${escapeHtml(o.category || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(o.reviewed_by_name || '—')}<div style="font-size:11px;color:hsl(var(--text-muted));">${toolOrderFmtDate(o.reviewed_at)}</div></td>
       <td>${receipt}</td>`;
     tbody.appendChild(tr);
   });
@@ -819,7 +828,7 @@ function renderVacations() {
   // --- Список ---
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -828,16 +837,25 @@ function renderVacations() {
     const pending = v.status === 'pending'
       ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
       : '';
+    const statusBadge = `<span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span>`;
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
+    tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
+      ['С', vacFmtDate(v.start_date)],
+      ['По', vacFmtDate(v.end_date)],
+      ['Дней', days !== '' ? String(days) : '—'],
+      ['Период', `<span class="badge ${ph.badge}">${ph.label}</span>`, true],
+      ['Статус', statusBadge, true],
+      ['Комментарий', v.notes]
+    ]));
     tr.innerHTML = `
-      <td><strong>${escapeHtml(v.name)}</strong>${pending}</td>
-      <td>${vacFmtDate(v.start_date)}</td>
-      <td>${vacFmtDate(v.end_date)}</td>
-      <td>${days !== '' ? days : '—'}</td>
-      <td><span class="badge ${ph.badge}">${ph.label}</span></td>
-      <td><span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span></td>
-      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>`;
+      <td class="mobile-primary"><strong>${escapeHtml(v.name)}</strong>${pending}</td>
+      <td class="mobile-hidden">${vacFmtDate(v.start_date)}</td>
+      <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
+      <td class="mobile-hidden">${days !== '' ? days : '—'}</td>
+      <td class="mobile-hidden"><span class="badge ${ph.badge}">${ph.label}</span></td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -3278,7 +3296,7 @@ function renderCatalogModelsTable() {
   tbody.innerHTML = '';
   if (!list.length) {
     const msg = catalogSelectedCat ? 'В этой категории пока нет моделей' : 'Моделей нет';
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">${msg}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="4" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">${msg}</td></tr>`;
     return;
   }
   list.forEach(m => {
@@ -3286,11 +3304,18 @@ function renderCatalogModelsTable() {
     // В режиме «Все» показываем категорию подписью под моделью.
     const catLine = !catalogSelectedCat ? `<div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${escapeHtml(m.category)}</div>` : '';
     const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => showRowDetail(m.name || (m.brand + ' ' + m.model), [
+      ['Бренд', m.brand],
+      ['Категория', m.category],
+      ['Характеристики', catalogModelSpecs(m)]
+    ], `
+      <button class="btn btn-secondary" onclick="closeRowDetail(); deleteCatalogModel(${m.id})" style="color:hsl(var(--accent-red));">Удалить</button>
+      <button class="btn" onclick="closeRowDetail(); editCatalogModel(${m.id})">Редактировать</button>`));
     tr.innerHTML = `
-      <td>${img}<strong>${escapeHtml(m.name || (m.brand + ' ' + m.model))}</strong>${catLine}</td>
-      <td>${escapeHtml(m.brand)}</td>
-      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(catalogModelSpecs(m))}</td>
-      <td style="text-align:right; white-space:nowrap;">
+      <td class="mobile-primary">${img}<strong>${escapeHtml(m.name || (m.brand + ' ' + m.model))}</strong>${catLine}</td>
+      <td class="mobile-hidden">${escapeHtml(m.brand)}</td>
+      <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(catalogModelSpecs(m))}</td>
+      <td class="no-label" style="text-align:right; white-space:nowrap;">
         <button class="action-btn edit" onclick="editCatalogModel(${m.id})"><i data-lucide="edit-3"></i></button>
         <button class="action-btn delete" onclick="deleteCatalogModel(${m.id})"><i data-lucide="trash-2"></i></button>
       </td>`;
