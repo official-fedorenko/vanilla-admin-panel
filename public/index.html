@@ -696,6 +696,18 @@
   </div>
 
   <!-- EMPLOYEE MODAL DIALOG -->
+  <!-- EMPLOYEE DETAIL MODAL (мобильный просмотр карточки) -->
+  <div class="modal-overlay" id="employeeDetailModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="employeeDetailTitle">Сотрудник</h3>
+        <button class="modal-close" onclick="closeEmployeeDetail()">&times;</button>
+      </div>
+      <div class="modal-body" id="employeeDetailBody"><!-- populated --></div>
+      <div class="modal-footer" id="employeeDetailActions"><!-- populated --></div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="employeeModalOverlay">
     <div class="modal">
       <div class="modal-header">

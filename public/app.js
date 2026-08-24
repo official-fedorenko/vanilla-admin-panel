@@ -1996,7 +1996,7 @@ function renderEmployees(filterQuery = '') {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Сотрудники не найдены</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Сотрудники не найдены</td></tr>`;
     return;
   }
 
@@ -2006,14 +2006,19 @@ function renderEmployees(filterQuery = '') {
     const hire = e.hire_date ? new Date(e.hire_date).toLocaleDateString('ru-RU') : '—';
 
     const tr = document.createElement('tr');
+    // Тап по карточке на телефоне открывает подробности в модалке.
+    tr.onclick = (ev) => {
+      if (ev.target.closest('.action-btn')) return; // клики по кнопкам (десктоп) не мешаем
+      if (window.matchMedia('(max-width: 640px)').matches) openEmployeeDetail(e.id);
+    };
     tr.innerHTML = `
-      <td class="hide-mobile" data-label="ID">${e.id}</td>
-      <td data-label="ФИО"><strong>${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</strong></td>
-      <td data-label="Должность">${escapeHtml(e.position || '—')}</td>
-      <td data-label="Отдел">${escapeHtml(e.department || '—')}</td>
-      <td data-label="Телефон">${escapeHtml(e.phone || '—')}</td>
-      <td data-label="Принят">${hire}</td>
-      <td data-label="Статус">${statusBadge}</td>
+      <td class="hide-mobile">${e.id}</td>
+      <td class="mobile-primary"><strong>${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</strong></td>
+      <td class="mobile-hidden">${escapeHtml(e.position || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(e.department || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(e.phone || '—')}</td>
+      <td class="mobile-hidden">${hire}</td>
+      <td>${statusBadge}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editEmployee(${e.id})"><i data-lucide="edit-3"></i></button>
@@ -2107,6 +2112,43 @@ function openEmployeeModal(emp = null) {
 window.editEmployee = (id) => {
   const emp = employeesList.find(e => e.id === id);
   if (emp) openEmployeeModal(emp);
+};
+
+// Просмотр карточки сотрудника в модалке (используется на мобильных)
+window.openEmployeeDetail = (id) => {
+  const e = employeesList.find(x => x.id === id);
+  if (!e) return;
+  const st = EMPLOYEE_STATUS[e.status] || EMPLOYEE_STATUS.active;
+  const hire = e.hire_date ? new Date(e.hire_date).toLocaleDateString('ru-RU') : '—';
+  const rows = [
+    ['Должность', e.position],
+    ['Отдел', e.department],
+    ['Телефон', e.phone],
+    ['Email', e.email],
+    ['Принят', hire],
+    ['Заметки', e.notes]
+  ];
+  document.getElementById('employeeDetailTitle').textContent = `${e.last_name} ${e.first_name}`;
+  document.getElementById('employeeDetailBody').innerHTML = `
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+      <span class="badge ${st.badge}">${st.label}</span>
+      <span style="color:hsl(var(--text-muted)); font-size:13px;">ID ${e.id}</span>
+    </div>
+    ${rows.map(([k, v]) => `
+      <div style="display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid hsl(var(--border-color));">
+        <span style="color:hsl(var(--text-muted)); font-size:13px;">${k}</span>
+        <span style="font-size:14px; text-align:right; word-break:break-word;">${escapeHtml(v || '—')}</span>
+      </div>`).join('')}
+  `;
+  document.getElementById('employeeDetailActions').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeEmployeeDetail(); deleteEmployee(${e.id})" style="color:hsl(var(--accent-red));">Удалить</button>
+    <button class="btn" onclick="closeEmployeeDetail(); editEmployee(${e.id})">Редактировать</button>
+  `;
+  document.getElementById('employeeDetailModalOverlay').classList.add('active');
+};
+
+window.closeEmployeeDetail = () => {
+  document.getElementById('employeeDetailModalOverlay').classList.remove('active');
 };
 
 window.deleteEmployee = async (id) => {

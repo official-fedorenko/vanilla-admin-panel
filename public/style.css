@@ -563,58 +563,57 @@ table.data-table tbody tr:hover {
   background-color: hsl(var(--border-color) / 0.15);
 }
 
-/* ---- Адаптив таблиц: на телефоне строка -> карточка ----
-   Таблице добавляется класс .cards-mobile, каждой <td> — data-label с
-   названием колонки. На узких экранах шапка прячется, а ячейки выводятся
-   столбиком «Метка: значение», поэтому контент влезает на любую ширину. */
+/* ---- Адаптив таблиц: на телефоне строка -> компактная карточка ----
+   Таблице добавляется класс .cards-mobile. На узких экранах шапка и часть
+   колонок прячутся: строка становится кликабельной карточкой (обычно ФИО +
+   статус). Полная информация открывается в модалке по тапу, поэтому влезает
+   на любой ширине. Ячейки, которые НЕ показываем в свёрнутом виде, помечаются
+   классом .mobile-hidden; действия (.no-label) на телефоне тоже скрыты. */
 @media (max-width: 640px) {
   .data-table.cards-mobile thead { display: none; }
   .data-table.cards-mobile,
-  .data-table.cards-mobile tbody,
-  .data-table.cards-mobile tr,
-  .data-table.cards-mobile td { display: block; width: 100%; }
+  .data-table.cards-mobile tbody { display: block; width: 100%; }
 
   .data-table.cards-mobile tbody tr {
-    border: 1px solid hsl(var(--border-color));
-    border-radius: 12px;
-    margin: 12px;
-    padding: 6px 2px;
-    background: hsl(var(--bg-main));
-  }
-
-  .data-table.cards-mobile td {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 9px 16px;
-    border: none;
-    text-align: right;
+    gap: 12px;
+    width: auto;
+    border: 1px solid hsl(var(--border-color));
+    border-radius: 12px;
+    margin: 10px 12px;
+    padding: 4px 14px;
+    background: hsl(var(--bg-main));
+    cursor: pointer;
   }
-  .data-table.cards-mobile td:not(:last-child) {
-    border-bottom: 1px solid hsl(var(--border-color) / 0.6);
-  }
-  .data-table.cards-mobile td::before {
-    content: attr(data-label);
+  .data-table.cards-mobile tbody tr:active { background: hsl(var(--accent-purple) / 0.08); }
+
+  /* Стрелка-подсказка, что карточка открывается */
+  .data-table.cards-mobile tbody tr::after {
+    content: '›';
     color: hsl(var(--text-muted));
-    font-size: 12px;
-    font-weight: 600;
-    text-align: left;
+    font-size: 22px;
+    line-height: 1;
     flex-shrink: 0;
   }
+  .data-table.cards-mobile tbody tr.empty-row::after { content: none; }
 
-  /* Ячейки без метки (действия) — на всю ширину, кнопки по правому краю */
-  .data-table.cards-mobile td.no-label { justify-content: flex-end; }
-  .data-table.cards-mobile td.no-label::before { content: none; }
+  .data-table.cards-mobile td {
+    display: block;
+    border: none;
+    padding: 12px 0;
+  }
+  /* Первая видимая ячейка (ФИО) тянется, остальные — по содержимому */
+  .data-table.cards-mobile td.mobile-primary { flex: 1; min-width: 0; }
 
-  /* Ячейки, спрятанные на мобильных (например, ID) */
+  /* Прячем всё, что не нужно в свёрнутой карточке */
+  .data-table.cards-mobile td.mobile-hidden,
+  .data-table.cards-mobile td.no-label,
   .data-table.cards-mobile .hide-mobile { display: none; }
 
-  /* Пустое состояние (одна ячейка на всю ширину) — по центру, без метки */
-  .data-table.cards-mobile td.empty-state { justify-content: center; text-align: center; }
-  .data-table.cards-mobile td.empty-state::before { content: none; }
+  /* Пустое состояние */
+  .data-table.cards-mobile td.empty-state { text-align: center; width: 100%; }
 
-  /* На телефоне карточкам не нужен горизонтальный скролл */
   .table-scroll { overflow-x: visible; }
 }
 
