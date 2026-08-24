@@ -150,7 +150,7 @@ function setupNavigation() {
   }
 
   const handleHashChange = () => {
-    const hash = window.location.hash.replace('#', '') || 'articles';
+    const hash = window.location.hash.replace('#', '') || 'employees';
     let targetSection = document.getElementById(`section-${hash}`);
 
     if (!targetSection) {
@@ -186,7 +186,7 @@ function setupNavigation() {
   if (window.location.hash) {
     handleHashChange();
   } else {
-    window.location.hash = '#articles';
+    window.location.hash = '#employees';
   }
 }
 
