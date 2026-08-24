@@ -658,18 +658,18 @@ async function loadRequests() {
   const types = await ensureRequestTypes();
   const status = document.getElementById('requestsStatusFilter')?.value ?? 'pending';
   const type = document.getElementById('requestsTypeFilter')?.value ?? '';
-  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
   try {
     const qs = [];
     if (status) qs.push('status=' + status);
     if (type) qs.push('type=' + type);
     const res = await fetch('/api/requests' + (qs.length ? '?' + qs.join('&') : ''));
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     const data = await res.json();
     updateRequestsBadge(data.pending);
     renderRequests(data.requests || [], types);
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
   }
 }
 
@@ -677,7 +677,7 @@ function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
     return;
   }
   list.forEach(r => {
@@ -687,13 +687,27 @@ function renderRequests(list, types) {
          <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="rejectRequest(${r.id})">Отклонить</button>`
       : (r.review_note ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>` : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => {
+      const rows = [
+        ['Тип', r.type_label || r.type],
+        ['Описание', describeRequest(r, types), true],
+        ['Кто', r.requested_by_name || '—'],
+        ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true]
+      ];
+      if (r.review_note) rows.push(['Причина', r.review_note]);
+      const modalActions = r.status === 'pending'
+        ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
+           <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
+        : '';
+      showRowDetail(r.type_label || r.type, rows, modalActions);
+    });
     tr.innerHTML = `
-      <td>${r.id}</td>
-      <td>${escapeHtml(r.type_label || r.type)}</td>
-      <td>${describeRequest(r, types)}</td>
-      <td>${escapeHtml(r.requested_by_name || '—')}</td>
+      <td class="hide-mobile">${r.id}</td>
+      <td class="mobile-primary">${escapeHtml(r.type_label || r.type)}</td>
+      <td class="mobile-hidden">${describeRequest(r, types)}</td>
+      <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
-      <td style="text-align:right;">${actions}</td>`;
+      <td class="no-label" style="text-align:right;">${actions}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -828,27 +842,28 @@ function renderArticles(filterQuery = '') {
   );
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Записи не найдены</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Записи не найдены</td></tr>`;
     return;
   }
 
   filtered.forEach(art => {
     const tr = document.createElement('tr');
-    
-    const statusBadge = art.status === 'published' 
+    tr.onclick = mobileRowTap(() => editArticle(art.id));
+
+    const statusBadge = art.status === 'published'
       ? `<span class="badge badge-success">Опубликовано</span>`
       : `<span class="badge badge-warning">Черновик</span>`;
-      
+
     const dateFormatted = new Date(art.created_at).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
     tr.innerHTML = `
-      <td>${art.id}</td>
-      <td><strong>${escapeHtml(art.title)}</strong></td>
+      <td class="hide-mobile">${art.id}</td>
+      <td class="mobile-primary"><strong>${escapeHtml(art.title)}</strong></td>
       <td>${statusBadge}</td>
-      <td>${dateFormatted}</td>
-      <td style="text-align: right;">
+      <td class="mobile-hidden">${dateFormatted}</td>
+      <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editArticle(${art.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteArticle(${art.id})"><i data-lucide="trash-2"></i></button>
@@ -1570,15 +1585,14 @@ function renderUsers(filterQuery = '') {
   );
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Пользователи не найдены</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Пользователи не найдены</td></tr>`;
     return;
   }
 
   filtered.forEach(u => {
     const tr = document.createElement('tr');
-    let roleBadge = `<span class="badge badge-warning">User</span>`;
-    if (u.role === 'Admin') roleBadge = `<span class="badge badge-success">Admin</span>`;
-    if (u.role === 'Superadmin') roleBadge = `<span class="badge badge-success" style="background:var(--accent-purple)">Superadmin</span>`;
+    tr.onclick = mobileRowTap(() => openUserDetail(u.id));
+    const roleBadge = userRoleBadge(u.role);
     const typeBadge = u.account_type === 'employee'
       ? `<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Сотрудник</span>`
       : `<span class="badge" style="background:hsl(var(--accent-cyan) / 0.15);color:hsl(var(--accent-cyan))">Клиент</span>`;
@@ -1587,12 +1601,12 @@ function renderUsers(filterQuery = '') {
     });
 
     tr.innerHTML = `
-      <td>${u.id}</td>
-      <td><strong>${escapeHtml(u.username)}</strong></td>
-      <td>${escapeHtml(u.email)}</td>
+      <td class="hide-mobile">${u.id}</td>
+      <td class="mobile-primary"><strong>${escapeHtml(u.username)}</strong></td>
+      <td class="mobile-hidden">${escapeHtml(u.email)}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${roleBadge}${typeBadge}</td>
-      <td>${dateFormatted}</td>
-      <td style="text-align: right;">
+      <td class="mobile-hidden">${dateFormatted}</td>
+      <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editUser(${u.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteUser(${u.id})"><i data-lucide="trash-2"></i></button>
@@ -1602,9 +1616,36 @@ function renderUsers(filterQuery = '') {
     `;
     tbody.appendChild(tr);
   });
-  
+
   lucide.createIcons();
 }
+
+function userRoleBadge(role) {
+  if (role === 'Admin') return `<span class="badge badge-success">Admin</span>`;
+  if (role === 'Superadmin') return `<span class="badge badge-success" style="background:var(--accent-purple)">Superadmin</span>`;
+  return `<span class="badge badge-warning">User</span>`;
+}
+
+window.openUserDetail = (id) => {
+  const u = usersList.find(x => x.id === id);
+  if (!u) return;
+  const typeBadge = u.account_type === 'employee'
+    ? '<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Сотрудник</span>'
+    : '<span class="badge" style="background:hsl(var(--accent-cyan) / 0.15);color:hsl(var(--accent-cyan))">Клиент</span>';
+  const dateFormatted = new Date(u.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const rows = [
+    ['ID', u.id],
+    ['Email', u.email],
+    ['Роль', userRoleBadge(u.role), true],
+    ['Тип', typeBadge, true],
+    ['Создан', dateFormatted]
+  ];
+  const actions = `
+    <button class="btn btn-secondary" onclick="closeRowDetail(); adminStartChat(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.email)}')">Чат</button>
+    <button class="btn btn-secondary" onclick="closeRowDetail(); deleteUser(${u.id})" style="color:hsl(var(--accent-red));">Удалить</button>
+    <button class="btn" onclick="closeRowDetail(); editUser(${u.id})">Редактировать</button>`;
+  showRowDetail(u.username, rows, actions);
+};
 
 // API: Full logs loader
 async function loadFullLogs() {
@@ -1631,17 +1672,22 @@ function renderFullLogs(filterQuery = '') {
   );
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Логи не найдены</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="3" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Логи не найдены</td></tr>`;
     return;
   }
 
   filtered.forEach(l => {
     const tr = document.createElement('tr');
     const dateStr = new Date(l.created_at).toLocaleString('ru-RU');
+    tr.onclick = mobileRowTap(() => showRowDetail('Запись лога', [
+      ['Дата', dateStr],
+      ['Пользователь', `<span class="badge badge-warning">${escapeHtml(l.user)}</span>`, true],
+      ['Действие', l.action]
+    ]));
     tr.innerHTML = `
-      <td style="color: hsl(var(--text-muted)); font-size: 13px;">${dateStr}</td>
-      <td><span class="badge badge-warning">${escapeHtml(l.user)}</span></td>
-      <td>${escapeHtml(l.action)}</td>
+      <td class="mobile-hidden" style="color: hsl(var(--text-muted)); font-size: 13px;">${dateStr}</td>
+      <td class="mobile-hidden"><span class="badge badge-warning">${escapeHtml(l.user)}</span></td>
+      <td class="mobile-primary" style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(l.action)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -2114,6 +2160,35 @@ window.editEmployee = (id) => {
   if (emp) openEmployeeModal(emp);
 };
 
+// --- Общая модалка просмотра строки (для мобильных) ---
+// rows: массив [метка, значение, isHtml?]. Пустые значения пропускаются.
+function rowDetailHtml(rows) {
+  return rows
+    .filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '')
+    .map(([k, v, isHtml]) => `
+      <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid hsl(var(--border-color));">
+        <span style="color:hsl(var(--text-muted));font-size:13px;flex-shrink:0;">${escapeHtml(k)}</span>
+        <span style="font-size:14px;text-align:right;word-break:break-word;">${isHtml ? v : escapeHtml(String(v))}</span>
+      </div>`).join('');
+}
+window.showRowDetail = (title, rows, actionsHtml = '') => {
+  document.getElementById('rowDetailTitle').textContent = title;
+  document.getElementById('rowDetailBody').innerHTML = rowDetailHtml(rows);
+  const act = document.getElementById('rowDetailActions');
+  act.innerHTML = actionsHtml;
+  act.style.display = actionsHtml ? '' : 'none';
+  document.getElementById('rowDetailModalOverlay').classList.add('active');
+};
+window.closeRowDetail = () => document.getElementById('rowDetailModalOverlay').classList.remove('active');
+
+// Открывает модалку только на мобильных (для tap по строке-карточке).
+function mobileRowTap(handler) {
+  return (ev) => {
+    if (ev.target.closest('.action-btn, button, a')) return;
+    if (window.matchMedia('(max-width: 640px)').matches) handler();
+  };
+}
+
 // Просмотр карточки сотрудника в модалке (используется на мобильных)
 window.openEmployeeDetail = (id) => {
   const e = employeesList.find(x => x.id === id);
@@ -2246,7 +2321,7 @@ function renderTools(filterQuery = '') {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Инструмент не найден</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Инструмент не найден</td></tr>`;
     return;
   }
 
@@ -2272,20 +2347,21 @@ function renderTools(filterQuery = '') {
         : `<div style="width:40px;height:40px;border-radius:8px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i data-lucide="wrench" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i></div>`);
 
     const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => openToolDetail(t.id));
     tr.innerHTML = `
-      <td>${t.id}</td>
-      <td>
+      <td class="hide-mobile">${t.id}</td>
+      <td class="mobile-primary">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openToolDetail(${t.id})" title="Открыть карточку">
           ${thumb}
           <div><strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(t.name)}</strong>${t.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(t.brand)}${t.model ? ' · ' + escapeHtml(t.model) : ''}</div>` : ''}</div>
         </div>
       </td>
-      <td>${escapeHtml(t.category || '—')}</td>
-      <td>${escapeHtml(t.serial_number || '—')}</td>
-      <td>${escapeHtml(t.inventory_number || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(t.category || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(t.serial_number || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(t.inventory_number || '—')}</td>
       <td>${statusBadge}</td>
-      <td>${holder}</td>
-      <td style="text-align: right;">
+      <td class="mobile-hidden">${holder}</td>
+      <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           ${issueReturnBtn}
           <button class="action-btn" title="Карточка инструмента" onclick="openToolDetail(${t.id})"><i data-lucide="eye"></i></button>
