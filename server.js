@@ -29,6 +29,7 @@ const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
 const handleTestEmployees = require('./src/routes/testEmployees');
+const handleTestTools = require('./src/routes/testTools');
 const handleBackup = require('./src/routes/backup');
 const handleTwoFactor = require('./src/routes/twoFactor');
 const handleAuth = require('./src/routes/auth');
@@ -285,6 +286,11 @@ const server = http.createServer(async (req, res) => {
   // Тестовые сотрудники (добавить/удалить) — только Superadmin
   if (pathname.startsWith('/api/admin/test-employees/')) {
     return handleTestEmployees(req, res, user, parsedUrl, method);
+  }
+
+  // Тестовые инструменты (добавить/удалить) — только Superadmin
+  if (pathname.startsWith('/api/admin/test-tools/')) {
+    return handleTestTools(req, res, user, parsedUrl, method);
   }
 
   // Superadmin-only: download a full backup of the SQLite database
