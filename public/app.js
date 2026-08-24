@@ -121,9 +121,9 @@ async function checkSession() {
       const backupBox = document.getElementById('backupBox');
       if (backupBox) backupBox.style.display = 'block';
       const testEmpBox = document.getElementById('testEmployeesBox');
-      if (testEmpBox) testEmpBox.style.display = 'block';
+      if (testEmpBox) testEmpBox.classList.add('visible');
       const testToolsBox = document.getElementById('testToolsBox');
-      if (testToolsBox) testToolsBox.style.display = 'block';
+      if (testToolsBox) testToolsBox.classList.add('visible');
     }
   } catch (err) {
     console.error('Session check error:', err);

@@ -583,31 +583,31 @@
           </div>
 
           <!-- Superadmin-only: тестовые сотрудники -->
-          <div id="testEmployeesBox" class="superadmin-only" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Тестовые сотрудники (только Superadmin)</div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div id="testEmployeesBox" class="test-box superadmin-only">
+            <div class="test-box-title">Тестовые сотрудники (только Superadmin)</div>
+            <div class="test-box-buttons">
               <button type="button" id="addTestEmpBtn" class="btn">
-                <i data-lucide="user-plus"></i><span>Добавить тестовых</span>
+                <i data-lucide="user-plus"></i><span>Добавить</span>
               </button>
               <button type="button" id="removeTestEmpBtn" class="btn btn-secondary" style="color:#ff6b6b;">
-                <i data-lucide="user-minus"></i><span>Удалить тестовых</span>
+                <i data-lucide="user-minus"></i><span>Удалить</span>
               </button>
             </div>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Демо-набор из 5 сотрудников (Diamantas) с аккаунтами (пароль 1234qwer). Реальные записи не затрагиваются.</div>
+            <div class="test-box-description">Демо-набор из 5 сотрудников (Diamantas) с аккаунтами (пароль 1234qwer). Реальные записи не затрагиваются.</div>
           </div>
 
           <!-- Superadmin-only test tools (add/remove) -->
-          <div id="testToolsBox" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="color: hsl(var(--text)); font-size: 13px; font-weight: 600; margin-bottom: 12px;">Тестовые инструменты</div>
-            <div style="display: flex; gap: 8px;">
+          <div id="testToolsBox" class="test-box superadmin-only">
+            <div class="test-box-title">Тестовые инструменты (только Superadmin)</div>
+            <div class="test-box-buttons">
               <button type="button" id="addTestToolBtn" class="btn btn-secondary" style="color:#20c997;">
-                <i data-lucide="tool-plus"></i><span>Добавить тестовые</span>
+                <i data-lucide="tool-plus"></i><span>Добавить</span>
               </button>
               <button type="button" id="removeTestToolBtn" class="btn btn-secondary" style="color:#ff6b6b;">
-                <i data-lucide="tool-minus"></i><span>Удалить тестовые</span>
+                <i data-lucide="tool-minus"></i><span>Удалить</span>
               </button>
             </div>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
+            <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
           </div>
 
           <!-- Superadmin-only demo reset (very handy when presenting the project) -->

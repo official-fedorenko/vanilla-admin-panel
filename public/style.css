@@ -522,6 +522,97 @@ main.main-content {
   box-shadow: 0 8px 16px hsl(var(--accent-red) / 0.3);
 }
 
+/* Test Employees & Test Tools Boxes */
+.test-box {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid hsl(var(--border-color));
+  display: none;
+}
+
+.test-box.visible {
+  display: block;
+}
+
+.test-box-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: hsl(var(--text-primary));
+}
+
+.test-box-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.test-box-buttons .btn,
+.test-box-buttons .btn-secondary {
+  flex: 1;
+  min-width: 140px;
+}
+
+.test-box-description {
+  font-size: 12px;
+  color: hsl(var(--text-muted));
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+/* Mobile: buttons stack vertically */
+@media (max-width: 768px) {
+  .test-box-buttons {
+    gap: 8px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 13px;
+    padding: 10px 16px;
+  }
+
+  .test-box-buttons span {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  .test-box {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+
+  .test-box-title {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  .test-box-buttons {
+    gap: 6px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    padding: 10px 12px;
+    font-size: 12px;
+    min-height: 44px;
+    gap: 6px;
+  }
+
+  .test-box-buttons i {
+    width: 16px;
+    height: 16px;
+  }
+
+  .test-box-description {
+    font-size: 11px;
+    margin-top: 6px;
+  }
+}
+
 /* Table / CRUD UI */
 .table-container {
   background-color: hsl(var(--bg-card));
