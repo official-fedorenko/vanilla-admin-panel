@@ -476,6 +476,32 @@ function initApp() {
     });
   }
 
+  // Тестовые сотрудники (Superadmin): добавить / удалить
+  const addTestEmpBtn = document.getElementById('addTestEmpBtn');
+  if (addTestEmpBtn) {
+    addTestEmpBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Добавить набор тестовых сотрудников?', { okText: 'Добавить' })) return;
+      try {
+        const res = await fetch('/api/admin/test-employees/add', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Добавлено', 'success'); if (typeof loadEmployees === "function") loadEmployees(); }
+        else showToast(d.message || 'Не удалось добавить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+  const removeTestEmpBtn = document.getElementById('removeTestEmpBtn');
+  if (removeTestEmpBtn) {
+    removeTestEmpBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Удалить тестовых сотрудников и их аккаунты?', { okText: 'Удалить', danger: true })) return;
+      try {
+        const res = await fetch('/api/admin/test-employees/remove', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Удалено', 'success'); if (typeof loadEmployees === "function") loadEmployees(); }
+        else showToast(d.message || 'Не удалось удалить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+
   // Users Search
   const usersSearch = document.getElementById('usersSearch');
   if (usersSearch) {
