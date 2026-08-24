@@ -563,6 +563,61 @@ table.data-table tbody tr:hover {
   background-color: hsl(var(--border-color) / 0.15);
 }
 
+/* ---- Адаптив таблиц: на телефоне строка -> карточка ----
+   Таблице добавляется класс .cards-mobile, каждой <td> — data-label с
+   названием колонки. На узких экранах шапка прячется, а ячейки выводятся
+   столбиком «Метка: значение», поэтому контент влезает на любую ширину. */
+@media (max-width: 640px) {
+  .data-table.cards-mobile thead { display: none; }
+  .data-table.cards-mobile,
+  .data-table.cards-mobile tbody,
+  .data-table.cards-mobile tr,
+  .data-table.cards-mobile td { display: block; width: 100%; }
+
+  .data-table.cards-mobile tbody tr {
+    border: 1px solid hsl(var(--border-color));
+    border-radius: 12px;
+    margin: 12px;
+    padding: 6px 2px;
+    background: hsl(var(--bg-main));
+  }
+
+  .data-table.cards-mobile td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 9px 16px;
+    border: none;
+    text-align: right;
+  }
+  .data-table.cards-mobile td:not(:last-child) {
+    border-bottom: 1px solid hsl(var(--border-color) / 0.6);
+  }
+  .data-table.cards-mobile td::before {
+    content: attr(data-label);
+    color: hsl(var(--text-muted));
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  /* Ячейки без метки (действия) — на всю ширину, кнопки по правому краю */
+  .data-table.cards-mobile td.no-label { justify-content: flex-end; }
+  .data-table.cards-mobile td.no-label::before { content: none; }
+
+  /* Ячейки, спрятанные на мобильных (например, ID) */
+  .data-table.cards-mobile .hide-mobile { display: none; }
+
+  /* Пустое состояние (одна ячейка на всю ширину) — по центру, без метки */
+  .data-table.cards-mobile td.empty-state { justify-content: center; text-align: center; }
+  .data-table.cards-mobile td.empty-state::before { content: none; }
+
+  /* На телефоне карточкам не нужен горизонтальный скролл */
+  .table-scroll { overflow-x: visible; }
+}
+
 .badge {
   display: inline-flex;
   padding: 4px 10px;

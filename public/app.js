@@ -1996,7 +1996,7 @@ function renderEmployees(filterQuery = '') {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Сотрудники не найдены</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Сотрудники не найдены</td></tr>`;
     return;
   }
 
@@ -2007,14 +2007,14 @@ function renderEmployees(filterQuery = '') {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${e.id}</td>
-      <td><strong>${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</strong></td>
-      <td>${escapeHtml(e.position || '—')}</td>
-      <td>${escapeHtml(e.department || '—')}</td>
-      <td>${escapeHtml(e.phone || '—')}</td>
-      <td>${hire}</td>
-      <td>${statusBadge}</td>
-      <td style="text-align: right;">
+      <td class="hide-mobile" data-label="ID">${e.id}</td>
+      <td data-label="ФИО"><strong>${escapeHtml(e.last_name)} ${escapeHtml(e.first_name)}</strong></td>
+      <td data-label="Должность">${escapeHtml(e.position || '—')}</td>
+      <td data-label="Отдел">${escapeHtml(e.department || '—')}</td>
+      <td data-label="Телефон">${escapeHtml(e.phone || '—')}</td>
+      <td data-label="Принят">${hire}</td>
+      <td data-label="Статус">${statusBadge}</td>
+      <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editEmployee(${e.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteEmployee(${e.id})"><i data-lucide="trash-2"></i></button>
