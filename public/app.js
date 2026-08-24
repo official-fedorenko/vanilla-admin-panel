@@ -120,6 +120,10 @@ async function checkSession() {
       if (resetBox) resetBox.style.display = 'block';
       const backupBox = document.getElementById('backupBox');
       if (backupBox) backupBox.style.display = 'block';
+      const testEmpBox = document.getElementById('testEmployeesBox');
+      if (testEmpBox) testEmpBox.style.display = 'block';
+      const testToolsBox = document.getElementById('testToolsBox');
+      if (testToolsBox) testToolsBox.style.display = 'block';
     }
   } catch (err) {
     console.error('Session check error:', err);
@@ -150,7 +154,7 @@ function setupNavigation() {
   }
 
   const handleHashChange = () => {
-    const hash = window.location.hash.replace('#', '') || 'articles';
+    const hash = window.location.hash.replace('#', '') || 'employees';
     let targetSection = document.getElementById(`section-${hash}`);
 
     if (!targetSection) {
@@ -186,7 +190,7 @@ function setupNavigation() {
   if (window.location.hash) {
     handleHashChange();
   } else {
-    window.location.hash = '#articles';
+    window.location.hash = '#employees';
   }
 }
 
@@ -473,6 +477,58 @@ function initApp() {
       } catch (e) {
         showToast('Ошибка сети при сбросе', 'error');
       }
+    });
+  }
+
+  // Тестовые сотрудники (Superadmin): добавить / удалить
+  const addTestEmpBtn = document.getElementById('addTestEmpBtn');
+  if (addTestEmpBtn) {
+    addTestEmpBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Добавить набор тестовых сотрудников?', { okText: 'Добавить' })) return;
+      try {
+        const res = await fetch('/api/admin/test-employees/add', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Добавлено', 'success'); if (typeof loadEmployees === "function") loadEmployees(); }
+        else showToast(d.message || 'Не удалось добавить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+  const removeTestEmpBtn = document.getElementById('removeTestEmpBtn');
+  if (removeTestEmpBtn) {
+    removeTestEmpBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Удалить тестовых сотрудников и их аккаунты?', { okText: 'Удалить', danger: true })) return;
+      try {
+        const res = await fetch('/api/admin/test-employees/remove', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Удалено', 'success'); if (typeof loadEmployees === "function") loadEmployees(); }
+        else showToast(d.message || 'Не удалось удалить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+
+  // Тестовые инструменты (Superadmin): добавить / удалить
+  const addTestToolBtn = document.getElementById('addTestToolBtn');
+  if (addTestToolBtn) {
+    addTestToolBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Добавить набор тестовых инструментов?', { okText: 'Добавить' })) return;
+      try {
+        const res = await fetch('/api/admin/test-tools/add', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Добавлено', 'success'); if (typeof loadTools === "function") loadTools(); }
+        else showToast(d.message || 'Не удалось добавить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+  const removeTestToolBtn = document.getElementById('removeTestToolBtn');
+  if (removeTestToolBtn) {
+    removeTestToolBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Удалить тестовые инструменты?', { okText: 'Удалить', danger: true })) return;
+      try {
+        const res = await fetch('/api/admin/test-tools/remove', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Удалено', 'success'); if (typeof loadTools === "function") loadTools(); }
+        else showToast(d.message || 'Не удалось удалить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
     });
   }
 

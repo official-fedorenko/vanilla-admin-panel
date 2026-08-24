@@ -284,6 +284,29 @@ function verifyPassword(password, storedHash) {
   return true;
 }
 
+// Набор тестовых сотрудников (демо). Используется при первичном сиде и
+// кнопкой «Добавить/Удалить тестовых сотрудников» в настройках (Superadmin).
+const TEST_EMPLOYEES = [
+  { username: 'jonas.k',   email: 'jonas.kazlauskas@diamantas.lt',     first: 'Jonas',   last: 'Kazlauskas',   position: 'Электромонтажник', department: 'Монтаж',  phone: '+370 600 11111', hire: '2021-03-15' },
+  { username: 'petras.p',  email: 'petras.petrauskas@diamantas.lt',    first: 'Petras',  last: 'Petrauskas',   position: 'Бригадир',         department: 'Монтаж',  phone: '+370 600 22222', hire: '2019-06-01' },
+  { username: 'tomas.j',   email: 'tomas.jankauskas@diamantas.lt',     first: 'Tomas',   last: 'Jankauskas',   position: 'Электромонтажник', department: 'Сервис',  phone: '+370 600 33333', hire: '2022-01-10' },
+  { username: 'mantas.s',  email: 'mantas.stankevicius@diamantas.lt',  first: 'Mantas',  last: 'Stankevičius', position: 'Монтажник',        department: 'Монтаж',  phone: '+370 600 44444', hire: '2023-09-20' },
+  { username: 'andrius.v', email: 'andrius.vasiliauskas@diamantas.lt', first: 'Andrius', last: 'Vasiliauskas', position: 'Мастер участка',   department: 'Монтаж',  phone: '+370 600 55555', hire: '2018-05-05' }
+];
+
+// Набор тестовых инструментов (демо). Используется при первичном сиде и
+// кнопкой «Добавить/Удалить тестовых инструментов» в настройках (Superadmin).
+const TEST_TOOLS = [
+  { name: 'Bosch GBH 2-26 DRE', category: 'Перфоратор', brand: 'Bosch', model: 'GBH 2-26 DRE', serial_number: 'BSH-GBH-0001', inventory_number: 'INV-001', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'Bosch GBH 2-28 F', category: 'Перфоратор', brand: 'Bosch', model: 'GBH 2-28 F', serial_number: 'BSH-GBH-0002', inventory_number: 'INV-002', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'DeWalt D25143K', category: 'Перфоратор', brand: 'DeWalt', model: 'D25143K', serial_number: 'DW-D25-0003', inventory_number: 'INV-003', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'Bosch GSR 18V-55', category: 'Шуруповёрт', brand: 'Bosch', model: 'GSR 18V-55', serial_number: 'BSH-GSR-0004', inventory_number: 'INV-004', photo_url: '/catalog/images/drill-driver.svg' },
+  { name: 'DeWalt DCD791', category: 'Шуруповёрт', brand: 'DeWalt', model: 'DCD791', serial_number: 'DW-DCD-0005', inventory_number: 'INV-005', photo_url: '/catalog/images/drill-driver.svg' },
+  { name: 'Bosch GWS 850', category: 'Углошлифовальная машина (болгарка)', brand: 'Bosch', model: 'GWS 850', serial_number: 'BSH-GWS-0006', inventory_number: 'INV-006', photo_url: '/catalog/images/angle-grinder.svg' },
+  { name: 'DeWalt DWE4237', category: 'Углошлифовальная машина (болгарка)', brand: 'DeWalt', model: 'DWE4237', serial_number: 'DW-DWE-0007', inventory_number: 'INV-007', photo_url: '/catalog/images/angle-grinder.svg' },
+  { name: 'Bosch GWS 18V-10', category: 'Углошлифовальная машина (болгарка)', brand: 'Bosch', model: 'GWS 18V-10', serial_number: 'BSH-GWS-0008', inventory_number: 'INV-008', photo_url: '/catalog/images/angle-grinder.svg' }
+];
+
 // Инициализация базы данных
 db.serialize(() => {
   runMigrations();
@@ -557,13 +580,7 @@ db.serialize(() => {
     if (err || (row && row.count > 0)) return;
 
     const testPass = hashPassword('1234qwer');
-    const seed = [
-      { username: 'jonas.k',   email: 'jonas.kazlauskas@diamantas.lt',     first: 'Jonas',   last: 'Kazlauskas',   position: 'Электромонтажник', department: 'Монтаж',  phone: '+370 600 11111', hire: '2021-03-15' },
-      { username: 'petras.p',  email: 'petras.petrauskas@diamantas.lt',    first: 'Petras',  last: 'Petrauskas',   position: 'Бригадир',         department: 'Монтаж',  phone: '+370 600 22222', hire: '2019-06-01' },
-      { username: 'tomas.j',   email: 'tomas.jankauskas@diamantas.lt',     first: 'Tomas',   last: 'Jankauskas',   position: 'Электромонтажник', department: 'Сервис',  phone: '+370 600 33333', hire: '2022-01-10' },
-      { username: 'mantas.s',  email: 'mantas.stankevicius@diamantas.lt',  first: 'Mantas',  last: 'Stankevičius', position: 'Монтажник',        department: 'Монтаж',  phone: '+370 600 44444', hire: '2023-09-20' },
-      { username: 'andrius.v', email: 'andrius.vasiliauskas@diamantas.lt', first: 'Andrius', last: 'Vasiliauskas', position: 'Мастер участка',   department: 'Монтаж',  phone: '+370 600 55555', hire: '2018-05-05' }
-    ];
+    const seed = TEST_EMPLOYEES;
 
     seed.forEach((e) => {
       db.run(
@@ -649,6 +666,8 @@ module.exports = {
   db,
   dbPath,
   dbReady,
+  TEST_EMPLOYEES,
+  TEST_TOOLS,
   hashPassword,
   verifyPassword,
   saveSession,
