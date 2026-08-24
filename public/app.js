@@ -50,6 +50,51 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+// === Модальные диалоги вместо нативных alert/confirm/prompt ===
+// Возвращают Promise: confirm → boolean, prompt → string|null, alert → true.
+function uiDialog(opts) {
+  const { type = 'confirm', title = '', message = '', defaultValue = '',
+          okText, cancelText = 'Отмена', danger = false } = opts || {};
+  const isPrompt = type === 'prompt';
+  const isAlert = type === 'alert';
+  const ok = okText || (isAlert ? 'OK' : 'Подтвердить');
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'ui-dialog-overlay';
+    overlay.innerHTML = `
+      <div class="ui-dialog" role="dialog" aria-modal="true">
+        ${title ? `<div class="ui-dialog__title">${esc(title)}</div>` : ''}
+        <div class="ui-dialog__msg">${esc(message)}</div>
+        ${isPrompt ? `<input class="ui-dialog__input form-control" type="text">` : ''}
+        <div class="ui-dialog__actions">
+          ${isAlert ? '' : `<button type="button" class="ui-dialog__btn ui-dialog__btn--cancel">${esc(cancelText)}</button>`}
+          <button type="button" class="ui-dialog__btn ui-dialog__btn--ok${danger ? ' ui-dialog__btn--danger' : ''}">${esc(ok)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('.ui-dialog__input');
+    if (input) { input.value = defaultValue || ''; setTimeout(() => { input.focus(); input.select(); }, 30); }
+    const done = (val) => { document.removeEventListener('keydown', onKey); overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 150); resolve(val); };
+    const onOk = () => done(isPrompt ? (input ? input.value : '') : true);
+    const onCancel = () => done(isPrompt ? null : false);
+    overlay.querySelector('.ui-dialog__btn--ok').addEventListener('click', onOk);
+    const cancelBtn = overlay.querySelector('.ui-dialog__btn--cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) onCancel(); });
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      else if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+    };
+    document.addEventListener('keydown', onKey);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  });
+}
+const confirmDialog = (message, opts = {}) => uiDialog({ type: 'confirm', message, ...opts });
+const promptDialog = (message, defaultValue = '', opts = {}) => uiDialog({ type: 'prompt', message, defaultValue, ...opts });
+const alertDialog = (message, opts = {}) => uiDialog({ type: 'alert', message, ...opts });
+
 // Session Check
 async function checkSession() {
   try {
@@ -84,18 +129,38 @@ async function checkSession() {
 
 // SPA Routing / Navigation
 function setupNavigation() {
+  // Бургер-меню (мобильные): выпадающий список пунктов по кнопке.
+  const sidebar = document.querySelector('aside.sidebar');
+  const burger = document.getElementById('navBurger');
+  const closeMenu = () => {
+    if (!sidebar) return;
+    sidebar.classList.remove('menu-open');
+    if (burger) burger.setAttribute('aria-expanded', 'false');
+  };
+  if (burger && sidebar) {
+    burger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = sidebar.classList.toggle('menu-open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Клик вне меню — закрыть.
+    document.addEventListener('click', (e) => {
+      if (sidebar.classList.contains('menu-open') && !sidebar.contains(e.target)) closeMenu();
+    });
+  }
+
   const handleHashChange = () => {
     const hash = window.location.hash.replace('#', '') || 'articles';
     let targetSection = document.getElementById(`section-${hash}`);
-    
+
     if (!targetSection) {
       targetSection = document.getElementById('section-dashboard');
     }
-    
+
     // Toggle active section
     sections.forEach(sec => sec.classList.remove('active'));
     targetSection.classList.add('active');
-    
+
     // Toggle active sidebar item
     navItems.forEach(item => {
       item.classList.remove('active');
@@ -110,6 +175,9 @@ function setupNavigation() {
     if (hash === 'articles') {
       loadDashboardStats();
     }
+
+    // Выбор пункта закрывает бургер-меню.
+    closeMenu();
   };
 
   window.addEventListener('hashchange', handleHashChange);
@@ -147,14 +215,14 @@ function initApp() {
               ['clean']
             ],
             handlers: {
-              image: function() {
+              image: async function() {
                 if (window.openMediaPicker) {
                   window.openMediaPicker((url) => {
                     const range = this.quill.getSelection() || { index: this.quill.getLength() };
                     this.quill.insertEmbed(range.index, 'image', url);
                   }, 'articles');
                 } else {
-                  const url = prompt('Введите URL изображения:');
+                  const url = await promptDialog('Введите URL изображения:');
                   if (url) {
                     const range = this.quill.getSelection() || { index: this.quill.getLength() };
                     this.quill.insertEmbed(range.index, 'image', url);
@@ -212,6 +280,9 @@ function initApp() {
 
   // Счётчик ожидающих заявок на инструмент (бейдж в меню)
   updateRequestsBadge();
+
+  // Счётчик заказов, ожидающих получения сотрудником (бейдж в меню)
+  initToolOrdersBadge();
 
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
@@ -387,7 +458,7 @@ function initApp() {
   if (resetBox && resetBtn) {
     // Will be shown by checkSession for Superadmin (we toggle here too for safety)
     resetBtn.addEventListener('click', async () => {
-      if (!confirm('Сбросить все демо-данные? Это действие необратимо.')) return;
+      if (!await confirmDialog('Сбросить все демо-данные? Это действие необратимо.', { okText: 'Сбросить', danger: true })) return;
       try {
         const res = await fetch('/api/admin/reset-demo', { method: 'POST' });
         const data = await res.json();
@@ -442,6 +513,7 @@ function initApp() {
       : 'Пароль обязателен для создания нового пользователя.';
     document.getElementById('userRole').value = role;
     document.getElementById('userAccountType').value = accountType || 'client';
+    renderUserEmployeePanel(id || null);
     userModal.classList.add('active');
   };
 
@@ -496,7 +568,7 @@ function initApp() {
   const clearLogsBtn = document.getElementById('clearLogsBtn');
   if (clearLogsBtn) {
     clearLogsBtn.addEventListener('click', async () => {
-      if (confirm('Вы действительно хотите удалить все логи действий? Это действие необратимо.')) {
+      if (await confirmDialog('Вы действительно хотите удалить все логи действий? Это действие необратимо.', { okText: 'Удалить', danger: true })) {
         try {
           const res = await fetch('/api/logs', { method: 'DELETE' });
           if (res.ok) {
@@ -524,6 +596,8 @@ function loadSectionData(hash) {
     loadEmployees();
   } else if (hash === 'tools') {
     loadTools();
+  } else if (hash === 'catalog') {
+    loadCatalogModels();
   } else if (hash === 'articles') {
     loadArticles();
   } else if (hash === 'media') {
@@ -540,7 +614,341 @@ function loadSectionData(hash) {
     loadToolRequests();
   } else if (hash === 'worktime') {
     loadWorkTimeSummary();
+  } else if (hash === 'vacations') {
+    loadVacations();
+  } else if (hash === 'toolorders') {
+    loadToolOrders();
   }
+}
+
+// ==== Заказы инструмента (админ): кому и что одобрили ====
+let toolOrdersCache = [];
+
+function toolOrderFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadToolOrders() {
+  const tbody = document.getElementById('toolOrdersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const res = await fetch('/api/requests/tool-orders');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    toolOrdersCache = data.orders || [];
+    updateToolOrdersBadge();
+    renderToolOrders();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+async function initToolOrdersBadge() {
+  try {
+    const res = await fetch('/api/requests/tool-orders');
+    if (!res.ok) return;
+    const data = await res.json();
+    toolOrdersCache = data.orders || [];
+    updateToolOrdersBadge();
+  } catch (e) { /* тихо */ }
+}
+
+function updateToolOrdersBadge() {
+  const badge = document.getElementById('toolOrdersBadge');
+  if (!badge) return;
+  const awaiting = toolOrdersCache.filter(o => !o.received).length;
+  if (awaiting > 0) { badge.textContent = awaiting; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+function renderToolOrders() {
+  const tbody = document.getElementById('toolOrdersTableBody');
+  const filter = document.getElementById('toolOrdersReceiptFilter')?.value || '';
+  let list = toolOrdersCache;
+  if (filter === 'awaiting') list = list.filter(o => !o.received);
+  else if (filter === 'received') list = list.filter(o => o.received);
+
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Заказов нет</td></tr>';
+    return;
+  }
+  list.forEach(o => {
+    const receipt = o.received
+      ? `<span class="badge badge-success">✓ Получено</span><div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${toolOrderFmtDate(o.received_at)}</div>`
+      : `<span class="badge badge-warning">Ожидает получения</span>`;
+    const tr = document.createElement('tr');
+    if (!o.received) tr.style.background = 'hsl(var(--accent-purple) / 0.05)';
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(o.name)}</strong></td>
+      <td>${escapeHtml(o.item || o.title || '—')}${o.notes ? `<div style="font-size:11px;color:hsl(var(--text-muted));">${escapeHtml(o.notes)}</div>` : ''}</td>
+      <td>${o.quantity !== '' ? escapeHtml(String(o.quantity)) : '—'}</td>
+      <td>${escapeHtml(o.category || '—')}</td>
+      <td>${escapeHtml(o.reviewed_by_name || '—')}<div style="font-size:11px;color:hsl(var(--text-muted));">${toolOrderFmtDate(o.reviewed_at)}</div></td>
+      <td>${receipt}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ==== Отпуска (админ): кто и когда в отпуске ====
+let vacationsCache = [];
+
+const VAC_PHASE = {
+  current:  { label: 'Сейчас в отпуске', badge: 'badge-success', color: '34,197,94' },
+  upcoming: { label: 'Предстоит',        badge: 'badge-warning', color: '245,158,11' },
+  past:     { label: 'Завершён',         badge: 'badge-secondary', color: '148,163,184' },
+  unknown:  { label: '—',                badge: 'badge-secondary', color: '148,163,184' }
+};
+
+function vacDaysCount(start, end) {
+  if (!start || !end) return '';
+  const s = new Date(start + 'T00:00:00'), e = new Date(end + 'T00:00:00');
+  if (isNaN(s) || isNaN(e) || e < s) return '';
+  return Math.round((e - s) / 86400000) + 1; // включая оба дня
+}
+
+function vacFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadVacations() {
+  const tbody = document.getElementById('vacationsTableBody');
+  const cal = document.getElementById('vacationsCalendar');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const res = await fetch('/api/requests/vacations');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    vacationsCache = data.vacations || [];
+    renderVacations();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    if (cal) cal.innerHTML = '';
+  }
+}
+
+// --- Оформление отпуска админом за сотрудника ---
+window.openVacationForm = async function () {
+  const sel = document.getElementById('vacationEmployee');
+  if (sel) {
+    sel.innerHTML = '<option value="">Загрузка...</option>';
+    try {
+      const res = await fetch('/api/crud/employees');
+      const emps = res.ok ? await res.json() : [];
+      const active = (emps || []).filter(e => e.status !== 'fired' && e.status !== 'уволен');
+      sel.innerHTML = '<option value="">— выберите —</option>' +
+        active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+    } catch (e) { sel.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+  }
+  document.getElementById('vacationForm').reset();
+  document.getElementById('vacationModalOverlay').classList.add('active');
+};
+window.closeVacationForm = function () {
+  document.getElementById('vacationModalOverlay').classList.remove('active');
+};
+window.submitVacation = async function (e) {
+  if (e) e.preventDefault();
+  const employee_id = document.getElementById('vacationEmployee').value;
+  const start_date = document.getElementById('vacationStart').value;
+  const end_date = document.getElementById('vacationEnd').value;
+  const notes = document.getElementById('vacationNotes').value;
+  if (!employee_id) { showToast('Выберите сотрудника', 'error'); return false; }
+  if (!start_date || !end_date) { showToast('Укажите даты', 'error'); return false; }
+  if (end_date < start_date) { showToast('Дата окончания раньше начала', 'error'); return false; }
+  try {
+    const res = await fetch('/api/requests/vacation-for', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_id, start_date, end_date, notes })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast('Отпуск оформлен', 'success');
+      closeVacationForm();
+      loadVacations();
+    } else {
+      showToast(d.message || 'Не удалось оформить отпуск', 'error');
+    }
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+  return false;
+};
+
+// Год отпуска — по дате начала.
+function vacYear(v) { return (v.start_date || '').slice(0, 4); }
+
+function renderVacations() {
+  const tbody = document.getElementById('vacationsTableBody');
+  const phaseFilter = document.getElementById('vacationsPhaseFilter')?.value || '';
+  const yearSel = document.getElementById('vacationsYearFilter');
+  const isPast = phaseFilter === 'past';
+
+  // Селектор года показываем только в режиме архива прошедших.
+  if (yearSel) yearSel.style.display = isPast ? '' : 'none';
+
+  let base, pastMode = false;
+  if (isPast) {
+    pastMode = true;
+    const pastVacs = vacationsCache.filter(v => v.phase === 'past');
+    // Наполняем список годов (по убыванию), сохраняя выбор.
+    const years = [...new Set(pastVacs.map(vacYear).filter(Boolean))].sort().reverse();
+    if (yearSel) {
+      const prev = yearSel.value;
+      yearSel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('')
+        || '<option value="">—</option>';
+      if (years.includes(prev)) yearSel.value = prev;
+    }
+    const year = yearSel ? yearSel.value : (years[0] || '');
+    base = pastVacs.filter(v => vacYear(v) === year);
+  } else {
+    // Текущие и предстоящие (прошедшие скрыты).
+    const active = vacationsCache.filter(v => v.phase !== 'past');
+    base = phaseFilter ? active.filter(v => v.phase === phaseFilter) : active;
+  }
+  const list = base;
+
+  // --- Мини-календарь (таймлайн) ---
+  renderVacationsCalendar(base, { pastMode });
+
+  // --- Список ---
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
+    return;
+  }
+  list.forEach(v => {
+    const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
+    const days = vacDaysCount(v.start_date, v.end_date);
+    const pending = v.status === 'pending'
+      ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
+      : '';
+    const tr = document.createElement('tr');
+    if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(v.name)}</strong>${pending}</td>
+      <td>${vacFmtDate(v.start_date)}</td>
+      <td>${vacFmtDate(v.end_date)}</td>
+      <td>${days !== '' ? days : '—'}</td>
+      <td><span class="badge ${ph.badge}">${ph.label}</span></td>
+      <td><span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span></td>
+      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// Горизонтальный таймлайн: строка на сотрудника, полоска = период отпуска.
+// Окно — от самого раннего начала до самого позднего конца среди отпусков
+// (но не уже, чем ±текущий месяц), с вертикальной линией «сегодня».
+function renderVacationsCalendar(list, opts = {}) {
+  const pastMode = !!opts.pastMode;
+  const cal = document.getElementById('vacationsCalendar');
+  if (!cal) return;
+  const dated = list.filter(v => v.start_date && v.end_date);
+  if (!dated.length) { cal.innerHTML = ''; return; }
+
+  const toTime = d => new Date(d + 'T00:00:00').getTime();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Обычный режим: окно от сегодня вперёд (в прошлое не тянем).
+  // Архив прошедших: окно по самим отпускам (от раннего начала до позднего конца).
+  let min, max;
+  if (pastMode) {
+    min = Math.min(...dated.map(v => toTime(v.start_date)));
+    max = Math.max(...dated.map(v => toTime(v.end_date)));
+    min -= 3 * 86400000; max += 3 * 86400000;
+  } else {
+    min = today.getTime();
+    max = Math.max(...dated.map(v => toTime(v.end_date)), today.getTime());
+    min -= 1 * 86400000; max += 3 * 86400000;
+  }
+  const span = Math.max(max - min, 86400000);
+  const pct = t => ((t - min) / span) * 100;
+
+  // Метки месяцев вдоль шкалы.
+  const marks = [];
+  const cur = new Date(min); cur.setDate(1); cur.setHours(0, 0, 0, 0);
+  while (cur.getTime() <= max) {
+    if (cur.getTime() >= min) {
+      marks.push({ pos: pct(cur.getTime()), label: cur.toLocaleDateString('ru-RU', { month: 'short', year: '2-digit' }) });
+    }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const todayPos = pct(today.getTime());
+  const shortDate = d => new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+
+  // Архив: хронологически по дате начала. Обычный режим: «ближайшие к отпуску
+  // сверху» — сейчас в отпуске → предстоящие (по началу) → (past здесь не бывает).
+  if (pastMode) {
+    dated.sort((a, b) => toTime(a.start_date) - toTime(b.start_date));
+  } else {
+    const rank = (v) => {
+      const s = toTime(v.start_date);
+      if (v.phase === 'current') return -1e15 + s;
+      if (v.phase === 'upcoming') return s;
+      return 1e15 - toTime(v.end_date);
+    };
+    dated.sort((a, b) => rank(a) - rank(b));
+  }
+
+  const rows = dated.map(v => {
+    const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
+    const left = Math.max(0, pct(toTime(v.start_date)));
+    const right = Math.min(100, pct(toTime(v.end_date)));
+    const width = Math.max(right - left, 1.2);
+    const dim = v.status === 'pending' ? 'opacity:0.55; border:1px dashed rgba(255,255,255,0.5);' : '';
+    const days = vacDaysCount(v.start_date, v.end_date);
+    // Подпись с датами над полосой — по центру полосы, но с зажимом у краёв,
+    // чтобы не уезжала за пределы шкалы.
+    const mid = Math.min(94, Math.max(6, (left + right) / 2));
+    const label = `${shortDate(v.start_date)}–${shortDate(v.end_date)}${days ? ` · ${days} дн` : ''}`;
+    const tip = `${v.name}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
+    return `
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
+        <div style="position:relative; flex:1; height:38px;">
+          <div style="position:absolute; top:18px; left:0; right:0; height:16px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;"></div>
+          <div style="position:absolute; top:0; left:${mid}%; transform:translateX(-50%); font-size:10px; font-weight:700; color:rgba(${ph.color},1); white-space:nowrap; pointer-events:none;">${label}</div>
+          <div title="${escapeHtml(tip)}"
+               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-radius:5px; ${dim}"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const markEls = marks.map(m => `<span style="position:absolute; left:${m.pos}%; transform:translateX(-50%); font-size:10px; color:hsl(var(--text-muted));">${m.label}</span>`).join('');
+
+  // Линию «сегодня» рисуем только если сегодня попадает в окно (в архиве прошлых лет — нет).
+  const todayLine = (todayPos >= 0 && todayPos <= 100)
+    ? `<div style="position:absolute; left:${todayPos}%; top:0; bottom:0; width:2px; background:hsl(var(--accent-red, 0 84% 60%)); z-index:2;" title="Сегодня"></div>`
+    : '';
+
+  // Зона полосок и шкалы имеет левый отступ 150px (ширина колонки имён + gap);
+  // линия «сегодня» и метки месяцев позиционируются в процентах внутри этой зоны.
+  cal.innerHTML = `
+    <div class="table-container" style="padding:16px;">
+      <div style="padding-left:150px;">
+        <div style="position:relative; height:14px; margin-bottom:8px;">${markEls}</div>
+      </div>
+      <div style="max-height:240px; overflow-y:auto; padding-right:4px;">
+        <div style="position:relative;">
+          <div style="position:absolute; left:150px; right:0; top:0; bottom:0; pointer-events:none;">${todayLine}</div>
+          ${rows}
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; margin-top:10px; font-size:11px; color:hsl(var(--text-muted)); flex-wrap:wrap;">
+        ${pastMode
+          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершённый отпуск</span>'
+          : `<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(245,158,11,0.85); vertical-align:middle;"></span> предстоит</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; border:1px dashed hsl(var(--text-muted)); vertical-align:middle;"></span> ожидает одобрения</span>
+        <span><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>`}
+      </div>
+    </div>`;
 }
 
 // ==== Учёт рабочего времени (админ) ====
@@ -638,17 +1046,33 @@ async function ensureRequestTypes() {
   return requestTypesCache;
 }
 
-// Человекочитаемое описание заявления из payload + описания полей типа.
+// Поле-обоснование заявки: первое textarea-поле типа (Обоснование / Причина /
+// Комментарий). Возвращает { label, text } — text может быть пустым.
+function requestJustification(r, types) {
+  const def = types[r.type];
+  const f = def && (def.fields || []).find(x => x.type === 'textarea');
+  if (!f) return { label: 'Обоснование', text: '' };
+  return { label: f.label, text: String(r.payload[f.name] ?? '').trim() };
+}
+
+// Человекочитаемое описание заявления: заголовок + поля-чипы (без фото и без
+// поля-обоснования — оно доступно отдельной кнопкой).
 function describeRequest(r, types) {
   const def = types[r.type];
   if (!def) return escapeHtml(r.title || '');
-  const parts = def.fields
-    .filter(f => f.type !== 'photo' && r.payload[f.name] !== '' && r.payload[f.name] != null)
-    .map(f => `<span style="color:hsl(var(--text-muted));">${escapeHtml(f.label)}:</span> ${escapeHtml(String(r.payload[f.name]))}`);
+  const justField = (def.fields || []).find(x => x.type === 'textarea');
+  const chips = def.fields
+    .filter(f => f.type !== 'photo' && f.type !== 'textarea'
+      && r.payload[f.name] !== '' && r.payload[f.name] != null)
+    .map(f => `<span class="req-chip"><span class="req-chip-label">${escapeHtml(f.label)}:</span>${escapeHtml(String(r.payload[f.name]))}</span>`)
+    .join('');
   const photo = (r.payload.photo_url)
-    ? `<img src="${iconVer(r.payload.photo_url)}" style="width:32px;height:32px;border-radius:6px;object-fit:cover;float:left;margin-right:8px;">`
+    ? `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" alt="">`
     : '';
-  return `${photo}<div><strong>${escapeHtml(r.title || def.label)}</strong></div><div style="font-size:12px;">${parts.join(' · ')}</div>`;
+  return `<div class="req-desc">${photo}<div style="min-width:0;">
+      <div class="req-title">${escapeHtml(r.title || def.label)}</div>
+      ${chips ? `<div class="req-chips">${chips}</div>` : ''}
+    </div></div>`;
 }
 
 async function loadToolRequests() { return loadRequests(); }
@@ -673,8 +1097,14 @@ async function loadRequests() {
   }
 }
 
+// Кэш для модалки обоснования (id → заявка) и типов.
+let requestsRenderCache = [];
+let requestsTypesCacheForRender = {};
+
 function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
+  requestsRenderCache = list;
+  requestsTypesCacheForRender = types;
   tbody.innerHTML = '';
   if (!list.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
@@ -682,10 +1112,16 @@ function renderRequests(list, types) {
   }
   list.forEach(r => {
     const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
-    const actions = r.status === 'pending'
-      ? `<button class="btn" style="padding:4px 10px;font-size:12px;" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
-         <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="rejectRequest(${r.id})">Отклонить</button>`
-      : (r.review_note ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>` : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
+    const just = requestJustification(r, types);
+    const justBtn = just.text
+      ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
+      : `<button class="req-action req-action--red" disabled title="Обоснование не указано">Обоснование</button>`;
+    const decide = r.status === 'pending'
+      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+         <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
+      : (r.review_note
+          ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
+          : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => {
       const rows = [
@@ -707,14 +1143,29 @@ function renderRequests(list, types) {
       <td class="mobile-hidden">${describeRequest(r, types)}</td>
       <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
-      <td class="no-label" style="text-align:right;">${actions}</td>`;
+      <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${justBtn}${decide}</div></td>`;
     tbody.appendChild(tr);
   });
 }
 
+// Модалка обоснования заявки
+window.openJustification = function (id) {
+  const r = requestsRenderCache.find(x => x.id === id);
+  if (!r) return;
+  const just = requestJustification(r, requestsTypesCacheForRender);
+  document.getElementById('justificationModalTitle').textContent = just.label || 'Обоснование';
+  document.getElementById('justificationModalMeta').textContent =
+    `${r.type_label || r.type} · ${r.requested_by_name || '—'}`;
+  document.getElementById('justificationModalText').textContent = just.text || '—';
+  document.getElementById('justificationModalOverlay').classList.add('active');
+};
+window.closeJustification = function () {
+  document.getElementById('justificationModalOverlay').classList.remove('active');
+};
+
 window.approveRequest = async (id, type) => {
   const msg = type === 'tool_add' ? 'Одобрить и создать инструмент в инвентаре?' : 'Одобрить заявление?';
-  if (!confirm(msg)) return;
+  if (!await confirmDialog(msg, { okText: 'Одобрить' })) return;
   try {
     const res = await fetch(`/api/requests/approve?id=${id}`, { method: 'POST' });
     const d = await res.json().catch(() => ({}));
@@ -724,7 +1175,7 @@ window.approveRequest = async (id, type) => {
 };
 
 window.rejectRequest = async (id) => {
-  const note = prompt('Причина отклонения (необязательно):', '');
+  const note = await promptDialog('Причина отклонения (необязательно):', '', { okText: 'Отклонить', danger: true });
   if (note === null) return;
   try {
     const res = await fetch(`/api/requests/reject?id=${id}`, {
@@ -772,6 +1223,30 @@ async function updateSupportBadge() {
 
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
 document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRequests);
+document.getElementById('vacationsPhaseFilter')?.addEventListener('change', renderVacations);
+document.getElementById('vacationsYearFilter')?.addEventListener('change', renderVacations);
+document.getElementById('toolOrdersReceiptFilter')?.addEventListener('change', renderToolOrders);
+document.getElementById('justificationModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'justificationModalOverlay') window.closeJustification();
+});
+document.getElementById('vacationModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'vacationModalOverlay') window.closeVacationForm();
+});
+document.getElementById('catalogModelModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'catalogModelModalOverlay') window.closeCatalogModelModal();
+});
+document.getElementById('cmCategory')?.addEventListener('change', () => {
+  const cat = document.getElementById('cmCategory').value;
+  const collected = collectCatalogModelFields(cat);
+  const flat = Object.assign({}, collected, collected.specs);
+  delete flat.specs;
+  renderCatalogModelFields(cat, flat);
+});
+document.getElementById('categoriesModalOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'categoriesModalOverlay') window.closeCategoriesManager();
+});
+document.getElementById('catalogModelsCatFilter')?.addEventListener('change', renderCatalogModelsTable);
+document.getElementById('catalogModelsSearch')?.addEventListener('input', renderCatalogModelsTable);
 
 // API: Dashboard stats loader (улучшено для главной страницы)
 async function loadDashboardStats() {
@@ -897,7 +1372,7 @@ window.editArticle = (id) => {
 };
 
 window.deleteArticle = async (id) => {
-  if (confirm('Вы действительно хотите удалить эту статью?')) {
+  if (await confirmDialog('Вы действительно хотите удалить эту статью?', { okText: 'Удалить', danger: true })) {
     try {
       const res = await fetch(`/api/crud/articles?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -1067,7 +1542,7 @@ window.changeCategoryIcon = (categoryEnc) => {
 
 window.resetCategoryIcon = async (categoryEnc) => {
   const category = decodeURIComponent(categoryEnc);
-  if (!confirm('Вернуть стандартную иконку для этой категории?')) return;
+  if (!await confirmDialog('Вернуть стандартную иконку для этой категории?', { okText: 'Вернуть' })) return;
   try {
     const res = await fetch(`/api/category-icons?category=${encodeURIComponent(category)}`, { method: 'DELETE' });
     if (res.ok) {
@@ -1165,7 +1640,7 @@ function renderMediaGrid(filter = '') {
 
 window.moveMedia = async (id, currentCategory, e) => {
   if (e) e.stopImmediatePropagation();
-  const targetCategory = prompt('Введите новую категорию (general, tools, avatars, articles):', currentCategory);
+  const targetCategory = await promptDialog('Введите новую категорию (general, tools, avatars, articles):', currentCategory, { okText: 'Переместить' });
   if (!targetCategory || targetCategory === currentCategory) return;
   try {
     const res = await fetch('/api/media', {
@@ -1199,8 +1674,8 @@ window.copyMediaUrl = async (url, e) => {
     await navigator.clipboard.writeText(window.location.origin + url);
     showToast('URL скопирован в буфер обмена', 'success');
   } catch {
-    // fallback
-    prompt('Скопируйте URL:', window.location.origin + url);
+    // fallback — показываем URL в поле, откуда его можно скопировать вручную
+    await promptDialog('Скопируйте URL:', window.location.origin + url, { okText: 'Готово' });
   }
 };
 
@@ -1290,7 +1765,7 @@ document.getElementById('mediaPickerCategorySelect')?.addEventListener('change',
 
 window.deleteMedia = async (id, e) => {
   if (e) e.stopImmediatePropagation();
-  if (!confirm('Вы уверены, что хотите удалить этот файл?')) return;
+  if (!await confirmDialog('Вы уверены, что хотите удалить этот файл?', { okText: 'Удалить', danger: true })) return;
 
   try {
     const res = await fetch(`/api/media?id=${id}`, { method: 'DELETE' });
@@ -1706,6 +2181,7 @@ window.editUser = (id) => {
     document.getElementById('passwordHelp').textContent = 'Оставьте пустым, чтобы не менять пароль.';
     document.getElementById('userRole').value = u.role;
     document.getElementById('userAccountType').value = u.account_type || 'client';
+    renderUserEmployeePanel(u.id);
     modal.classList.add('active');
   }
 };
@@ -1715,7 +2191,7 @@ window.deleteUser = async (id) => {
     showToast('Вы не можете удалить свою собственную учетную запись', 'error');
     return;
   }
-  if (confirm('Вы действительно хотите удалить этого пользователя?')) {
+  if (await confirmDialog('Вы действительно хотите удалить этого пользователя?', { okText: 'Удалить', danger: true })) {
     try {
       const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -2152,6 +2628,7 @@ function openEmployeeModal(emp = null) {
   document.getElementById('empHireDate').value = emp && emp.hire_date ? String(emp.hire_date).slice(0, 10) : '';
   document.getElementById('empStatus').value = emp ? emp.status : 'active';
   document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
+  renderEmpAccountPanel(emp ? emp.id : null);
   modal.classList.add('active');
 }
 
@@ -2229,7 +2706,7 @@ window.closeEmployeeDetail = () => {
 window.deleteEmployee = async (id) => {
   const emp = employeesList.find(e => e.id === id);
   const name = emp ? `${emp.last_name} ${emp.first_name}` : `id=${id}`;
-  if (!confirm(`Удалить сотрудника «${name}»? Это действие необратимо.`)) return;
+  if (!await confirmDialog(`Удалить сотрудника «${name}»? Это действие необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/employees?id=${id}`, { method: 'DELETE' });
     if (res.ok) {
@@ -2242,6 +2719,190 @@ window.deleteEmployee = async (id) => {
   } catch (err) {
     showToast('Ошибка сети', 'error');
   }
+};
+
+// =====================================================================
+//  Связка «сотрудник ↔ аккаунт» — навигация и связывание в карточках
+// =====================================================================
+function linkPanelBox(inner) {
+  return `<div style="border:1px solid hsl(var(--border-color)); border-radius:10px; padding:12px 14px; margin-bottom:16px; background:hsl(var(--bg-main));">
+    <div style="font-size:12px; font-weight:700; color:hsl(var(--text-muted)); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Связь</div>
+    ${inner}
+  </div>`;
+}
+function linkActionsHtml(buttons) {
+  return `<div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">${buttons}</div>`;
+}
+function isSuperUser() { return currentUser && currentUser.role === 'Superadmin'; }
+
+// ---- Панель «Аккаунт» в карточке сотрудника ----
+async function renderEmpAccountPanel(employeeId) {
+  const box = document.getElementById('empAccountPanel');
+  if (!box) return;
+  if (!employeeId) { box.innerHTML = ''; return; } // новый сотрудник — панели нет
+  box.innerHTML = linkPanelBox('<div style="font-size:13px;color:hsl(var(--text-muted));">Загрузка…</div>');
+  try {
+    const res = await fetch('/api/crud/employees/link?employee_id=' + employeeId);
+    const d = await res.json();
+    const acc = d.account;
+    if (acc) {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px;">🔗 Аккаунт: <strong>${escapeHtml(acc.username)}</strong>
+          <span style="margin-left:6px; font-size:11px; padding:2px 8px; border-radius:6px; background:hsl(var(--border-color) / 0.5); color:hsl(var(--text-primary));">${escapeHtml(acc.role)}</span></div>
+        <div style="font-size:12px; color:hsl(var(--text-muted)); margin-top:2px;">${escapeHtml(acc.email || '')}</div>
+        ${linkActionsHtml(`
+          ${isSuperUser() ? `<button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="openLinkedAccount(${acc.id})">Открыть карточку аккаунта</button>` : ''}
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="unlinkEmpAccount(${employeeId})">Отвязать</button>
+        `)}`);
+    } else {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px; color:hsl(var(--text-muted));">Аккаунт не привязан</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="showLinkAccountPicker(${employeeId})">Привязать существующий</button>
+          ${isSuperUser() ? `<button type="button" class="btn" style="padding:6px 12px;font-size:12px;" onclick="showCreateAccountForm(${employeeId})">Создать аккаунт</button>` : ''}
+        `)}
+        <div id="empLinkExtra"></div>`);
+    }
+  } catch (e) { box.innerHTML = ''; }
+}
+
+window.openLinkedAccount = async (userId) => {
+  document.getElementById('employeeModalOverlay').classList.remove('active');
+  location.hash = 'users';
+  await loadUsers();
+  editUser(userId);
+};
+window.unlinkEmpAccount = async (employeeId) => {
+  if (!await confirmDialog('Отвязать аккаунт от этой карточки? Сам аккаунт и карточка сохранятся.', { okText: 'Отвязать' })) return;
+  const res = await fetch('/api/crud/employees/unlink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт отвязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showLinkAccountPicker = async (employeeId) => {
+  const extra = document.getElementById('empLinkExtra');
+  extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Загрузка…</div>';
+  const res = await fetch('/api/crud/employees/candidates?for=account');
+  const d = await res.json().catch(() => ({}));
+  const users = d.users || [];
+  if (!users.length) { extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Нет свободных аккаунтов (все уже привязаны).</div>'; return; }
+  extra.innerHTML = `<div style="display:flex; gap:8px; margin-top:10px;">
+    <select id="empLinkSelect" class="form-control" style="flex:1;">
+      ${users.map(u => `<option value="${u.id}">${escapeHtml(u.username)} — ${escapeHtml(u.email || '')}</option>`).join('')}
+    </select>
+    <button type="button" class="btn" onclick="doLinkAccount(${employeeId})">Привязать</button>
+  </div>`;
+};
+window.doLinkAccount = async (employeeId) => {
+  const uid = document.getElementById('empLinkSelect')?.value;
+  if (!uid) return;
+  const res = await fetch('/api/crud/employees/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId, user_id: uid }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт привязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showCreateAccountForm = (employeeId) => {
+  const extra = document.getElementById('empLinkExtra');
+  const empEmail = document.getElementById('empEmail')?.value || '';
+  extra.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+    <input id="caUsername" class="form-control" placeholder="Логин">
+    <input id="caEmail" class="form-control" placeholder="E-mail" value="${escapeHtml(empEmail)}">
+    <input id="caPassword" type="password" class="form-control" placeholder="Пароль (мин. 8 символов)">
+    <select id="caRole" class="form-control">
+      <option value="User">Пользователь (User)</option>
+      <option value="Admin">Администратор (Admin)</option>
+      <option value="Superadmin">Суперадмин (Superadmin)</option>
+    </select>
+    <button type="button" class="btn" onclick="doCreateAccount(${employeeId})">Создать и привязать</button>
+  </div>`;
+};
+window.doCreateAccount = async (employeeId) => {
+  const body = {
+    employee_id: employeeId,
+    username: document.getElementById('caUsername')?.value.trim(),
+    email: document.getElementById('caEmail')?.value.trim(),
+    password: document.getElementById('caPassword')?.value,
+    role: document.getElementById('caRole')?.value
+  };
+  if (!body.username || !body.email || !body.password) { showToast('Заполните логин, email и пароль', 'error'); return; }
+  const res = await fetch('/api/crud/employees/create-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Аккаунт создан и привязан', 'success'); renderEmpAccountPanel(employeeId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+
+// ---- Панель «Сотрудник» в карточке аккаунта ----
+async function renderUserEmployeePanel(userId) {
+  const box = document.getElementById('userEmployeePanel');
+  if (!box) return;
+  if (!userId) { box.innerHTML = ''; return; }
+  box.innerHTML = linkPanelBox('<div style="font-size:13px;color:hsl(var(--text-muted));">Загрузка…</div>');
+  try {
+    const res = await fetch('/api/crud/employees/link?user_id=' + userId);
+    const d = await res.json();
+    const emp = d.employee;
+    if (emp) {
+      const fio = [emp.last_name, emp.first_name].filter(Boolean).join(' ') || '(без имени)';
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px;">👤 Карточка: <strong>${escapeHtml(fio)}</strong>
+          ${emp.position ? `<span style="color:hsl(var(--text-muted));"> — ${escapeHtml(emp.position)}</span>` : ''}</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="openLinkedCard(${emp.id})">Открыть карточку сотрудника</button>
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="unlinkUserCard(${emp.id}, ${userId})">Отвязать</button>
+        `)}`);
+    } else {
+      box.innerHTML = linkPanelBox(`
+        <div style="font-size:14px; color:hsl(var(--text-muted));">Карточка сотрудника не привязана</div>
+        ${linkActionsHtml(`
+          <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="showLinkCardPicker(${userId})">Привязать существующую</button>
+          <button type="button" class="btn" style="padding:6px 12px;font-size:12px;" onclick="doCreateCard(${userId})">Создать карточку</button>
+        `)}
+        <div id="userLinkExtra"></div>`);
+    }
+  } catch (e) { box.innerHTML = ''; }
+}
+
+window.openLinkedCard = async (employeeId) => {
+  document.getElementById('userModalOverlay').classList.remove('active');
+  location.hash = 'employees';
+  await loadEmployees();
+  const emp = employeesList.find(e => e.id === employeeId);
+  if (emp) openEmployeeModal(emp);
+};
+window.unlinkUserCard = async (employeeId, userId) => {
+  if (!await confirmDialog('Отвязать карточку сотрудника от этого аккаунта?', { okText: 'Отвязать' })) return;
+  const res = await fetch('/api/crud/employees/unlink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: employeeId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Отвязано', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.showLinkCardPicker = async (userId) => {
+  const extra = document.getElementById('userLinkExtra');
+  extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Загрузка…</div>';
+  const res = await fetch('/api/crud/employees/candidates?for=card');
+  const d = await res.json().catch(() => ({}));
+  const emps = d.employees || [];
+  if (!emps.length) { extra.innerHTML = '<div style="font-size:12px;color:hsl(var(--text-muted));margin-top:8px;">Нет свободных карточек (все уже привязаны).</div>'; return; }
+  extra.innerHTML = `<div style="display:flex; gap:8px; margin-top:10px;">
+    <select id="userLinkSelect" class="form-control" style="flex:1;">
+      ${emps.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('')}
+    </select>
+    <button type="button" class="btn" onclick="doLinkCard(${userId})">Привязать</button>
+  </div>`;
+};
+window.doLinkCard = async (userId) => {
+  const eid = document.getElementById('userLinkSelect')?.value;
+  if (!eid) return;
+  const res = await fetch('/api/crud/employees/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: eid, user_id: userId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Карточка привязана', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
+};
+window.doCreateCard = async (userId) => {
+  const res = await fetch('/api/crud/employees/create-card', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: userId }) });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok && d.success) { showToast('Карточка создана и привязана', 'success'); renderUserEmployeePanel(userId); }
+  else showToast(d.message || 'Ошибка', 'error');
 };
 
 // =====================================================================
@@ -2480,6 +3141,11 @@ function renderCatalogList() {
     ? catalogFlat
     : catalogFlat.filter(m => m.category === catalogActiveFilter);
 
+  if (!items.length) {
+    list.innerHTML = '<div style="grid-column:1/-1;color:hsl(var(--text-muted));text-align:center;padding:24px;">В этой категории пока нет моделей.<br>Добавьте их в разделе «Каталог» (Superadmin).</div>';
+    return;
+  }
+
   list.innerHTML = items.map((m, i) => {
     const idx = catalogFlat.indexOf(m);
     const specs = [];
@@ -2509,6 +3175,333 @@ window.pickCatalogModel = (idx) => {
   setToolPhotoPreview(m.image);
   document.getElementById('catalogModalOverlay').classList.remove('active');
   showToast('Модель подставлена — впишите серийный № и сохраните', 'success');
+};
+
+// =====================================================================
+//  Управление стандартным каталогом (раздел «Каталог») — Superadmin
+// =====================================================================
+let catalogModelsCache = [];
+
+function catalogModelSpecs(m) {
+  const s = [];
+  if (m.line) s.push(m.line);
+  if (m.power_type === 'cordless' && m.voltage_v) s.push(m.voltage_v + ' В');
+  if (m.power_type === 'corded' && m.power_w) s.push(m.power_w + ' Вт');
+  if (m.brushless) s.push('бесщёт.');
+  if (m.impact) s.push('ударный');
+  if (m.disc_mm) s.push('⌀' + m.disc_mm);
+  if (m.chuck) s.push(m.chuck);
+  const sp = m.specs || {};
+  if (sp.impact_energy_j) s.push(sp.impact_energy_j + ' Дж');
+  if (sp.max_drill_mm) s.push('бур. ' + sp.max_drill_mm + ' мм');
+  if (sp.bpm) s.push(sp.bpm + ' уд/мин');
+  if (sp.weight_kg) s.push(sp.weight_kg + ' кг');
+  return s.join(' · ');
+}
+
+let catalogAllCategories = []; // все категории справочника (для левой панели)
+let catalogSelectedCat = '';   // '' = Все категории
+
+async function loadCatalogModels() {
+  const tbody = document.getElementById('catalogModelsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка…</td></tr>';
+  try {
+    const [mRes, cRes] = await Promise.all([
+      fetch('/api/catalog-models'),
+      fetch('/api/crud/tool-categories')
+    ]);
+    if (!mRes.ok) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    catalogModelsCache = (await mRes.json()).models || [];
+    catalogAllCategories = cRes.ok ? await cRes.json() : [];
+    renderCatalogCatPanel();
+    renderCatalogModelsTable();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+function catalogCategoryCounts() {
+  const counts = {};
+  catalogModelsCache.forEach(m => { counts[m.category] = (counts[m.category] || 0) + 1; });
+  return counts;
+}
+
+// Левая панель: все категории справочника с числом моделей.
+function renderCatalogCatPanel() {
+  const panel = document.getElementById('catalogCatPanel');
+  if (!panel) return;
+  const counts = catalogCategoryCounts();
+  const dictNames = catalogAllCategories.map(c => c.name);
+  const extra = Object.keys(counts).filter(n => !dictNames.includes(n)); // категории моделей вне справочника
+  const names = [...new Set([...dictNames, ...extra])].sort((a, b) => a.localeCompare(b, 'ru'));
+
+  const item = (val, label, count, active) => `
+    <button type="button" data-cat="${escapeHtml(val)}"
+      style="display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; padding:10px 12px;
+             border:1px solid ${active ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};
+             background:${active ? 'hsl(var(--accent-purple) / 0.14)' : 'hsl(var(--bg-card))'};
+             color:hsl(var(--text-primary)); border-radius:8px; cursor:pointer; font-size:13px; font-family:inherit;">
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(label)}</span>
+      <span style="flex-shrink:0; font-size:11px; font-weight:600; color:hsl(var(--text-muted)); background:hsl(var(--bg-main)); border-radius:10px; padding:1px 8px;">${count}</span>
+    </button>`;
+
+  panel.innerHTML =
+    item('', 'Все категории', catalogModelsCache.length, catalogSelectedCat === '') +
+    names.map(n => item(n, n, counts[n] || 0, catalogSelectedCat === n)).join('');
+
+  panel.onclick = (e) => {
+    const b = e.target.closest('[data-cat]');
+    if (b) setCatalogCategory(b.getAttribute('data-cat'));
+  };
+}
+
+window.setCatalogCategory = (name) => {
+  catalogSelectedCat = name || '';
+  renderCatalogCatPanel();
+  renderCatalogModelsTable();
+};
+
+function renderCatalogModelsTable() {
+  const tbody = document.getElementById('catalogModelsTableBody');
+  if (!tbody) return;
+  const heading = document.getElementById('catalogModelsHeading');
+  const countEl = document.getElementById('catalogModelsCount');
+  const q = (document.getElementById('catalogModelsSearch')?.value || '').trim().toLowerCase();
+  let list = catalogModelsCache;
+  if (catalogSelectedCat) list = list.filter(m => m.category === catalogSelectedCat);
+  if (q) list = list.filter(m => (m.brand + ' ' + m.model + ' ' + (m.name || '')).toLowerCase().includes(q));
+
+  if (heading) heading.textContent = catalogSelectedCat || 'Все категории';
+  if (countEl) countEl.textContent = `${list.length} шт.`;
+
+  tbody.innerHTML = '';
+  if (!list.length) {
+    const msg = catalogSelectedCat ? 'В этой категории пока нет моделей' : 'Моделей нет';
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">${msg}</td></tr>`;
+    return;
+  }
+  list.forEach(m => {
+    const img = m.image_url ? `<img src="${iconVer(m.image_url)}" style="width:34px;height:28px;object-fit:contain;flex-shrink:0;vertical-align:middle;margin-right:8px;">` : '';
+    // В режиме «Все» показываем категорию подписью под моделью.
+    const catLine = !catalogSelectedCat ? `<div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${escapeHtml(m.category)}</div>` : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${img}<strong>${escapeHtml(m.name || (m.brand + ' ' + m.model))}</strong>${catLine}</td>
+      <td>${escapeHtml(m.brand)}</td>
+      <td style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(catalogModelSpecs(m))}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <button class="action-btn edit" onclick="editCatalogModel(${m.id})"><i data-lucide="edit-3"></i></button>
+        <button class="action-btn delete" onclick="deleteCatalogModel(${m.id})"><i data-lucide="trash-2"></i></button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+// Схема полей каталога по категориям (адаптивная модалка).
+let catalogSchema = null;
+async function ensureCatalogSchema() {
+  if (catalogSchema) return catalogSchema;
+  try {
+    const res = await fetch('/api/catalog-schema');
+    catalogSchema = res.ok ? await res.json() : { fieldDefs: {}, categoryFields: {}, defaultFields: [] };
+  } catch (e) { catalogSchema = { fieldDefs: {}, categoryFields: {}, defaultFields: [] }; }
+  return catalogSchema;
+}
+function catalogFieldKeys(category) {
+  const s = catalogSchema || { categoryFields: {}, defaultFields: [] };
+  return (s.categoryFields[category] || s.defaultFields || []);
+}
+
+// Рендерит поля характеристик в модалке под выбранную категорию.
+function renderCatalogModelFields(category, values = {}) {
+  const box = document.getElementById('cmDynFields');
+  if (!box) return;
+  const defs = (catalogSchema || {}).fieldDefs || {};
+  const keys = catalogFieldKeys(category);
+  box.innerHTML = keys.map((k) => {
+    const def = defs[k];
+    if (!def) return '';
+    const v = values[k];
+    const id = 'cmf_' + k;
+    if (def.type === 'checkbox') {
+      return `<div class="form-group" style="display:flex; align-items:center;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+          <input type="checkbox" id="${id}" data-cmf="${k}" ${v ? 'checked' : ''}> ${escapeHtml(def.label)}
+        </label></div>`;
+    }
+    if (def.type === 'select') {
+      const opts = (def.options || []).map(([val, lbl]) => `<option value="${escapeHtml(val)}" ${String(v) === val ? 'selected' : ''}>${escapeHtml(lbl)}</option>`).join('');
+      return `<div class="form-group"><label for="${id}">${escapeHtml(def.label)}</label>
+        <select id="${id}" data-cmf="${k}" class="form-control"><option value="">—</option>${opts}</select></div>`;
+    }
+    const dl = def.suggest ? `list="${id}_dl"` : '';
+    const dlEl = def.suggest ? `<datalist id="${id}_dl">${def.suggest.map(s => `<option value="${escapeHtml(s)}">`).join('')}</datalist>` : '';
+    const inputType = def.type === 'number' ? 'number' : 'text';
+    return `<div class="form-group"><label for="${id}">${escapeHtml(def.label)}</label>
+      <input type="${inputType}" id="${id}" data-cmf="${k}" class="form-control" ${dl} value="${v != null ? escapeHtml(String(v)) : ''}">${dlEl}</div>`;
+  }).join('');
+}
+
+// Собирает значения полей: колоночные → в тело верхним уровнем, спец. → в specs.
+function collectCatalogModelFields(category) {
+  const defs = (catalogSchema || {}).fieldDefs || {};
+  const box = document.getElementById('cmDynFields');
+  const out = { specs: {} };
+  if (!box) return out;
+  box.querySelectorAll('[data-cmf]').forEach((el) => {
+    const k = el.getAttribute('data-cmf');
+    const def = defs[k] || {};
+    let val;
+    if (el.type === 'checkbox') val = el.checked;
+    else val = el.value;
+    if (def.col) out[k] = val;
+    else if (val !== '' && val !== false) out.specs[k] = val;
+  });
+  return out;
+}
+
+window.openCatalogModelModal = async (model = null) => {
+  await Promise.all([loadToolCategories(), ensureCatalogSchema()]);
+  const sel = document.getElementById('cmCategory');
+  const names = (toolCategories || []).map(c => c.name);
+  const cur = model ? model.category : '';
+  let html = '<option value="">— выберите —</option>' + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  if (cur && !names.includes(cur)) html += `<option value="${escapeHtml(cur)}">${escapeHtml(cur)} (своя)</option>`;
+  sel.innerHTML = html;
+
+  document.getElementById('catalogModelModalTitle').textContent = model ? 'Изменить модель' : 'Добавить модель';
+  document.getElementById('cmId').value = model ? model.id : '';
+  sel.value = cur;
+  document.getElementById('cmLine').value = model ? (model.line || '') : '';
+  document.getElementById('cmBrand').value = model ? model.brand : '';
+  document.getElementById('cmModel').value = model ? model.model : '';
+  document.getElementById('cmName').value = model ? (model.name || '') : '';
+  // Значения характеристик: колонки модели + её specs.
+  const vals = Object.assign({}, model || {}, (model && model.specs) || {});
+  renderCatalogModelFields(cur, vals);
+  setCatalogModelImage(model ? model.image_url : '');
+  document.getElementById('catalogModelModalOverlay').classList.add('active');
+};
+window.editCatalogModel = (id) => {
+  const m = catalogModelsCache.find(x => x.id === id);
+  if (m) openCatalogModelModal(m);
+};
+window.closeCatalogModelModal = () => document.getElementById('catalogModelModalOverlay').classList.remove('active');
+
+function setCatalogModelImage(url) {
+  document.getElementById('cmImageUrl').value = url || '';
+  const prev = document.getElementById('cmImagePreview');
+  if (url) { prev.src = iconVer(url); prev.style.display = 'inline-block'; }
+  else { prev.src = ''; prev.style.display = 'none'; }
+}
+window.pickCatalogModelImage = () => {
+  if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+  window.openMediaPicker((url) => setCatalogModelImage(url), 'tools');
+};
+window.clearCatalogModelImage = () => setCatalogModelImage('');
+
+window.submitCatalogModel = async (e) => {
+  if (e) e.preventDefault();
+  const id = document.getElementById('cmId').value;
+  const category = document.getElementById('cmCategory').value;
+  const dyn = collectCatalogModelFields(category); // колоночные поля верхним уровнем + { specs }
+  const body = Object.assign({
+    category,
+    brand: document.getElementById('cmBrand').value.trim(),
+    model: document.getElementById('cmModel').value.trim(),
+    name: document.getElementById('cmName').value.trim(),
+    line: document.getElementById('cmLine').value.trim(),
+    image_url: document.getElementById('cmImageUrl').value
+  }, dyn);
+  if (!body.category || !body.brand || !body.model) { showToast('Категория, бренд и модель обязательны', 'error'); return false; }
+  const url = id ? `/api/catalog-models?id=${id}` : '/api/catalog-models';
+  try {
+    const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast(id ? 'Модель обновлена' : 'Модель добавлена', 'success');
+      closeCatalogModelModal();
+      catalogData = null; // сбросить кэш пикера, чтобы подтянулись изменения
+      loadCatalogModels();
+    } else showToast(d.message || 'Ошибка', 'error');
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+  return false;
+};
+window.deleteCatalogModel = async (id) => {
+  const m = catalogModelsCache.find(x => x.id === id);
+  if (!await confirmDialog(`Удалить модель «${m ? (m.name || m.brand + ' ' + m.model) : id}» из каталога?`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/catalog-models?id=${id}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Модель удалена', 'success'); catalogData = null; loadCatalogModels(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+};
+
+// ---- Менеджер категорий инструмента (единый справочник) ----
+window.openCategoriesManager = async () => {
+  await loadToolCategories();
+  renderCategoriesList();
+  document.getElementById('categoriesModalOverlay').classList.add('active');
+};
+window.closeCategoriesManager = () => document.getElementById('categoriesModalOverlay').classList.remove('active');
+
+function renderCategoriesList() {
+  const box = document.getElementById('categoriesList');
+  if (!box) return;
+  const cats = (toolCategories || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  if (!cats.length) { box.innerHTML = '<div style="font-size:13px;color:hsl(var(--text-muted));">Категорий пока нет</div>'; return; }
+  box.innerHTML = cats.map(c => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid hsl(var(--border-color)); border-radius:8px;">
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.name)}${c.is_default ? ' <span style="font-size:10px;color:hsl(var(--text-muted));">(стд)</span>' : ''}</span>
+      <button type="button" class="action-btn edit" title="Переименовать" onclick="renameCategory(${c.id})"><i data-lucide="edit-3"></i></button>
+      <button type="button" class="action-btn delete" title="Удалить" onclick="deleteCategory(${c.id})"><i data-lucide="trash-2"></i></button>
+    </div>`).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function afterCategoryChange() {
+  await loadToolCategories();
+  renderCategoriesList();
+  catalogData = null; // сбросить кэш пикера
+  const catalogSection = document.getElementById('section-catalog');
+  if (catalogSection && catalogSection.classList.contains('active')) loadCatalogModels();
+}
+
+window.addCategoryFromManager = async () => {
+  const input = document.getElementById('newCategoryName');
+  const name = input.value.trim();
+  if (name.length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch('/api/crud/tool-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Категория добавлена', 'success'); input.value = ''; afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.renameCategory = async (id) => {
+  const cat = (toolCategories || []).find(c => c.id === id);
+  const newName = await promptDialog('Новое название категории:', cat ? cat.name : '', { okText: 'Переименовать' });
+  if (newName === null) return;
+  if (newName.trim().length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch(`/api/crud/tool-categories?id=${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Переименовано (обновлено везде)', 'success'); afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.deleteCategory = async (id) => {
+  const cat = (toolCategories || []).find(c => c.id === id);
+  if (!await confirmDialog(`Удалить категорию «${cat ? cat.name : id}»?`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/tool-categories?id=${id}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Категория удалена', 'success'); afterCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
 // Проверка дублей серийного/инвентарного номера в реальном времени
@@ -2590,7 +3583,7 @@ function setupTools() {
   const addCategoryBtn = document.getElementById('addCategoryBtn');
   if (addCategoryBtn) {
     addCategoryBtn.addEventListener('click', async () => {
-      const name = prompt('Название новой категории инструмента:');
+      const name = await promptDialog('Название новой категории инструмента:', '', { okText: 'Добавить' });
       if (name === null) return;
       const trimmed = name.trim();
       if (trimmed.length < 2) return showToast('Название слишком короткое', 'error');
@@ -2852,7 +3845,7 @@ window.editTool = (id) => {
 window.deleteTool = async (id) => {
   const tool = toolsList.find(t => t.id === id);
   const name = tool ? tool.name : `id=${id}`;
-  if (!confirm(`Удалить инструмент «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`)) return;
+  if (!await confirmDialog(`Удалить инструмент «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/tools?id=${id}`, { method: 'DELETE' });
     if (res.ok) {

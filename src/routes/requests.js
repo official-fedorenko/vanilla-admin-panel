@@ -140,7 +140,7 @@ function mapRow(r) {
     title: r.title, payload, status: r.status,
     review_note: r.review_note, reviewed_at: r.reviewed_at, created_at: r.created_at,
     requested_by_name: r.requested_by_name, reviewed_by_name: r.reviewed_by_name,
-    result_ref: r.result_ref
+    result_ref: r.result_ref, received_at: r.received_at
   };
 }
 
@@ -174,6 +174,155 @@ function listAll(req, res, user, parsedUrl) {
     db.get("SELECT COUNT(*) AS c FROM requests WHERE status='pending'", [], (e2, cnt) => {
       sendJson(res, 200, { success: true, requests: (rows || []).map(mapRow), pending: (cnt && cnt.c) || 0 });
     });
+  });
+}
+
+// --- Сводка отпусков (админ): кто и когда в отпуске ---
+// Возвращает заявления type='vacation' со статусами approved + pending,
+// с ФИО сотрудника (если есть карточка) и разобранными датами, по возрастанию
+// даты начала. Отдаётся без пагинации — отпусков в компании немного.
+function listVacations(req, res, user) {
+  const sql = `
+    SELECT r.id, r.payload, r.status, r.created_at, r.reviewed_at,
+           u.username AS requested_by_name,
+           e.first_name AS emp_first, e.last_name AS emp_last
+    FROM requests r
+    LEFT JOIN users u ON u.id = r.requested_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
+    WHERE r.type = 'vacation' AND r.status IN ('approved', 'pending')
+    ORDER BY r.status DESC, r.id DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    const today = new Date().toISOString().slice(0, 10);
+    const vacations = (rows || []).map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const start = payload.start_date || '';
+      const end = payload.end_date || '';
+      const name = (r.emp_first || r.emp_last)
+        ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
+        : (payload.employee_name || r.requested_by_name || '—');
+      // Фаза относительно сегодняшнего дня (для меток в UI).
+      let phase = 'unknown';
+      if (start && end) {
+        if (today < start) phase = 'upcoming';
+        else if (today > end) phase = 'past';
+        else phase = 'current';
+      }
+      return {
+        id: r.id, name, start_date: start, end_date: end,
+        notes: payload.notes || '', status: r.status, phase,
+        created_at: r.created_at, reviewed_at: r.reviewed_at
+      };
+    });
+    // Пересортировка по дате начала (по возрастанию), пустые даты — в конец.
+    vacations.sort((a, b) => {
+      if (!a.start_date) return 1;
+      if (!b.start_date) return -1;
+      return a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0;
+    });
+    sendJson(res, 200, { success: true, vacations });
+  });
+}
+
+// --- Оформление отпуска админом за сотрудника ---
+// Создаёт сразу одобренный отпуск (type='vacation', status='approved').
+// requested_by = user_id сотрудника (если есть аккаунт), имя дублируется в
+// payload.employee_name на случай сотрудника без учётной записи.
+async function createVacationForEmployee(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const empId = parseInt(body.employee_id, 10);
+    if (!Number.isInteger(empId) || empId <= 0) {
+      return sendJson(res, 400, { success: false, message: 'Не выбран сотрудник' });
+    }
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(body.start_date || '')) ? body.start_date : '';
+    const end = /^\d{4}-\d{2}-\d{2}$/.test(String(body.end_date || '')) ? body.end_date : '';
+    if (!start || !end) return sendJson(res, 400, { success: false, message: 'Укажите даты начала и окончания' });
+    if (end < start) return sendJson(res, 400, { success: false, message: 'Дата окончания раньше даты начала' });
+    const notes = str(body.notes, 2000);
+
+    db.get("SELECT id, first_name, last_name, user_id FROM employees WHERE id = ?", [empId], (err, emp) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+
+      const empName = [emp.first_name, emp.last_name].filter(Boolean).join(' ');
+      const payload = { start_date: start, end_date: end, notes, employee_id: emp.id, employee_name: empName };
+      const title = buildTitle('vacation', payload);
+      db.run(
+        `INSERT INTO requests (type, title, payload, status, requested_by, reviewed_by, reviewed_at)
+         VALUES ('vacation', ?, ?, 'approved', ?, ?, CURRENT_TIMESTAMP)`,
+        [title, JSON.stringify(payload), emp.user_id || null, user.id],
+        function (insErr) {
+          if (insErr) return sendJson(res, 500, { success: false, message: 'Не удалось создать отпуск' });
+          logAction(user.username, `Оформил отпуск сотруднику ${empName}: ${start} — ${end} (id=${this.lastID})`);
+          sendJson(res, 201, { success: true, id: this.lastID });
+        }
+      );
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
+}
+
+// --- Сводка заказов инструмента (админ): кому и что одобрили ---
+// Только одобренные заявки type='tool_order' (отклонённые «исчезают»).
+// received_at показывает, отметил ли сотрудник получение.
+function listToolOrders(req, res, user) {
+  const sql = `
+    SELECT r.id, r.payload, r.title, r.created_at, r.reviewed_at, r.received_at,
+           u.username AS requested_by_name,
+           rv.username AS reviewed_by_name,
+           e.first_name AS emp_first, e.last_name AS emp_last
+    FROM requests r
+    LEFT JOIN users u ON u.id = r.requested_by
+    LEFT JOIN users rv ON rv.id = r.reviewed_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
+    WHERE r.type = 'tool_order' AND r.status = 'approved'
+    ORDER BY CASE WHEN r.received_at IS NULL THEN 0 ELSE 1 END, r.reviewed_at DESC, r.id DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    const orders = (rows || []).map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const name = (r.emp_first || r.emp_last)
+        ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
+        : (r.requested_by_name || '—');
+      return {
+        id: r.id, name, title: r.title || '',
+        item: payload.name || '', category: payload.category || '',
+        quantity: payload.quantity || '', notes: payload.notes || '',
+        reviewed_by_name: r.reviewed_by_name || '',
+        reviewed_at: r.reviewed_at, received_at: r.received_at,
+        received: !!r.received_at
+      };
+    });
+    sendJson(res, 200, { success: true, orders });
+  });
+}
+
+// --- Отметка получения (сотрудник): «Получил» ---
+// Разрешено только автору заявки, только для одобренного tool_order,
+// который ещё не получен.
+function receiveRequest(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.requested_by !== user.id) return sendJson(res, 403, { success: false, message: 'Это не ваша заявка' });
+    if (row.type !== 'tool_order') return sendJson(res, 400, { success: false, message: 'Неприменимо к этому типу' });
+    if (row.status !== 'approved') return sendJson(res, 409, { success: false, message: 'Заявка ещё не одобрена' });
+    if (row.received_at) return sendJson(res, 409, { success: false, message: 'Уже отмечено как получено' });
+    db.run(
+      "UPDATE requests SET received_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Отметил получение заказа id=${id}: ${row.title || ''}`);
+        sendJson(res, 200, { success: true });
+      }
+    );
   });
 }
 
@@ -278,6 +427,20 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   }
   if (p === '/api/requests' && method === 'POST') return createRequest(req, res, user);
   if (p === '/api/requests/mine' && method === 'GET') return listMine(req, res, user);
+
+  if (p === '/api/requests/vacations' && method === 'GET') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return listVacations(req, res, user);
+  }
+  if (p === '/api/requests/vacation-for' && method === 'POST') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return createVacationForEmployee(req, res, user);
+  }
+  if (p === '/api/requests/tool-orders' && method === 'GET') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return listToolOrders(req, res, user);
+  }
+  if (p === '/api/requests/receive' && method === 'POST') return receiveRequest(req, res, user, parsedUrl);
 
   if (p === '/api/requests' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });

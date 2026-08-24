@@ -21,6 +21,7 @@ const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
 const handleToolCatalog = require('./src/routes/toolCatalog');
+const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
@@ -69,6 +70,27 @@ const NO_CACHE_CONTROL = 'no-cache';
 
 function getStaticCacheControl(ext) {
   return NO_CACHE_EXTENSIONS.has(ext) ? NO_CACHE_CONTROL : STATIC_ASSET_CACHE_CONTROL;
+}
+
+// Авто-версионирование ассетов (cache-busting без ручного бампа ?v=).
+// При отдаче HTML подставляем в ссылки на локальные .js/.css параметр
+// ?v=<время изменения файла>. Меняется файл → меняется URL → браузер
+// гарантированно берёт свежую версию. Забывать про ручной ?v= больше не нужно.
+function assetVersion(filePath) {
+  try { return Math.floor(fs.statSync(filePath).mtimeMs).toString(36); }
+  catch (e) { return null; }
+}
+function injectAssetVersions(html, baseDir) {
+  return html.replace(
+    /((?:src|href)=")([^"?#]+\.(?:js|css))(?:\?[^"#]*)?(#[^"]*)?(")/g,
+    (match, pre, assetPath, hash, post) => {
+      // Внешние ссылки (CDN) не трогаем.
+      if (/^(?:https?:)?\/\//.test(assetPath)) return match;
+      const abs = path.join(baseDir, assetPath.replace(/^\//, ''));
+      const v = assetVersion(abs);
+      return v ? `${pre}${assetPath}?v=${v}${hash || ''}${post}` : match;
+    }
+  );
 }
 
 // === Settings cache (for maintenance_mode etc) + helpers ===
@@ -186,10 +208,23 @@ const server = http.createServer(async (req, res) => {
     return handleTools(req, res, user, parsedUrl, method);
   }
 
-  // Справочник моделей (data/tool-catalog) для подсказок при добавлении инструмента
+  // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
   if (pathname === '/api/tool-catalog' && method === 'GET') {
     return handleToolCatalog(req, res, user);
   }
+
+  // Управление стандартным каталогом инструмента (Superadmin для изменений)
+  if (pathname === '/api/catalog-models') {
+    return handleCatalogModels(req, res, user, parsedUrl, method);
+  }
+
+  // Схема полей каталога по категориям (для адаптивной модалки)
+  if (pathname === '/api/catalog-schema' && method === 'GET') {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    const { FIELD_DEFS, CATEGORY_FIELDS, DEFAULT_FIELDS } = require('./src/catalogSchema');
+    return sendJson(res, 200, { success: true, fieldDefs: FIELD_DEFS, categoryFields: CATEGORY_FIELDS, defaultFields: DEFAULT_FIELDS });
+  }
+
 
   // Универсальные заявления (пользователь создаёт, админ одобряет)
   if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {
@@ -340,6 +375,20 @@ const server = http.createServer(async (req, res) => {
 
     const ext = path.extname(fullStaticPath);
     const contentType = MIME_TYPES[ext] || 'text/plain';
+
+    // HTML читаем и подставляем свежие версии ассетов (авто cache-busting).
+    if (ext === '.html') {
+      fs.readFile(fullStaticPath, 'utf8', (rErr, html) => {
+        if (rErr) { sendHtml404(res); return; }
+        const out = injectAssetVersions(html, path.dirname(fullStaticPath));
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': getStaticCacheControl(ext)
+        });
+        res.end(out);
+      });
+      return;
+    }
 
     res.writeHead(200, {
       'Content-Type': contentType,
