@@ -596,6 +596,60 @@ table.data-table tbody tr:hover {
   background-color: hsl(var(--border-color) / 0.15);
 }
 
+/* ---- Адаптив таблиц: на телефоне строка -> компактная карточка ----
+   Таблице добавляется класс .cards-mobile. На узких экранах шапка и часть
+   колонок прячутся: строка становится кликабельной карточкой (обычно ФИО +
+   статус). Полная информация открывается в модалке по тапу, поэтому влезает
+   на любой ширине. Ячейки, которые НЕ показываем в свёрнутом виде, помечаются
+   классом .mobile-hidden; действия (.no-label) на телефоне тоже скрыты. */
+@media (max-width: 640px) {
+  .data-table.cards-mobile thead { display: none; }
+  .data-table.cards-mobile,
+  .data-table.cards-mobile tbody { display: block; width: 100%; }
+
+  .data-table.cards-mobile tbody tr {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    border: 1px solid hsl(var(--border-color));
+    border-radius: 12px;
+    margin: 10px 12px;
+    padding: 4px 14px;
+    background: hsl(var(--bg-main));
+    cursor: pointer;
+  }
+  .data-table.cards-mobile tbody tr:active { background: hsl(var(--accent-purple) / 0.08); }
+
+  /* Стрелка-подсказка, что карточка открывается */
+  .data-table.cards-mobile tbody tr::after {
+    content: '›';
+    color: hsl(var(--text-muted));
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .data-table.cards-mobile tbody tr.empty-row::after { content: none; }
+
+  .data-table.cards-mobile td {
+    display: block;
+    border: none;
+    padding: 12px 0;
+  }
+  /* Первая видимая ячейка (ФИО) тянется, остальные — по содержимому */
+  .data-table.cards-mobile td.mobile-primary { flex: 1; min-width: 0; }
+
+  /* Прячем всё, что не нужно в свёрнутой карточке */
+  .data-table.cards-mobile td.mobile-hidden,
+  .data-table.cards-mobile td.no-label,
+  .data-table.cards-mobile .hide-mobile { display: none; }
+
+  /* Пустое состояние */
+  .data-table.cards-mobile td.empty-state { text-align: center; width: 100%; }
+
+  .table-scroll { overflow-x: visible; }
+}
+
 .badge {
   display: inline-flex;
   padding: 4px 10px;
