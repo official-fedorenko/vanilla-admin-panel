@@ -293,10 +293,20 @@
     const sidebarToggle = document.getElementById('sidebarToggle');
     const toggleIcon = document.getElementById('toggleIcon');
     
-    sidebarToggle.addEventListener('click', () => {
+    sidebarToggle.addEventListener('click', (e) => {
+      e.stopPropagation(); // не даём этому же клику сразу закрыть меню обработчиком ниже
       sidebar.classList.toggle('open');
       const isOpen = sidebar.classList.contains('open');
       toggleIcon.setAttribute('data-lucide', isOpen ? 'x' : 'menu');
+      lucide.createIcons();
+    });
+
+    // Клик вне открытого мобильного меню (и не по самой кнопке-бургеру) — закрывает его.
+    document.addEventListener('click', (e) => {
+      if (!sidebar.classList.contains('open')) return;
+      if (sidebar.contains(e.target) || sidebarToggle.contains(e.target)) return;
+      sidebar.classList.remove('open');
+      toggleIcon.setAttribute('data-lucide', 'menu');
       lucide.createIcons();
     });
 

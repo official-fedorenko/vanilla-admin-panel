@@ -329,6 +329,7 @@ function initApp() {
   addBtn.addEventListener('click', () => openModal());
   cancelBtn.addEventListener('click', closeModal);
   closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
   // CRUD Save handler
   articleForm.addEventListener('submit', async (e) => {
@@ -617,6 +618,7 @@ function initApp() {
   if (addUserBtn) addUserBtn.addEventListener('click', () => openUserModal());
   if (cancelUserBtn) cancelUserBtn.addEventListener('click', closeUserModal);
   if (closeUserBtn) closeUserBtn.addEventListener('click', closeUserModal);
+  if (userModal) userModal.addEventListener('click', (e) => { if (e.target === userModal) closeUserModal(); });
 
   // User Save handler
   if (userForm) {
@@ -6297,3 +6299,25 @@ function renderVehicleOrders() {
   });
 }
 
+
+// Клик вне модалки закрывает её (фон .modal-overlay) — унифицированный
+// фикс для окон, у которых раньше не было этого обработчика вообще.
+(function wireClickOutsideForOverlays() {
+  const map = {
+    workTimeModalOverlay: () => window.closeWorkTimeModal && window.closeWorkTimeModal(),
+    vehicleCategoriesModalOverlay: () => window.closeVehicleCategoriesManager && window.closeVehicleCategoriesManager(),
+    categoryIconsModalOverlay: () => window.closeCategoryIconsModal && window.closeCategoryIconsModal(),
+    brandsModalOverlay: () => window.closeBrandsModal && window.closeBrandsModal(),
+    sendNotificationModalOverlay: () => window.closeSendNotificationModal && window.closeSendNotificationModal(),
+    notificationSettingsModalOverlay: () => window.closeNotificationSettingsModal && window.closeNotificationSettingsModal(),
+    chatSettingsModalOverlay: () => window.closeChatSettingsModal && window.closeChatSettingsModal(),
+    standardAvatarsModalOverlay: () => window.closeStandardAvatarsModal && window.closeStandardAvatarsModal(),
+    rowDetailModalOverlay: () => window.closeRowDetail && window.closeRowDetail(),
+    employeeDetailModalOverlay: () => window.closeEmployeeDetail && window.closeEmployeeDetail()
+  };
+  Object.entries(map).forEach(([id, close]) => {
+    const overlay = document.getElementById(id);
+    if (!overlay) return;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  });
+})();

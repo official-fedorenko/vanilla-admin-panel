@@ -2310,6 +2310,10 @@
       document.getElementById('requestModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'requestModalOverlay') closeRequestModal();
       });
+
+      document.getElementById('itemPhotoModalOverlay')?.addEventListener('click', (e) => {
+        if (e.target.id === 'itemPhotoModalOverlay') closeItemPhotoModal();
+      });
       // «← Изменить тип» — вернуться к выбору типа
       document.getElementById('requestChangeTypeBtn').onclick = () => {
         closeRequestModal();
