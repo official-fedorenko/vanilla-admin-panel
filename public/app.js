@@ -7,6 +7,8 @@ let fullLogsList = [];
 let employeesList = [];
 let toolsList = [];
 let toolCategories = [];
+let vehiclesList = [];
+let vehicleCategories = [];
 let catalogData = null;        // {categories:[{category, models:[...]}]}
 let catalogFlat = [];          // плоский список моделей для рендера/выбора
 let catalogActiveFilter = '*'; // текущий фильтр категории в пикере
@@ -22,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   initApp();
   handleToolDeepLink();
+  handleVehicleDeepLink();
 
   // Create icons
   try {
@@ -291,6 +294,7 @@ function initApp() {
 
   // Счётчик заказов, ожидающих получения сотрудником (бейдж в меню)
   initToolOrdersBadge();
+  initVehicleOrdersBadge();
 
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
@@ -674,6 +678,7 @@ function initApp() {
 
   setupEmployees();
   setupTools();
+  setupVehicles();
 }
 
 // Load data specifically for selected route
@@ -684,6 +689,10 @@ function loadSectionData(hash) {
     loadEmployees();
   } else if (hash === 'tools') {
     loadTools();
+  } else if (hash === 'vehicles') {
+    loadVehicles();
+  } else if (hash === 'vehicleorders') {
+    loadVehicleOrders();
   } else if (hash === 'catalog') {
     loadCatalogModels();
   } else if (hash === 'articles') {
@@ -1333,6 +1342,7 @@ document.getElementById('requestsTypeFilter')?.addEventListener('change', loadRe
 document.getElementById('vacationsPhaseFilter')?.addEventListener('change', renderVacations);
 document.getElementById('vacationsYearFilter')?.addEventListener('change', renderVacations);
 document.getElementById('toolOrdersReceiptFilter')?.addEventListener('change', renderToolOrders);
+document.getElementById('vehicleOrdersReceiptFilter')?.addEventListener('change', renderVehicleOrders);
 document.getElementById('justificationModalOverlay')?.addEventListener('click', (e) => {
   if (e.target.id === 'justificationModalOverlay') window.closeJustification();
 });
@@ -2262,7 +2272,8 @@ async function loadSettings() {
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address'],
-    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes']
+    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
+    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes']
   };
 
   // Понятные подписи (не зависят от description в БД, который может теряться
@@ -2277,10 +2288,22 @@ async function loadSettings() {
     public_card_show_status: 'Показывать статус',
     public_card_show_category: 'Показывать категорию',
     public_card_show_purchase_date: 'Показывать дату покупки',
-    public_card_show_notes: 'Показывать заметки'
+    public_card_show_notes: 'Показывать заметки',
+    public_vehicle_card_enabled: 'Публичная карточка доступна всем (по QR)',
+    public_vehicle_card_show_photo: 'Показывать фото',
+    public_vehicle_card_show_brand: 'Показывать марку',
+    public_vehicle_card_show_model: 'Показывать модель',
+    public_vehicle_card_show_year: 'Показывать год выпуска',
+    public_vehicle_card_show_plate: 'Показывать гос. номер',
+    public_vehicle_card_show_vin: 'Показывать VIN',
+    public_vehicle_card_show_status: 'Показывать статус',
+    public_vehicle_card_show_category: 'Показывать тип',
+    public_vehicle_card_show_mileage: 'Показывать пробег',
+    public_vehicle_card_show_purchase_date: 'Показывать дату покупки',
+    public_vehicle_card_show_notes: 'Показывать заметки'
   };
 
-  const PUBLIC_CARD_KEYS = GROUPS['Публичная карточка инструмента (по QR)'];
+  const PUBLIC_CARD_KEYS = [...GROUPS['Публичная карточка инструмента (по QR)'], ...GROUPS['Публичная карточка авто (по QR)']];
 
   // Определяем тип контрола по ключу
   function getFieldType(key) {
@@ -4939,4 +4962,1037 @@ window.openToolHistory = async (toolId) => {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:16px;">Ошибка загрузки истории</td></tr>';
   }
 };
+
+// ============================================================
+// АВТОПАРК — учёт транспорта + закрепление за сотрудниками.
+// Реализовано по тому же принципу, что и раздел «Инструмент» выше
+// (см. TOOL_STATUS / loadTools / renderTools и т.д.), но без пикера
+// каталога моделей и реестра брендов — для авто это просто текстовые поля.
+// ============================================================
+
+const VEHICLE_STATUS = {
+  available:   { label: 'На стоянке', badge: 'badge-success' },
+  assigned:    { label: 'Выдан',      badge: 'badge-warning' },
+  repair:      { label: 'В ремонте',  badge: 'badge-warning' },
+  written_off: { label: 'Списан',     badge: 'badge-danger' }
+};
+
+const VEHICLE_PLACEHOLDER_ICON = '<i data-lucide="car" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i>';
+
+async function loadVehicles() {
+  try {
+    const res = await fetch('/api/crud/vehicles');
+    if (res.ok) {
+      vehiclesList = await res.json();
+      renderVehicles();
+    } else if (res.status === 401) {
+      showToast('Сессия истекла, войдите заново', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка загрузки автопарка', 'error');
+  }
+}
+
+function renderVehicles(filterQuery = '') {
+  const tbody = document.getElementById('vehiclesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const q = filterQuery.toLowerCase();
+  const filtered = vehiclesList.filter(v => {
+    const hay = `${v.name} ${v.category || ''} ${v.brand || ''} ${v.model || ''} ${v.plate_number || ''} ${v.vin || ''} ${v.current_holder || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Авто не найдено</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(v => {
+    const st = VEHICLE_STATUS[v.status] || VEHICLE_STATUS.available;
+    const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const holder = v.current_holder
+      ? `<strong>${escapeHtml(v.current_holder)}</strong>`
+      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+
+    const isHeld = !!v.current_employee_id;
+    const canWriteOff = v.status === 'written_off';
+    const issueReturnBtn = isHeld
+      ? `<button class="action-btn" title="Вернуть / передать" onclick="openReturnVehicleModal(${v.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : (canWriteOff ? '' : `<button class="action-btn" title="Выдать" onclick="openIssueVehicleModal(${v.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
+
+    const thumb = v.photo_url
+      ? `<img src="${v.photo_url}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
+      : `<div style="width:40px;height:40px;border-radius:8px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:flex;align-items:center;justify-content:center;flex-shrink:0;">${VEHICLE_PLACEHOLDER_ICON}</div>`;
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => openVehicleDetail(v.id));
+    tr.innerHTML = `
+      <td class="hide-mobile">${v.id}</td>
+      <td class="mobile-primary">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openVehicleDetail(${v.id})" title="Открыть карточку">
+          ${thumb}
+          <div><strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(v.name)}</strong>${v.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(v.brand)}${v.model ? ' · ' + escapeHtml(v.model) : ''}</div>` : ''}</div>
+        </div>
+      </td>
+      <td class="mobile-hidden">${escapeHtml(v.category || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(v.plate_number || '—')}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${holder}</td>
+      <td class="no-label" style="text-align: right;">
+        <div class="action-btns" style="justify-content: flex-end;">
+          ${issueReturnBtn}
+          <button class="action-btn" title="Карточка авто" onclick="openVehicleDetail(${v.id})"><i data-lucide="eye"></i></button>
+          <button class="action-btn edit" title="Изменить" onclick="editVehicle(${v.id})"><i data-lucide="edit-3"></i></button>
+          <button class="action-btn delete" title="Удалить" onclick="deleteVehicle(${v.id})"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function loadVehicleCategories() {
+  try {
+    const res = await fetch('/api/crud/vehicle-categories');
+    if (res.ok) vehicleCategories = await res.json();
+  } catch (e) { /* тихо — список просто будет пустым */ }
+}
+
+function populateVehicleCategorySelect(selectedValue = '') {
+  const select = document.getElementById('vehicleCategory');
+  if (!select) return;
+  const names = vehicleCategories.map(c => c.name);
+  let html = '<option value="">— выберите —</option>';
+  names.forEach(n => { html += `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`; });
+  if (selectedValue && !names.includes(selectedValue)) {
+    html += `<option value="${escapeHtml(selectedValue)}">${escapeHtml(selectedValue)} (своя)</option>`;
+  }
+  select.innerHTML = html;
+  select.value = selectedValue || '';
+}
+
+function setVehiclePhotoPreview(url) {
+  document.getElementById('vehiclePhotoUrl').value = url || '';
+  const preview = document.getElementById('vehiclePhotoPreview');
+  const clearBtn = document.getElementById('vehiclePhotoClearBtn');
+  if (url) {
+    preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    preview.innerHTML = `<i data-lucide="car" style="color:hsl(var(--text-muted));"></i>`;
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+// Проверка дублей гос. номера/VIN в реальном времени
+let vehicleDupCheckTimer = null;
+
+function clearVehicleDupWarnings() {
+  ['vehiclePlateWarn', 'vehicleVinWarn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  ['vehiclePlate', 'vehicleVin'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('input-dup');
+  });
+}
+
+async function checkVehicleDuplicates() {
+  const plate = document.getElementById('vehiclePlate').value.trim();
+  const vin = document.getElementById('vehicleVin').value.trim();
+  const excludeId = document.getElementById('vehicleId').value || '';
+
+  const apply = (warnEl, input, hit, label) => {
+    if (hit) {
+      warnEl.textContent = `⚠ Такой ${label} уже у «${hit.name}» (ID ${hit.id})`;
+      warnEl.style.display = 'block';
+      input.classList.add('input-dup');
+    } else {
+      warnEl.style.display = 'none';
+      input.classList.remove('input-dup');
+    }
+  };
+
+  if (!plate && !vin) return clearVehicleDupWarnings();
+
+  try {
+    const params = new URLSearchParams({ plate, vin, exclude_id: excludeId });
+    const res = await fetch('/api/vehicles/check-dup?' + params.toString());
+    if (!res.ok) return;
+    const data = await res.json();
+    apply(document.getElementById('vehiclePlateWarn'), document.getElementById('vehiclePlate'),
+          plate ? data.plate : null, 'гос. номер');
+    apply(document.getElementById('vehicleVinWarn'), document.getElementById('vehicleVin'),
+          vin ? data.vin : null, 'VIN');
+  } catch (e) { /* тихо — проверка вспомогательная, сохранение всё равно защищено на сервере */ }
+}
+
+function scheduleVehicleDupCheck() {
+  clearTimeout(vehicleDupCheckTimer);
+  vehicleDupCheckTimer = setTimeout(checkVehicleDuplicates, 350);
+}
+
+function setupVehicles() {
+  const modal = document.getElementById('vehicleModalOverlay');
+  if (!modal) return;
+
+  const addBtn = document.getElementById('addVehicleBtn');
+  const cancelBtn = document.getElementById('cancelVehicleModalBtn');
+  const closeBtn = document.getElementById('closeVehicleModalBtn');
+  const form = document.getElementById('vehicleForm');
+  const search = document.getElementById('vehiclesSearch');
+
+  const closeModal = () => modal.classList.remove('active');
+  if (addBtn) addBtn.addEventListener('click', () => openVehicleModal());
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  if (search) search.addEventListener('input', (e) => renderVehicles(e.target.value));
+
+  const plateInput = document.getElementById('vehiclePlate');
+  const vinInput = document.getElementById('vehicleVin');
+  if (plateInput) plateInput.addEventListener('input', scheduleVehicleDupCheck);
+  if (vinInput) vinInput.addEventListener('input', scheduleVehicleDupCheck);
+
+  loadVehicleCategories();
+
+  const addCategoryBtn = document.getElementById('addVehicleCategoryBtn');
+  if (addCategoryBtn) {
+    addCategoryBtn.addEventListener('click', async () => {
+      const name = await promptDialog('Название нового типа транспорта:', '', { okText: 'Добавить' });
+      if (name === null) return;
+      const trimmed = name.trim();
+      if (trimmed.length < 2) return showToast('Название слишком короткое', 'error');
+      try {
+        const res = await fetch('/api/crud/vehicle-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: trimmed })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Тип добавлен', 'success');
+          await loadVehicleCategories();
+          populateVehicleCategorySelect(data.name || trimmed);
+        } else {
+          showToast(data.message || 'Не удалось добавить тип', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('vehicleId').value;
+      const payload = {
+        name: document.getElementById('vehicleName').value,
+        category: document.getElementById('vehicleCategory').value,
+        brand: document.getElementById('vehicleBrand').value,
+        model: document.getElementById('vehicleModel').value,
+        year: document.getElementById('vehicleYear').value,
+        fuel_type: document.getElementById('vehicleFuel').value,
+        plate_number: document.getElementById('vehiclePlate').value,
+        vin: document.getElementById('vehicleVin').value,
+        mileage: document.getElementById('vehicleMileage').value,
+        status: document.getElementById('vehicleStatus').value,
+        purchase_date: document.getElementById('vehiclePurchaseDate').value,
+        insurance_until: document.getElementById('vehicleInsuranceUntil').value,
+        inspection_until: document.getElementById('vehicleInspectionUntil').value,
+        photo_url: document.getElementById('vehiclePhotoUrl').value,
+        notes: document.getElementById('vehicleNotes').value
+      };
+      const url = id ? `/api/crud/vehicles?id=${id}` : '/api/crud/vehicles';
+      try {
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          if (!id && data.id && payload.photo_url) {
+            try {
+              await fetch('/api/vehicles/photo', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vehicle_id: data.id, photo_url: payload.photo_url })
+              });
+            } catch (_) { /* некритично */ }
+          }
+          showToast(id ? 'Авто обновлено' : 'Авто добавлено', 'success');
+          closeModal();
+          await loadVehicles();
+        } else {
+          showToast(data.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  // --- Photo upload inside vehicle modal ---
+  const photoBtn = document.getElementById('vehiclePhotoBtn');
+  const photoClearBtn = document.getElementById('vehiclePhotoClearBtn');
+  const photoInput = document.getElementById('vehiclePhotoInput');
+
+  if (photoBtn && photoInput) {
+    photoBtn.addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      photoBtn.disabled = true;
+      photoBtn.textContent = 'Загрузка...';
+      try {
+        const url = await uploadImageToMedia(file, 'tools');
+        if (!url) { showToast('Не удалось загрузить фото', 'error'); return; }
+
+        const editId = document.getElementById('vehicleId').value;
+        if (editId) {
+          const res = await fetch('/api/vehicles/photo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicle_id: parseInt(editId, 10), photo_url: url })
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            if (d.is_avatar) setVehiclePhotoPreview(url);
+            showToast(d.is_avatar ? 'Фото загружено и стало аватаром' : 'Фото добавлено в галерею авто', 'success');
+          } else {
+            showToast(d.message || 'Не удалось добавить фото', 'error');
+          }
+        } else {
+          setVehiclePhotoPreview(url);
+          showToast('Фото загружено — станет аватаром', 'success');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        photoBtn.disabled = false;
+        photoBtn.textContent = 'Загрузить фото';
+        photoInput.value = '';
+      }
+    });
+  }
+  if (photoClearBtn) {
+    photoClearBtn.addEventListener('click', () => setVehiclePhotoPreview(''));
+  }
+
+  // --- Issue modal ---
+  const issueModal = document.getElementById('issueVehicleModalOverlay');
+  const closeIssueModal = () => issueModal.classList.remove('active');
+  document.getElementById('closeIssueVehicleModalBtn').addEventListener('click', closeIssueModal);
+  document.getElementById('cancelIssueVehicleModalBtn').addEventListener('click', closeIssueModal);
+  issueModal.addEventListener('click', (e) => { if (e.target === issueModal) closeIssueModal(); });
+
+  const issueSearch = document.getElementById('issueVehicleEmployeeSearch');
+  if (issueSearch) {
+    issueSearch.addEventListener('input', (e) => renderIssueVehicleEmployeeList(e.target.value));
+    issueSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  }
+
+  document.getElementById('issueVehicleForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const vehicleId = document.getElementById('issueVehicleId').value;
+    const employeeId = document.getElementById('issueVehicleEmployeeId').value;
+    const notes = document.getElementById('issueVehicleNotes').value;
+    if (!employeeId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/vehicles/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle_id: Number(vehicleId), employee_id: Number(employeeId), notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Авто выдано', 'success');
+        closeIssueModal();
+        await loadVehicles();
+      } else {
+        showToast(data.message || 'Не удалось выдать', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+
+  // --- Vehicle detail modal ---
+  const detailModal = document.getElementById('vehicleDetailModalOverlay');
+  if (detailModal) {
+    const closeDetail = () => detailModal.classList.remove('active');
+    document.getElementById('closeVehicleDetailBtn')?.addEventListener('click', closeDetail);
+    detailModal.addEventListener('click', (e) => { if (e.target === detailModal) closeDetail(); });
+  }
+
+  // --- Return / transfer modal ---
+  const returnModal = document.getElementById('returnVehicleModalOverlay');
+  const closeReturnModal = () => returnModal.classList.remove('active');
+  document.getElementById('closeReturnVehicleModalBtn').addEventListener('click', closeReturnModal);
+  document.getElementById('cancelReturnVehicleModalBtn').addEventListener('click', closeReturnModal);
+  returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
+
+  document.getElementById('returnVehicleToStockBtn').addEventListener('click', async () => {
+    await doReturnVehicleToStock(Number(returnModal.dataset.vehicleId));
+    closeReturnModal();
+  });
+
+  document.getElementById('goVehicleTransferBtn').addEventListener('click', () => {
+    document.getElementById('returnVehicleStep1').style.display = 'none';
+    document.getElementById('returnVehicleStep2').style.display = '';
+    document.getElementById('confirmVehicleTransferBtn').style.display = '';
+    renderVehicleTransferList('');
+    document.getElementById('vehicleTransferSearch').focus();
+  });
+
+  const transferSearch = document.getElementById('vehicleTransferSearch');
+  transferSearch.addEventListener('input', (e) => renderVehicleTransferList(e.target.value));
+  transferSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+
+  document.getElementById('confirmVehicleTransferBtn').addEventListener('click', async () => {
+    const vehicleId = Number(returnModal.dataset.vehicleId);
+    const empId = document.getElementById('vehicleTransferEmployeeId').value;
+    if (!empId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/vehicles/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle_id: vehicleId, employee_id: Number(empId) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Авто передано', 'success');
+        closeReturnModal();
+        await loadVehicles();
+      } else {
+        showToast(data.message || 'Не удалось передать', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+}
+
+async function openVehicleModal(vehicle = null) {
+  await loadVehicleCategories();
+  const modal = document.getElementById('vehicleModalOverlay');
+  document.getElementById('vehicleModalTitle').textContent = vehicle ? 'Редактировать авто' : 'Добавить авто';
+  document.getElementById('vehicleId').value = vehicle ? vehicle.id : '';
+  document.getElementById('vehicleName').value = vehicle ? vehicle.name : '';
+  populateVehicleCategorySelect(vehicle ? (vehicle.category || '') : '');
+  document.getElementById('vehicleBrand').value = vehicle ? (vehicle.brand || '') : '';
+  document.getElementById('vehicleModel').value = vehicle ? (vehicle.model || '') : '';
+  document.getElementById('vehicleYear').value = vehicle && vehicle.year ? vehicle.year : '';
+  document.getElementById('vehicleFuel').value = vehicle ? (vehicle.fuel_type || '') : '';
+  document.getElementById('vehiclePlate').value = vehicle ? (vehicle.plate_number || '') : '';
+  document.getElementById('vehicleVin').value = vehicle ? (vehicle.vin || '') : '';
+  document.getElementById('vehicleMileage').value = vehicle && vehicle.mileage != null ? vehicle.mileage : '';
+  document.getElementById('vehicleStatus').value = vehicle ? vehicle.status : 'available';
+  document.getElementById('vehiclePurchaseDate').value = vehicle && vehicle.purchase_date ? String(vehicle.purchase_date).slice(0, 10) : '';
+  document.getElementById('vehicleInsuranceUntil').value = vehicle && vehicle.insurance_until ? String(vehicle.insurance_until).slice(0, 10) : '';
+  document.getElementById('vehicleInspectionUntil').value = vehicle && vehicle.inspection_until ? String(vehicle.inspection_until).slice(0, 10) : '';
+  document.getElementById('vehicleNotes').value = vehicle ? (vehicle.notes || '') : '';
+  setVehiclePhotoPreview(vehicle ? (vehicle.photo_url || '') : '');
+  clearVehicleDupWarnings();
+  modal.classList.add('active');
+}
+
+window.editVehicle = (id) => {
+  const vehicle = vehiclesList.find(v => v.id === id);
+  if (vehicle) openVehicleModal(vehicle);
+};
+
+window.deleteVehicle = async (id) => {
+  const vehicle = vehiclesList.find(v => v.id === id);
+  const name = vehicle ? vehicle.name : `id=${id}`;
+  if (!await confirmDialog(`Удалить авто «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/vehicles?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('Авто удалено', 'success');
+      await loadVehicles();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.message || 'Не удалось удалить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+let issueVehicleEmployeesList = [];
+
+function buildVehicleCard(vehicle) {
+  const st = VEHICLE_STATUS[vehicle.status] || VEHICLE_STATUS.available;
+  const thumb = vehicle.photo_url
+    ? `<img class="issue-tool-thumb" src="${vehicle.photo_url}">`
+    : `<div class="issue-tool-thumb placeholder"><i data-lucide="car"></i></div>`;
+  const sub = [vehicle.brand, vehicle.model].filter(Boolean).join(' · ');
+  const chips = [];
+  if (vehicle.category) chips.push(escapeHtml(vehicle.category));
+  if (vehicle.plate_number) chips.push('Номер: ' + escapeHtml(vehicle.plate_number));
+  if (vehicle.vin) chips.push('VIN: ' + escapeHtml(vehicle.vin));
+  return `
+    ${thumb}
+    <div class="issue-tool-meta">
+      <div class="t-name">${escapeHtml(vehicle.name)}</div>
+      ${sub ? `<div class="t-sub">${escapeHtml(sub)}</div>` : ''}
+      <div class="t-chips">
+        ${chips.map(c => `<span class="t-chip">${c}</span>`).join('')}
+        <span class="badge ${st.badge}">${st.label}</span>
+      </div>
+    </div>`;
+}
+
+function renderIssueVehicleEmployeeList(filter = '') {
+  renderEmpList(
+    document.getElementById('issueVehicleEmployeeList'),
+    issueVehicleEmployeesList, filter,
+    document.getElementById('issueVehicleEmployeeId').value,
+    'selectIssueVehicleEmployee'
+  );
+}
+
+window.selectIssueVehicleEmployee = (id) => {
+  document.getElementById('issueVehicleEmployeeId').value = id;
+  renderIssueVehicleEmployeeList(document.getElementById('issueVehicleEmployeeSearch').value);
+};
+
+window.openIssueVehicleModal = async (vehicleId) => {
+  const vehicle = vehiclesList.find(v => v.id === vehicleId);
+  if (!vehicle) return;
+  document.getElementById('issueVehicleId').value = vehicleId;
+  document.getElementById('issueVehicleEmployeeId').value = '';
+  document.getElementById('issueVehicleEmployeeSearch').value = '';
+  document.getElementById('issueVehicleNotes').value = '';
+
+  document.getElementById('issueVehicleInfo').innerHTML = buildVehicleCard(vehicle);
+
+  const list = document.getElementById('issueVehicleEmployeeList');
+  list.innerHTML = `<div class="emp-pick-empty">Загрузка...</div>`;
+  document.getElementById('issueVehicleModalOverlay').classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    issueVehicleEmployeesList = employees.filter(e => e.status !== 'fired');
+    renderIssueVehicleEmployeeList('');
+    document.getElementById('issueVehicleEmployeeSearch').focus();
+  } catch (err) {
+    list.innerHTML = `<div class="emp-pick-empty">Не удалось загрузить сотрудников</div>`;
+  }
+};
+
+let transferVehicleEmployeesList = [];
+
+function renderVehicleTransferList(filter = '') {
+  renderEmpList(
+    document.getElementById('vehicleTransferEmployeeList'),
+    transferVehicleEmployeesList, filter,
+    document.getElementById('vehicleTransferEmployeeId').value,
+    'selectVehicleTransferEmployee'
+  );
+}
+
+window.selectVehicleTransferEmployee = (id) => {
+  document.getElementById('vehicleTransferEmployeeId').value = id;
+  renderVehicleTransferList(document.getElementById('vehicleTransferSearch').value);
+};
+
+async function doReturnVehicleToStock(vehicleId) {
+  try {
+    const res = await fetch('/api/vehicles/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vehicle_id: vehicleId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Авто возвращено на стоянку', 'success');
+      await loadVehicles();
+    } else {
+      showToast(data.message || 'Не удалось вернуть', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+}
+
+window.openReturnVehicleModal = async (vehicleId) => {
+  const vehicle = vehiclesList.find(v => v.id === vehicleId);
+  if (!vehicle) return;
+  const modal = document.getElementById('returnVehicleModalOverlay');
+  modal.dataset.vehicleId = vehicleId;
+
+  document.getElementById('returnVehicleInfo').innerHTML = buildVehicleCard(vehicle);
+  document.getElementById('returnVehicleHolder').innerHTML = vehicle.current_holder
+    ? `Сейчас на руках у: <strong style="color:hsl(var(--text-primary))">${escapeHtml(vehicle.current_holder)}</strong>`
+    : '';
+
+  document.getElementById('returnVehicleStep1').style.display = 'flex';
+  document.getElementById('returnVehicleStep2').style.display = 'none';
+  document.getElementById('confirmVehicleTransferBtn').style.display = 'none';
+  document.getElementById('vehicleTransferEmployeeId').value = '';
+  document.getElementById('vehicleTransferSearch').value = '';
+  document.getElementById('vehicleTransferEmployeeList').innerHTML = '';
+
+  modal.classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    transferVehicleEmployeesList = employees.filter(e => e.status !== 'fired' && e.id !== vehicle.current_employee_id);
+  } catch (err) {
+    transferVehicleEmployeesList = [];
+  }
+};
+
+window.openVehicleDetail = async (vehicleId) => {
+  const overlay = document.getElementById('vehicleDetailModalOverlay');
+  const body = document.getElementById('vehicleDetailBody');
+  body.innerHTML = '<div style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Загрузка...</div>';
+  overlay.classList.add('active');
+  try {
+    const res = await fetch(`/api/vehicles/details?id=${vehicleId}`);
+    if (!res.ok) { body.innerHTML = '<div style="text-align:center;color:hsl(var(--accent-red));padding:30px;">Не удалось загрузить</div>'; return; }
+    const data = await res.json();
+    renderVehicleDetail(data);
+  } catch (e) {
+    body.innerHTML = '<div style="text-align:center;color:hsl(var(--accent-red));padding:30px;">Ошибка сети</div>';
+  }
+};
+
+function renderVehicleDetail(data) {
+  const { vehicle, photos, history, stats } = data;
+  document.getElementById('vehicleDetailTitle').textContent = vehicle.name || 'Карточка авто';
+  const st = VEHICLE_STATUS[vehicle.status] || VEHICLE_STATUS.available;
+
+  const mainImgHtml = vehicle.photo_url
+    ? `<img src="${vehicle.photo_url}" onclick="openLightbox('${vehicle.photo_url}')" style="width:100%;height:100%;object-fit:cover;cursor:zoom-in;">`
+    : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:hsl(var(--text-muted));"><i data-lucide="car"></i></div>`;
+
+  const purchaseDate = vehicle.purchase_date ? escapeHtml(vehicle.purchase_date) : '—';
+  const insuranceUntil = vehicle.insurance_until ? escapeHtml(vehicle.insurance_until) : '—';
+  const inspectionUntil = vehicle.inspection_until ? escapeHtml(vehicle.inspection_until) : '—';
+
+  const info = [
+    ['Тип', escapeHtml(vehicle.category || '—')],
+    ['Марка / модель', escapeHtml([vehicle.brand, vehicle.model].filter(Boolean).join(' · ') || '—')],
+    ['Год выпуска', vehicle.year ? escapeHtml(String(vehicle.year)) : '—'],
+    ['Гос. номер', escapeHtml(vehicle.plate_number || '—')],
+    ['VIN', escapeHtml(vehicle.vin || '—')],
+    ['Топливо', escapeHtml(vehicle.fuel_type || '—')],
+    ['Пробег', vehicle.mileage != null ? escapeHtml(String(vehicle.mileage) + ' км') : '—'],
+    ['Дата покупки', purchaseDate],
+    ['Страховка до', insuranceUntil],
+    ['Техосмотр до', inspectionUntil],
+    ['Сейчас у', vehicle.current_holder ? `<strong>${escapeHtml(vehicle.current_holder)}</strong>` : '<span style="color:hsl(var(--text-muted))">на стоянке</span>']
+  ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid hsl(var(--border-color));"><span style="color:hsl(var(--text-muted));font-size:13px;">${k}</span><span style="font-size:13px;text-align:right;">${v}</span></div>`).join('');
+
+  const statTiles = [
+    ['Выдавался', stats.times_issued + ' раз', 'repeat'],
+    ['В эксплуатации', pluralDays(stats.days_in_service), 'clock'],
+    ['Держателей', String(stats.unique_holders), 'users'],
+    ['Фото', String(stats.photos_count), 'image']
+  ].map(([label, val, icon]) => `
+    <div style="flex:1;min-width:110px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));border-radius:12px;padding:14px;text-align:center;">
+      <i data-lucide="${icon}" style="width:20px;height:20px;color:hsl(var(--accent-cyan));"></i>
+      <div style="font-size:20px;font-weight:700;margin-top:6px;">${val}</div>
+      <div style="font-size:11px;color:hsl(var(--text-muted));">${label}</div>
+    </div>`).join('');
+
+  const gallery = photos.length
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;">
+        ${photos.map((p, i) => {
+          const isAvatar = vehicle.photo_url && p.photo_url === vehicle.photo_url;
+          const when = p.created_at ? new Date(p.created_at.replace(' ', 'T') + 'Z')
+            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+          const corner = isAvatar
+            ? `<span style="position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:4px;background:hsl(var(--accent-purple));color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;"><i data-lucide="star" style="width:12px;height:12px;"></i> Аватар</span>`
+            : `<span style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:8px;">Фото ${i + 1}</span>`;
+          const action = isAvatar ? '' :
+            `<button type="button" onclick="setVehicleAvatar(${vehicle.id}, '${p.photo_url}')" title="Сделать аватаром авто"
+                     style="width:100%;margin-top:8px;padding:7px;background:hsl(var(--accent-purple) / 0.12);border:1px solid hsl(var(--accent-purple));color:hsl(var(--text-primary));border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+               <i data-lucide="star" style="width:14px;height:14px;"></i> Сделать аватаром
+             </button>`;
+          return `
+          <div style="background:hsl(var(--bg-main));border:1px solid ${isAvatar ? 'hsl(var(--accent-purple))' : 'hsl(var(--border-color))'};border-radius:12px;padding:8px;">
+            <div style="position:relative;">
+              ${corner}
+              <img src="${p.photo_url}" onclick="openLightbox('${p.photo_url}')" style="width:100%;height:150px;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block;">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:hsl(var(--text-secondary));">
+              <i data-lucide="user" style="width:13px;height:13px;color:hsl(var(--text-muted));flex-shrink:0;"></i>
+              <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.uploaded_by_name || 'Неизвестно')}</span>
+            </div>
+            ${when ? `<div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:hsl(var(--text-muted));">
+              <i data-lucide="calendar" style="width:13px;height:13px;flex-shrink:0;"></i><span>${when}</span>
+            </div>` : ''}
+            ${action}
+          </div>`;
+        }).join('')}
+      </div>`
+    : `<div style="display:flex;align-items:center;gap:10px;color:hsl(var(--text-muted));font-size:13px;padding:16px;background:hsl(var(--bg-main));border:1px dashed hsl(var(--border-color));border-radius:12px;">
+        <i data-lucide="image-off" style="width:18px;height:18px;"></i>
+        <span>Фотографий пока нет. Первое загруженное фото станет аватаром авто.</span>
+      </div>`;
+
+  const timeline = history.length
+    ? history.map(h => {
+        const issued = h.issued_at ? new Date(h.issued_at.replace(' ','T')+'Z').toLocaleString('ru-RU') : '—';
+        const returned = h.returned_at ? new Date(h.returned_at.replace(' ','T')+'Z').toLocaleString('ru-RU') : null;
+        const dot = returned ? 'hsl(var(--text-muted))' : 'hsl(var(--accent-amber))';
+        return `
+          <div style="display:flex;gap:12px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div style="width:11px;height:11px;border-radius:50%;background:${dot};margin-top:4px;"></div>
+              <div style="flex:1;width:2px;background:hsl(var(--border-color));"></div>
+            </div>
+            <div style="padding-bottom:16px;flex:1;">
+              <div style="font-weight:600;">${escapeHtml(h.employee_name || '—')} ${returned ? '' : '<span class="badge badge-warning" style="margin-left:6px;">на руках</span>'}</div>
+              <div style="font-size:12px;color:hsl(var(--text-muted));">Выдан: ${issued}${returned ? ` · Возвращён: ${returned}` : ''}</div>
+              ${h.issued_by ? `<div style="font-size:12px;color:hsl(var(--text-muted));">Выдал: ${escapeHtml(h.issued_by)}</div>` : ''}
+              ${h.notes ? `<div style="font-size:12px;color:hsl(var(--text-secondary));margin-top:2px;">${escapeHtml(h.notes)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('')
+    : '<div style="color:hsl(var(--text-muted));font-size:13px;">Закреплений ещё не было</div>';
+
+  const btns = [];
+  if (vehicle.status !== 'written_off') {
+    if (stats.is_out) btns.push(`<button class="btn btn-secondary" onclick="vehicleDetailAction('return', ${vehicle.id})"><i data-lucide="corner-down-left"></i><span>Вернуть / передать</span></button>`);
+    else btns.push(`<button class="btn" onclick="vehicleDetailAction('issue', ${vehicle.id})"><i data-lucide="hand-helping"></i><span>Выдать</span></button>`);
+  }
+  btns.push(`<button class="btn btn-secondary" onclick="vehicleDetailAction('edit', ${vehicle.id})"><i data-lucide="edit-3"></i><span>Редактировать</span></button>`);
+  btns.push(`<button class="btn btn-secondary" onclick="printVehicleQr(${vehicle.id})"><i data-lucide="printer"></i><span>Печать QR</span></button>`);
+  btns.push(`<button class="btn btn-secondary" onclick="saveVehicleQr(${vehicle.id})"><i data-lucide="download"></i><span>Сохранить QR</span></button>`);
+
+  const qrBlock = `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;">
+      <img id="vehicleQrImg" src="/api/vehicles/qr?id=${vehicle.id}" alt="QR" style="width:120px;height:120px;background:#fff;border-radius:10px;padding:6px;">
+      <div style="font-size:11px;color:hsl(var(--text-muted));">Сканируй → карточка</div>
+      <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="refreshVehicleQr(${vehicle.id})"><i data-lucide="refresh-cw" style="width:13px;height:13px;"></i><span>Обновить QR</span></button>
+    </div>`;
+
+  document.getElementById('vehicleDetailBody').innerHTML = `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="width:200px;height:200px;border-radius:14px;overflow:hidden;border:1px solid hsl(var(--border-color));background:hsl(var(--bg-main));flex-shrink:0;">${mainImgHtml}</div>
+      <div style="flex:1;min-width:240px;">
+        <span class="badge ${st.badge}" style="margin-bottom:10px;display:inline-block;">${st.label}</span>
+        ${info}
+        ${vehicle.notes ? `<div style="margin-top:10px;font-size:13px;color:hsl(var(--text-secondary));"><i data-lucide="sticky-note" style="width:14px;height:14px;vertical-align:middle;"></i> ${escapeHtml(vehicle.notes)}</div>` : ''}
+      </div>
+      ${qrBlock}
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">${btns.join('')}</div>
+
+    <div style="margin-top:18px;padding:14px 16px;border:1px solid hsl(var(--border-color));border-radius:12px;background:hsl(var(--bg-main));display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:12px;color:hsl(var(--text-muted));display:flex;align-items:center;gap:8px;">
+        <i data-lucide="qr-code" style="width:16px;height:16px;"></i>
+        <span>Публичная карточка (по QR). Что показывать — настраивается общими правилами в разделе «Настройки».</span>
+      </div>
+      <a href="/vehicle.html?id=${vehicle.id}" target="_blank" rel="noopener" style="font-size:13px;color:hsl(var(--accent-cyan));display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><i data-lucide="external-link" style="width:14px;height:14px;"></i> Открыть публичную карточку</a>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;">${statTiles}</div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:18px 0 10px;">
+      <h4 style="margin:0;font-size:14px;">Фотографии</h4>
+      <button type="button" class="btn btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('vehicleGalleryInput').click()"><i data-lucide="image-plus" style="width:14px;height:14px;"></i><span>Добавить фото</span></button>
+      <input type="file" id="vehicleGalleryInput" accept="image/*" style="display:none;">
+    </div>
+    ${gallery}
+
+    <h4 style="margin:22px 0 12px;font-size:14px;">История закреплений</h4>
+    <div id="vehicleHistoryList" style="overflow-y:auto;">${timeline}</div>
+  `;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  const galInput = document.getElementById('vehicleGalleryInput');
+  if (galInput) {
+    galInput.addEventListener('change', async () => {
+      const file = galInput.files[0];
+      if (!file) return;
+      showToast('Загрузка фото...', 'info');
+      try {
+        const url = await uploadImageToMedia(file, 'tools');
+        if (!url) return showToast('Не удалось загрузить фото', 'error');
+        const res = await fetch('/api/vehicles/photo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicle_id: vehicle.id, photo_url: url })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(d.is_avatar ? 'Фото добавлено и стало аватаром' : 'Фото добавлено в галерею', 'success');
+          window.openVehicleDetail(vehicle.id);
+          loadVehicles();
+        } else {
+          showToast(d.message || 'Не удалось добавить фото', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        galInput.value = '';
+      }
+    });
+  }
+
+  const histBox = document.getElementById('vehicleHistoryList');
+  if (histBox && histBox.children.length > 5) {
+    let h = 0;
+    for (let i = 0; i < 5; i++) h += histBox.children[i].offsetHeight;
+    histBox.style.maxHeight = h + 'px';
+  }
+}
+
+window.setVehicleAvatar = async (vehicleId, photoUrl) => {
+  try {
+    const res = await fetch('/api/vehicles/set-avatar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vehicle_id: vehicleId, photo_url: photoUrl })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Аватар обновлён', 'success');
+      window.openVehicleDetail(vehicleId);
+      loadVehicles();
+    } else {
+      showToast(d.message || 'Не удалось сменить аватар', 'error');
+    }
+  } catch (e) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+window.vehicleDetailAction = (action, id) => {
+  document.getElementById('vehicleDetailModalOverlay').classList.remove('active');
+  if (action === 'issue' && window.openIssueVehicleModal) openIssueVehicleModal(id);
+  else if (action === 'return' && window.openReturnVehicleModal) openReturnVehicleModal(id);
+  else if (action === 'edit' && window.editVehicle) editVehicle(id);
+};
+
+window.refreshVehicleQr = (id) => {
+  const img = document.getElementById('vehicleQrImg');
+  if (img) img.src = `/api/vehicles/qr?id=${id}&_=${Date.now()}`;
+  showToast('QR обновлён', 'success');
+};
+
+window.printVehicleQr = (id) => {
+  const vehicle = vehiclesList.find(v => v.id === id) || {};
+  const w = window.open('', '_blank', 'width=420,height=560');
+  if (!w) { showToast('Разрешите всплывающие окна для печати', 'error'); return; }
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(vehicle.name || '')}</title>
+    <body style="font-family:sans-serif;text-align:center;padding:24px;">
+      <img src="/api/vehicles/qr?id=${id}&_=${Date.now()}" style="width:260px;height:260px;">
+      <h2 style="margin:12px 0 4px;">${escapeHtml(vehicle.name || '')}</h2>
+      <div style="color:#555;">${escapeHtml(vehicle.plate_number || '')}</div>
+      <div style="color:#888;font-size:13px;">${escapeHtml([vehicle.brand, vehicle.model].filter(Boolean).join(' · '))}</div>
+      <script>window.onload=()=>{setTimeout(()=>window.print(),300)}<\/script>
+    </body>`);
+  w.document.close();
+};
+
+window.saveVehicleQr = async (id) => {
+  const vehicle = vehiclesList.find(v => v.id === id) || {};
+  const base = `qr-${(vehicle.plate_number || vehicle.name || 'vehicle').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+  try {
+    const res = await fetch(`/api/vehicles/qr?id=${id}&_=${Date.now()}`);
+    const svgText = await res.text();
+    const size = 600, pad = 40, labelH = vehicle.plate_number ? 60 : 20;
+    const svgBlob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size + pad * 2;
+      canvas.height = size + pad * 2 + labelH;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, pad, pad, size, size);
+      if (vehicle.plate_number) {
+        ctx.fillStyle = '#111111';
+        ctx.font = 'bold 30px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(vehicle.plate_number, canvas.width / 2, size + pad + 44);
+      }
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        triggerDownload(URL.createObjectURL(blob), base + '.png', true);
+        showToast('QR сохранён (PNG)', 'success');
+      }, 'image/png');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      triggerDownload(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg', true);
+      showToast('QR сохранён (SVG)', 'success');
+    };
+    img.src = url;
+  } catch (e) {
+    showToast('Не удалось сохранить QR', 'error');
+  }
+};
+
+// Открытие карточки по deep-link ?vehicle=<id> (из QR-кода)
+function handleVehicleDeepLink() {
+  const id = parseInt(new URLSearchParams(window.location.search).get('vehicle'), 10);
+  if (Number.isInteger(id) && id > 0) {
+    if (window.location.hash !== '#vehicles') window.location.hash = '#vehicles';
+    setTimeout(() => window.openVehicleDetail(id), 400);
+  }
+}
+
+// ---- Менеджер типов транспорта (справочник vehicle_categories) ----
+window.openVehicleCategoriesManager = async () => {
+  await loadVehicleCategories();
+  renderVehicleCategoriesList();
+  document.getElementById('vehicleCategoriesModalOverlay').classList.add('active');
+};
+window.closeVehicleCategoriesManager = () => document.getElementById('vehicleCategoriesModalOverlay').classList.remove('active');
+
+function renderVehicleCategoriesList() {
+  const box = document.getElementById('vehicleCategoriesList');
+  if (!box) return;
+  const cats = (vehicleCategories || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  if (!cats.length) { box.innerHTML = '<div style="font-size:13px;color:hsl(var(--text-muted));">Типов пока нет</div>'; return; }
+  box.innerHTML = cats.map(c => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid hsl(var(--border-color)); border-radius:8px;">
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.name)}${c.is_default ? ' <span style="font-size:10px;color:hsl(var(--text-muted));">(стд)</span>' : ''}</span>
+      <button type="button" class="action-btn edit" title="Переименовать" onclick="renameVehicleCategory(${c.id})"><i data-lucide="edit-3"></i></button>
+      <button type="button" class="action-btn delete" title="Удалить" onclick="deleteVehicleCategory(${c.id})"><i data-lucide="trash-2"></i></button>
+    </div>`).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function afterVehicleCategoryChange() {
+  await loadVehicleCategories();
+  renderVehicleCategoriesList();
+}
+
+window.addVehicleCategoryFromManager = async () => {
+  const input = document.getElementById('newVehicleCategoryName');
+  const name = input.value.trim();
+  if (name.length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch('/api/crud/vehicle-categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Тип добавлен', 'success'); input.value = ''; afterVehicleCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.renameVehicleCategory = async (id) => {
+  const cat = (vehicleCategories || []).find(c => c.id === id);
+  const newName = await promptDialog('Новое название типа:', cat ? cat.name : '', { okText: 'Переименовать' });
+  if (newName === null) return;
+  if (newName.trim().length < 2) { showToast('Название слишком короткое', 'error'); return; }
+  try {
+    const res = await fetch(`/api/crud/vehicle-categories?id=${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Переименовано (обновлено везде)', 'success'); afterVehicleCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+window.deleteVehicleCategory = async (id) => {
+  const cat = (vehicleCategories || []).find(c => c.id === id);
+  if (!await confirmDialog(`Удалить тип «${cat ? cat.name : id}»?`, { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/vehicle-categories?id=${id}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Тип удалён', 'success'); afterVehicleCategoryChange(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+// ==== Заказы авто (админ): кому и что одобрили ====
+let vehicleOrdersCache = [];
+
+function vehicleOrderFmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+async function loadVehicleOrders() {
+  const tbody = document.getElementById('vehicleOrdersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  try {
+    const res = await fetch('/api/requests/vehicle-orders');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    const data = await res.json();
+    vehicleOrdersCache = data.orders || [];
+    updateVehicleOrdersBadge();
+    renderVehicleOrders();
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+  }
+}
+
+async function initVehicleOrdersBadge() {
+  try {
+    const res = await fetch('/api/requests/vehicle-orders');
+    if (!res.ok) return;
+    const data = await res.json();
+    vehicleOrdersCache = data.orders || [];
+    updateVehicleOrdersBadge();
+  } catch (e) { /* тихо */ }
+}
+
+function updateVehicleOrdersBadge() {
+  const badge = document.getElementById('vehicleOrdersBadge');
+  if (!badge) return;
+  const awaiting = vehicleOrdersCache.filter(o => !o.received).length;
+  if (awaiting > 0) { badge.textContent = awaiting; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+function renderVehicleOrders() {
+  const tbody = document.getElementById('vehicleOrdersTableBody');
+  const filter = document.getElementById('vehicleOrdersReceiptFilter')?.value || '';
+  let list = vehicleOrdersCache;
+  if (filter === 'awaiting') list = list.filter(o => !o.received);
+  else if (filter === 'received') list = list.filter(o => o.received);
+
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Заказов нет</td></tr>';
+    return;
+  }
+  list.forEach(o => {
+    const receipt = o.received
+      ? `<span class="badge badge-success">✓ Получено</span><div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${vehicleOrderFmtDate(o.received_at)}</div>`
+      : `<span class="badge badge-warning">Ожидает получения</span>`;
+    const period = (o.start_date || o.end_date)
+      ? `${o.start_date || '?'} — ${o.end_date || '?'}` : '—';
+    const tr = document.createElement('tr');
+    if (!o.received) tr.style.background = 'hsl(var(--accent-purple) / 0.05)';
+    tr.onclick = mobileRowTap(() => showRowDetail(o.purpose || o.title || 'Заказ авто', [
+      ['Сотрудник', o.name],
+      ['Цель / куда', o.purpose || o.title || '—'],
+      ['Тип авто', o.category || '—'],
+      ['Период', period],
+      ['Заметка', o.notes],
+      ['Одобрил', `${escapeHtml(o.reviewed_by_name || '—')} · ${vehicleOrderFmtDate(o.reviewed_at)}`, true],
+      ['Получение', receipt, true]
+    ]));
+    tr.innerHTML = `
+      <td class="mobile-hidden"><strong>${escapeHtml(o.name || '—')}</strong></td>
+      <td class="mobile-primary"><strong>${escapeHtml(o.purpose || o.title || '—')}</strong><div style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(o.name || '')}</div></td>
+      <td class="mobile-hidden">${escapeHtml(o.category || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(period)}</td>
+      <td class="mobile-hidden">${escapeHtml(o.reviewed_by_name || '—')}<div style="font-size:11px;color:hsl(var(--text-muted));">${vehicleOrderFmtDate(o.reviewed_at)}</div></td>
+      <td>${receipt}</td>`;
+    tbody.appendChild(tr);
+  });
+}
 

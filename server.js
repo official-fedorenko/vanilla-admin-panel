@@ -20,6 +20,7 @@ const handleSupport = require('./src/routes/support');
 const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
+const handleVehicles = require('./src/routes/vehicles');
 const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
@@ -182,10 +183,11 @@ const server = http.createServer(async (req, res) => {
     return handleAuth(req, res, user, parsedUrl, method);
   }
 
-  // Cabinet (own profile / мой инструмент — needed for cabinet.html after login)
+  // Cabinet (own profile / мой инструмент / моё авто — needed for cabinet.html after login)
   if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
       pathname === '/api/cabinet/my-card' ||
-      pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo') {
+      pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
+      pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo') {
     return handleCabinet(req, res, user, parsedUrl, method);
   }
 
@@ -210,6 +212,12 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/crud/tools') || pathname.startsWith('/api/tools/') ||
       pathname.startsWith('/api/crud/tool-categories')) {
     return handleTools(req, res, user, parsedUrl, method);
+  }
+
+  // Автопарк: CRUD инвентаря транспорта + выдача/возврат/история + справочник типов
+  if (pathname.startsWith('/api/crud/vehicles') || pathname.startsWith('/api/vehicles/') ||
+      pathname.startsWith('/api/crud/vehicle-categories')) {
+    return handleVehicles(req, res, user, parsedUrl, method);
   }
 
   // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
