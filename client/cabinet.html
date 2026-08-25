@@ -819,6 +819,20 @@
           </div><!-- /cbody -->
         </div>
 
+        <!-- Моё закреплённое авто (только для сотрудников) -->
+        <div class="card mobile-collapse" id="myVehiclesCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg> Моё авто</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+          <div id="myVehiclesList" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+          </div>
+          <input type="file" id="myVehiclePhotoInput" accept="image/*" style="display:none;">
+          </div><!-- /cbody -->
+        </div>
+
         <!-- Заявления -->
         <div class="card mobile-collapse" id="requestsCard">
           <div class="card-title collapse-toggle" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1056,6 +1070,8 @@
           loadMyCard();
           document.getElementById('myToolsCard').style.display = '';
           loadMyTools();
+          document.getElementById('myVehiclesCard').style.display = '';
+          loadMyVehicles();
         }
       } catch (e) {
         window.location.href = '/login.html';
@@ -1255,6 +1271,148 @@
         } finally {
           input.value = '';
           myToolPhotoTargetId = null;
+        }
+      });
+    })();
+
+    // === Моё закреплённое авто ===
+    let myVehiclePhotoTargetId = null;
+    let myVehiclesCache = [];
+
+    window.saveMyVehicleQr = async (id) => {
+      const vehicle = myVehiclesCache.find(v => v.id === id) || {};
+      const base = `qr-${String(vehicle.plate_number || vehicle.name || 'vehicle').replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+      try {
+        const res = await fetch(`/api/vehicles/qr?id=${id}`);
+        const svgText = await res.text();
+        const size = 600, pad = 40, labelH = vehicle.plate_number ? 60 : 20;
+        const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size + pad * 2;
+          canvas.height = size + pad * 2 + labelH;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, pad, pad, size, size);
+          if (vehicle.plate_number) {
+            ctx.fillStyle = '#111111'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(vehicle.plate_number, canvas.width / 2, size + pad + 44);
+          }
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => { downloadBlob(URL.createObjectURL(blob), base + '.png'); showToast('QR сохранён', 'success'); }, 'image/png');
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); downloadBlob(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg'); showToast('QR сохранён (SVG)', 'success'); };
+        img.src = url;
+      } catch (e) { showToast('Не удалось сохранить QR', 'error'); }
+    };
+
+    async function loadMyVehicles() {
+      const list = document.getElementById('myVehiclesList');
+      try {
+        const res = await fetch('/api/cabinet/my-vehicles');
+        const data = res.ok ? await res.json() : { vehicles: [] };
+        const vehicles = data.vehicles || [];
+        myVehiclesCache = vehicles;
+        if (!vehicles.length) {
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплено авто.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        vehicles.forEach(v => {
+          const issued = v.issued_at ? new Date(v.issued_at).toLocaleDateString('ru-RU') : '';
+          const photo = v.photo_url
+            ? `<img src="${v.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
+            : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const sub = [v.brand, v.model].filter(Boolean).join(' · ');
+
+          let galleryHtml = '';
+          if (v.gallery_photos && v.gallery_photos.length > 0) {
+            const imgs = v.gallery_photos.map(url => `<img src="${url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`).join('');
+            galleryHtml = `<div style="margin-top:12px; display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">${imgs}</div>`;
+          }
+
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.innerHTML = `
+            <div style="display:flex; align-items:center; gap:12px;">
+              ${photo}
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(v.name)}</div>
+                ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
+                ${v.plate_number ? `<div style="font-size:12px;color:var(--text-muted);">Гос. номер: ${escapeHtml(v.plate_number)}</div>` : ''}
+                ${v.year ? `<div style="font-size:12px;color:var(--text-muted);">Год: ${escapeHtml(String(v.year))}</div>` : ''}
+                ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <button type="button" onclick="startMyVehiclePhoto(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Добавить фото</button>
+                <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
+              </div>
+            </div>
+            ${galleryHtml}
+          `;
+          list.appendChild(item);
+        });
+        if (list.children.length > 5) {
+          let h = 0;
+          for (let i = 0; i < 5; i++) h += list.children[i].offsetHeight;
+          h += 12 * 4;
+          list.style.maxHeight = h + 'px';
+          list.style.overflowY = 'auto';
+          list.style.paddingRight = '4px';
+        } else {
+          list.style.maxHeight = 'none';
+        }
+      } catch (e) {
+        list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить авто.</div>';
+      }
+    }
+
+    window.startMyVehiclePhoto = (vehicleId) => {
+      myVehiclePhotoTargetId = vehicleId;
+      document.getElementById('myVehiclePhotoInput').click();
+    };
+
+    (function initMyVehiclePhotoUpload() {
+      const input = document.getElementById('myVehiclePhotoInput');
+      if (!input) return;
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (!file || !myVehiclePhotoTargetId) return;
+
+        const currentVehicleId = myVehiclePhotoTargetId;
+
+        try {
+          const prepared = await prepareUploadFile(file);
+          const upRes = await fetch('/api/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [prepared], category: 'tools' })
+          });
+          if (!upRes.ok) {
+            const e = await upRes.json().catch(() => ({}));
+            showToast(e.message || 'Ошибка загрузки фото', 'error'); return;
+          }
+          const upData = await upRes.json();
+          const url = upData.urls && upData.urls[0];
+          if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
+          const linkRes = await fetch('/api/cabinet/vehicle-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicle_id: currentVehicleId, photo_url: url })
+          });
+          const linkData = await linkRes.json().catch(() => ({}));
+          if (linkRes.ok) {
+            showToast('Фото авто сохранено', 'success');
+            loadMyVehicles();
+          } else {
+            showToast(linkData.message || 'Не удалось сохранить фото', 'error');
+          }
+        } catch (e) {
+          showToast('Ошибка при загрузке', 'error');
+        } finally {
+          input.value = '';
+          myVehiclePhotoTargetId = null;
         }
       });
     })();
@@ -2075,6 +2233,7 @@
     };
     let requestTypes = {};
     let toolCategories = [];
+    let vehicleCategoriesCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -2083,12 +2242,14 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat] = await Promise.all([
+        const [rt, cat, vcat] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
-          fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => [])
+          fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
+          fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => [])
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
+        vehicleCategoriesCab = vcat || [];
       } catch (e) { requestTypes = {}; }
 
       // Скрытый select хранит выбранный тип (для submitRequest)
@@ -2194,7 +2355,8 @@
         if (f.type === 'textarea') {
           wrap.innerHTML = label + `<textarea id="${fid}" rows="2" class="form-input"></textarea>`;
         } else if (f.type === 'category') {
-          const opts = ['<option value="">—</option>'].concat(toolCategories.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`)).join('');
+          const sourceList = f.source === 'vehicle' ? vehicleCategoriesCab : toolCategories;
+          const opts = ['<option value="">—</option>'].concat(sourceList.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`)).join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
@@ -2449,13 +2611,14 @@
         list.forEach(r => {
           const st = TR_STATUS[r.status] || TR_STATUS.pending;
           // Одобренный заказ инструмента, ещё не полученный → кнопка «Получил».
-          const awaitingReceipt = r.type === 'tool_order' && r.status === 'approved' && !r.received_at;
+          const isOrderType = r.type === 'tool_order' || r.type === 'vehicle_order';
+          const awaitingReceipt = isOrderType && r.status === 'approved' && !r.received_at;
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,255,255,0.01);';
           if (awaitingReceipt) row.style.borderColor = 'rgba(34,197,94,0.4)';
           const rightSide = awaitingReceipt
             ? `<button type="button" data-receive-id="${r.id}" style="padding:6px 14px; background:#22c55e; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Получил</button>`
-            : (r.type === 'tool_order' && r.received_at
+            : (isOrderType && r.received_at
                 ? `<span style="font-size:11px; font-weight:600; color:#22c55e;">✓ Получено</span>`
                 : `<span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`);
           row.innerHTML = `
@@ -2463,7 +2626,7 @@
               <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(r.title || '')}</div>
               <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(r.type_label || r.type)}</div>
               ${r.status === 'rejected' && r.review_note ? `<div style="font-size:11px; color:#ef4444;">Причина: ${escapeHtmlC(r.review_note)}</div>` : ''}
-              ${awaitingReceipt ? `<div style="font-size:11px; color:#22c55e;">Одобрено — заберите инструмент и нажмите «Получил»</div>` : ''}
+              ${awaitingReceipt ? `<div style="font-size:11px; color:#22c55e;">Одобрено — ${r.type === 'vehicle_order' ? 'заберите авто' : 'заберите инструмент'} и нажмите «Получил»</div>` : ''}
             </div>
             ${rightSide}`;
           box.appendChild(row);

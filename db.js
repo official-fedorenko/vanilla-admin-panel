@@ -362,6 +362,13 @@ function runMigrations() {
           );
         }
       });
+
+      // Вызываем здесь (а не в верхнеуровневом db.serialize() ниже), чтобы
+      // PRAGMA-проверка гарантированно шла в очереди sqlite3 ПОСЛЕ операторов
+      // самих миграций (включая CREATE TABLE requests и ALTER ADD COLUMN
+      // received_at выше) — иначе на свежей базе она может выполниться раньше
+      // (см. комментарий у ensureRequestsReceivedAtColumn).
+      ensureRequestsReceivedAtColumn();
     });
   });
 }
@@ -424,6 +431,24 @@ function ensureCatalogModelsSpecsColumn() {
       db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", (alterErr) => {
         if (alterErr) logger.error('[db] Не удалось добавить catalog_models.specs:', alterErr.message);
         else logger.info('[db] Восстановлена отсутствовавшая колонка catalog_models.specs');
+      });
+    }
+  });
+}
+
+// Тот же самолечащийся паттерн для миграции 12 (ALTER TABLE requests ADD
+// COLUMN received_at) — на свежих базах ALTER, идущий сразу вслед за CREATE
+// TABLE requests в той же миграционной последовательности, иногда
+// «отмечается применённым», но колонку не добавляет. Без неё падает
+// отметка получения одобренного заказа инструмента/авто.
+function ensureRequestsReceivedAtColumn() {
+  db.all("PRAGMA table_info(requests)", (err, rows) => {
+    if (err || !rows) return;
+    const hasColumn = rows.some((r) => r.name === 'received_at');
+    if (!hasColumn) {
+      db.run("ALTER TABLE requests ADD COLUMN received_at DATETIME", (alterErr) => {
+        if (alterErr) logger.error('[db] Не удалось добавить requests.received_at:', alterErr.message);
+        else logger.info('[db] Восстановлена отсутствовавшая колонка requests.received_at');
       });
     }
   });
@@ -607,6 +632,74 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // 5c. Автопарк: инвентарь транспортных средств + история закреплений за
+  // сотрудниками. Та же модель «выдача-возврат», что и у инструмента
+  // (tools/tool_assignments) — активное закрепление = строка в
+  // vehicle_assignments с returned_at IS NULL.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT,
+      brand TEXT,
+      model TEXT,
+      year INTEGER,
+      plate_number TEXT,
+      vin TEXT,
+      fuel_type TEXT,
+      mileage INTEGER,
+      status TEXT NOT NULL DEFAULT 'available',
+      purchase_date DATE,
+      insurance_until DATE,
+      inspection_until DATE,
+      photo_url TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      returned_at DATETIME,
+      issued_by TEXT,
+      notes TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+      photo_url TEXT NOT NULL,
+      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Справочник категорий (типов) транспорта — тот же принцип, что и у
+  // tool_categories: is_default=1 удалять нельзя, свои типы добавляет
+  // только Superadmin.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `, () => {
+    const defaults = [
+      'Легковой автомобиль', 'Грузовой автомобиль', 'Микроавтобус', 'Автобус',
+      'Спецтехника', 'Погрузчик', 'Прицеп', 'Мотоцикл/скутер'
+    ];
+    const catStmt = db.prepare("INSERT OR IGNORE INTO vehicle_categories (name, is_default) VALUES (?, 1)");
+    defaults.forEach(name => catStmt.run(name));
+    catStmt.finalize();
+  });
+
   // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
   // администраторы видят данные по всем. Одна строка — одна запись за день.
   db.run(`
@@ -682,6 +775,19 @@ db.serialize(() => {
   stmt.run("public_card_show_category", "true", "Публичная карточка: показывать категорию");
   stmt.run("public_card_show_purchase_date", "false", "Публичная карточка: показывать дату покупки");
   stmt.run("public_card_show_notes", "false", "Публичная карточка: показывать заметки");
+  // Публичная карточка транспортного средства (общие настройки для всех QR-карточек автопарка)
+  stmt.run("public_vehicle_card_enabled", "true", "Публичная карточка авто: доступна всем по QR");
+  stmt.run("public_vehicle_card_show_photo", "true", "Публичная карточка авто: показывать фото");
+  stmt.run("public_vehicle_card_show_brand", "true", "Публичная карточка авто: показывать бренд");
+  stmt.run("public_vehicle_card_show_model", "true", "Публичная карточка авто: показывать модель");
+  stmt.run("public_vehicle_card_show_plate", "true", "Публичная карточка авто: показывать гос. номер");
+  stmt.run("public_vehicle_card_show_vin", "false", "Публичная карточка авто: показывать VIN");
+  stmt.run("public_vehicle_card_show_status", "true", "Публичная карточка авто: показывать статус");
+  stmt.run("public_vehicle_card_show_category", "true", "Публичная карточка авто: показывать тип");
+  stmt.run("public_vehicle_card_show_year", "true", "Публичная карточка авто: показывать год выпуска");
+  stmt.run("public_vehicle_card_show_mileage", "false", "Публичная карточка авто: показывать пробег");
+  stmt.run("public_vehicle_card_show_purchase_date", "false", "Публичная карточка авто: показывать дату покупки");
+  stmt.run("public_vehicle_card_show_notes", "false", "Публичная карточка авто: показывать заметки");
   stmt.finalize();
 
   // Заполняем тестовые статьи

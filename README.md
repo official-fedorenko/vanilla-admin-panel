@@ -24,9 +24,9 @@
 - **Личный кабинет** (`/cabinet.html`)
   - Редактирование профиля (email + смена пароля), выбор/загрузка аватарки
   - Двухфакторная аутентификация (TOTP)
-  - «Моя карточка сотрудника» и «Мой инструмент» (для сотрудников)
-  - **Заявления**: подача через двухшаговую модалку (сначала тип, затем форма) — добавить/заказать инструмент, отпуск, увольнение
-  - **Получение заказанного инструмента**: у одобренного заказа появляется кнопка «Получил» — заявка висит, пока сотрудник не подтвердит выдачу
+  - «Моя карточка сотрудника», «Мой инструмент» и «Моё авто» (для сотрудников)
+  - **Заявления**: подача через двухшаговую модалку (сначала тип, затем форма) — добавить/заказать инструмент, заказать авто, отпуск, увольнение
+  - **Получение заказанного инструмента/авто**: у одобренного заказа появляется кнопка «Получил» — заявка висит, пока сотрудник не подтвердит выдачу
   - **Учёт рабочего времени**: внесение записей (дата + часы + заметка), список своих записей и итог
   - Чат с администрацией; все карточки сворачиваются на мобильных
 
@@ -35,8 +35,10 @@
   - **Медиатека** с drag & drop загрузкой, разделами (инструменты/аватары/поддержка) и авто-сжатием изображений; стандартные иконки категорий и стандартные аватары — в модалках
   - **Учёт сотрудников** (CRUD, статусы: работает / в отпуске / неактивен / уволен)
   - **Учёт инструмента**: инвентарь, выдача/возврат/передача, история закреплений, статистика, авто-инвентарный номер, **галерея фото** (первое фото → аватар, аватар выбирается только из фото инструмента), **QR-код** и публичная карточка
+  - **Автопарк**: та же модель «выдача-возврат», что и у инструмента — инвентарь транспорта (марка/модель/год, гос. номер, VIN, пробег, топливо, статус, даты страховки и техосмотра), закрепление за сотрудниками, история, **галерея фото**, **QR-код** и публичная карточка (`/vehicle.html?id=…`), справочник типов транспорта
   - **Заявления**: одобрение/отклонение; одобрение «добавить инструмент» создаёт запись в инвентаре. Карточка заявки с полями-чипами, отдельная кнопка «Обоснование» (зелёная/красная — открывает текст в модалке)
   - **Заказы инструмента**: сводка одобренных заказов (кому и что выдать), бейдж «ожидают получения» в меню, отметка получения сотрудником, фильтр «ожидают / получены». Отклонённые заказы в сводку не попадают
+  - **Заказы авто**: аналогичная сводка одобренных заявок «Заказать авто» — кому, куда и на какой период, с той же отметкой получения
   - **Отпуска**: сводка «кто и когда в отпуске» — мини-календарь (таймлайн с датами над полосами, линией «сегодня», окном на 5 строк с прокруткой; ближайшие к отпуску сверху) и список. По умолчанию — текущие и предстоящие; прошедшие доступны в **архиве с выбором года**. Кнопка **«Отправить в отпуск»** — админ сам оформляет сотруднику сразу одобренный отпуск
   - **Учёт рабочего времени**: сводка часов по каждому пользователю + просмотр записей выбранного сотрудника
   - **Поддержка**: список всех пользователей с поиском, счётчик непрочитанных у ников и общий бейдж в меню, переписка открывается в модалке; админ может писать любому первым
@@ -123,7 +125,7 @@ vanilla-admin-panel/
 │   └── routes/            # Обработчики API
 │       ├── auth.js  cabinet.js  public.js
 │       ├── articles.js  media.js  settings.js  logs.js  backup.js
-│       ├── employees.js  tools.js  toolCatalog.js  requests.js
+│       ├── employees.js  tools.js  toolCatalog.js  vehicles.js  requests.js
 │       ├── support.js  users.js  twoFactor.js
 │       ├── categoryIcons.js  standardAvatars.js  resetDemo.js
 │       └── dashboard.js
@@ -131,7 +133,7 @@ vanilla-admin-panel/
 │   ├── index.html         # Главная (блог)
 │   ├── register.html  login.html
 │   ├── cabinet.html       # Личный кабинет + чат
-│   ├── tool.html          # Публичная карточка инструмента (по QR)
+│   ├── tool.html  vehicle.html  # Публичные карточки инструмента / авто (по QR)
 │   └── app.js  avatars/   # Логика сайта + стандартные аватары (SVG)
 ├── public/                # Админ-панель (/admin/)
 │   ├── index.html  app.js  style.css
@@ -185,14 +187,16 @@ vanilla-admin-panel/
 - `POST /api/auth/login`, `POST /api/auth/register`, `GET /api/auth/check-username`
 - `GET /api/public/articles`, `GET /api/public/settings`
 - `GET /api/public/tool?id=…` — данные публичной карточки инструмента (без авторизации)
+- `GET /api/public/vehicle?id=…` — данные публичной карточки авто (без авторизации)
 
 ### Личный кабинет
 - `GET /api/cabinet/me`, `PUT /api/cabinet/profile`, `POST /api/auth/logout`
 - `GET /api/cabinet/my-card`, `GET /api/cabinet/my-tools`, `POST /api/cabinet/tool-photo`
+- `GET /api/cabinet/my-vehicles`, `POST /api/cabinet/vehicle-photo`
 - `POST /api/cabinet/2fa/*` — настройка/подтверждение/отключение 2FA
 - `POST /api/support/send`, `GET /api/support/messages`, `POST /api/support/read`
 - `GET /api/request-types`, `GET /api/requests/mine`, `POST /api/requests`
-- `POST /api/requests/receive?id=…` — отметить получение одобренного заказа инструмента
+- `POST /api/requests/receive?id=…` — отметить получение одобренного заказа инструмента/авто
 - `POST /api/worklogs`, `GET /api/worklogs/mine`, `DELETE /api/worklogs?id=…` — учёт своего времени
 
 ### Админ-панель
@@ -203,10 +207,14 @@ vanilla-admin-panel/
 - `GET/POST/PUT/DELETE /api/crud/tools`, `/api/crud/tool-categories`
 - `POST /api/tools/issue|return|transfer`, `GET /api/tools/history|details`
 - `GET /api/tools/qr?id=…`, `POST /api/tools/photo`, `POST /api/tools/set-avatar`
+- `GET/POST/PUT/DELETE /api/crud/vehicles`, `/api/crud/vehicle-categories`
+- `POST /api/vehicles/issue|return|transfer`, `GET /api/vehicles/history|details`
+- `GET /api/vehicles/qr?id=…`, `POST /api/vehicles/photo`, `POST /api/vehicles/set-avatar`
 - `GET /api/requests`, `POST /api/requests/approve?id=…`, `POST /api/requests/reject?id=…`
 - `GET /api/requests/vacations` — сводка отпусков (одобренные + ожидающие)
 - `POST /api/requests/vacation-for` — админ оформляет отпуск сотруднику (сразу одобренный)
 - `GET /api/requests/tool-orders` — сводка одобренных заказов инструмента (со статусом получения)
+- `GET /api/requests/vehicle-orders` — сводка одобренных заказов авто (со статусом получения)
 - `GET /api/worklogs/summary`, `GET /api/worklogs/all?user_id=…` — учёт времени по всем
 - `GET /api/support/tickets`, `GET /api/support/users`, `POST /api/support/reply`, `POST /api/support/create`
 - `GET/POST /api/settings`

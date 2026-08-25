@@ -43,6 +43,12 @@
             <span>Каталог</span>
           </a>
         </li>
+        <li class="nav-item" data-section="vehicles">
+          <a href="#vehicles" title="Автопарк">
+            <i data-lucide="car"></i>
+            <span>Автопарк</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="requests">
           <a href="#requests" title="Заявления">
             <i data-lucide="clipboard-list"></i>
@@ -59,6 +65,12 @@
           <a href="#toolorders" title="Заказы инструмента">
             <i data-lucide="shopping-cart"></i>
             <span>Заказы инструмента <span id="toolOrdersBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="vehicleorders">
+          <a href="#vehicleorders" title="Заказы авто">
+            <i data-lucide="car-front"></i>
+            <span>Заказы авто <span id="vehicleOrdersBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
         <li class="nav-item" data-section="worktime">
@@ -214,6 +226,50 @@
         </div>
       </section>
 
+      <!-- VEHICLES (АВТОПАРК) SECTION -->
+      <section id="section-vehicles" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Автопарк</h2>
+            <p>Учёт транспортных средств и их закрепление за сотрудниками (выдача / возврат)</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="exportCSV('vehicles')">Экспорт CSV</button>
+            <button class="btn btn-secondary" onclick="openVehicleCategoriesManager()"><i data-lucide="tags"></i> Типы</button>
+            <button class="btn" id="addVehicleBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить авто</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="vehiclesSearch" class="form-control" placeholder="Поиск по названию, гос. номеру, VIN, держателю...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">ID</th>
+                  <th>Название</th>
+                  <th>Тип</th>
+                  <th>Гос. номер</th>
+                  <th style="width: 130px;">Статус</th>
+                  <th>У кого сейчас</th>
+                  <th style="width: 190px; text-align: right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="vehiclesTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- REQUESTS (ЗАЯВЛЕНИЯ) SECTION -->
       <section id="section-requests" class="app-section">
         <div class="page-header">
@@ -328,6 +384,42 @@
                 </tr>
               </thead>
               <tbody id="toolOrdersTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VEHICLE ORDERS (ЗАКАЗЫ АВТО) SECTION -->
+      <section id="section-vehicleorders" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Заказы авто</h2>
+            <p>Одобренные заказы: кому и какое авто выдать. Пока сотрудник не нажал «Получил» — заказ в ожидании получения.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="vehicleOrdersReceiptFilter" class="form-control" style="width:220px;">
+              <option value="">Все одобренные</option>
+              <option value="awaiting">Ожидают получения</option>
+              <option value="received">Получены</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th>Цель / куда</th>
+                  <th style="width:150px;">Тип авто</th>
+                  <th style="width:170px;">Период</th>
+                  <th style="width:150px;">Одобрил</th>
+                  <th style="width:160px;">Получение</th>
+                </tr>
+              </thead>
+              <tbody id="vehicleOrdersTableBody">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
@@ -831,6 +923,24 @@
           <button type="button" class="btn" onclick="addCategoryFromManager()">Добавить</button>
         </div>
         <div id="categoriesList" style="display:flex; flex-direction:column; gap:6px; max-height:340px; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLE CATEGORIES MANAGER (ТИПЫ ТРАНСПОРТА) MODAL -->
+  <div class="modal-overlay" id="vehicleCategoriesModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>Типы транспорта</h3>
+        <button class="modal-close" onclick="closeVehicleCategoriesManager()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:12px;">Справочник типов транспорта — используется в форме авто. Переименование меняет тип везде. Удалить можно только неиспользуемый.</p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="newVehicleCategoryName" class="form-control" placeholder="Новый тип…" style="flex:1;">
+          <button type="button" class="btn" onclick="addVehicleCategoryFromManager()">Добавить</button>
+        </div>
+        <div id="vehicleCategoriesList" style="display:flex; flex-direction:column; gap:6px; max-height:340px; overflow-y:auto;"></div>
       </div>
     </div>
   </div>
@@ -1418,9 +1528,207 @@
     </div>
   </div>
 
-  <!-- Lightbox для фото инструмента -->
+  <!-- Lightbox для фото инструмента / авто -->
   <div id="photoLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:2000; align-items:center; justify-content:center; cursor:zoom-out;">
     <img id="photoLightboxImg" src="" style="max-width:92vw; max-height:92vh; border-radius:8px;">
+  </div>
+
+  <!-- VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="vehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="vehicleModalTitle">Добавить авто</h3>
+        <button class="modal-close" id="closeVehicleModalBtn">&times;</button>
+      </div>
+      <form id="vehicleForm">
+        <input type="hidden" id="vehicleId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="vehicleName">Название / обозначение</label>
+            <input type="text" id="vehicleName" class="form-control" placeholder="Volvo FH16 самосвал" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="vehicleCategory">Тип</label>
+              <div style="display:flex; gap:8px;">
+                <select id="vehicleCategory" class="form-control" style="flex:1;">
+                  <option value="">— выберите —</option>
+                </select>
+                <button type="button" id="addVehicleCategoryBtn" class="btn btn-secondary superadmin-only" style="display:none; white-space:nowrap; padding:0 12px;" title="Добавить тип (только Superadmin)">＋</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="vehicleStatus">Статус</label>
+              <select id="vehicleStatus" class="form-control">
+                <option value="available">На стоянке</option>
+                <option value="assigned">Выдан</option>
+                <option value="repair">В ремонте</option>
+                <option value="written_off">Списан</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vehicleBrand">Марка</label>
+              <input type="text" id="vehicleBrand" class="form-control" placeholder="Volvo">
+            </div>
+            <div class="form-group">
+              <label for="vehicleModel">Модель</label>
+              <input type="text" id="vehicleModel" class="form-control" placeholder="FH16">
+            </div>
+            <div class="form-group">
+              <label for="vehicleYear">Год выпуска</label>
+              <input type="number" id="vehicleYear" class="form-control" placeholder="2021" min="1900" max="2100">
+            </div>
+            <div class="form-group">
+              <label for="vehicleFuel">Топливо</label>
+              <select id="vehicleFuel" class="form-control">
+                <option value="">— выберите —</option>
+                <option value="Бензин">Бензин</option>
+                <option value="Дизель">Дизель</option>
+                <option value="Газ">Газ</option>
+                <option value="Гибрид">Гибрид</option>
+                <option value="Электро">Электро</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vehiclePlate">Гос. номер</label>
+              <input type="text" id="vehiclePlate" class="form-control" placeholder="ABC 123" autocomplete="off">
+              <small id="vehiclePlateWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="vehicleVin">VIN</label>
+              <input type="text" id="vehicleVin" class="form-control" placeholder="WВА...17 символов" autocomplete="off">
+              <small id="vehicleVinWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="vehicleMileage">Пробег, км</label>
+              <input type="number" id="vehicleMileage" class="form-control" placeholder="120000" min="0">
+            </div>
+            <div class="form-group">
+              <label for="vehiclePurchaseDate">Дата покупки</label>
+              <input type="date" id="vehiclePurchaseDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="vehicleInsuranceUntil">Страховка до</label>
+              <input type="date" id="vehicleInsuranceUntil" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="vehicleInspectionUntil">Техосмотр до</label>
+              <input type="date" id="vehicleInspectionUntil" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Фото авто (аватар)</label>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div id="vehiclePhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                <i data-lucide="car" style="color:hsl(var(--text-muted));"></i>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="vehiclePhotoBtn">Загрузить</button>
+                <button type="button" class="btn btn-secondary" id="vehiclePhotoClearBtn" style="display:none;">Убрать</button>
+              </div>
+              <input type="file" id="vehiclePhotoInput" accept="image/*" style="display:none;">
+              <input type="hidden" id="vehiclePhotoUrl">
+            </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">Первое загруженное фото становится аватаром. Аватар можно выбрать из фото авто в его карточке.</small>
+          </div>
+          <div class="form-group">
+            <label for="vehicleNotes">Заметки</label>
+            <textarea id="vehicleNotes" class="form-control" rows="2" placeholder="Комплектация, состояние..."></textarea>
+          </div>
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">Статус «Выдан» ставится автоматически при выдаче авто сотруднику — вручную обычно не нужно.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelVehicleModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ISSUE VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="issueVehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Выдать авто</h3>
+        <button class="modal-close" id="closeIssueVehicleModalBtn">&times;</button>
+      </div>
+      <form id="issueVehicleForm">
+        <input type="hidden" id="issueVehicleId">
+        <input type="hidden" id="issueVehicleEmployeeId">
+        <div class="modal-body">
+          <div id="issueVehicleInfo" class="issue-tool-card"></div>
+
+          <div class="form-group">
+            <label for="issueVehicleEmployeeSearch">Кому выдать</label>
+            <input type="text" id="issueVehicleEmployeeSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom: 8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="issueVehicleEmployeeList"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="issueVehicleNotes">Заметка (необязательно)</label>
+            <input type="text" id="issueVehicleNotes" class="form-control" placeholder="Например: для командировки в Клайпеду">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelIssueVehicleModalBtn">Отмена</button>
+          <button type="submit" class="btn">Выдать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RETURN / TRANSFER VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="returnVehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Вернуть или передать авто</h3>
+        <button class="modal-close" id="closeReturnVehicleModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="returnVehicleInfo" class="issue-tool-card"></div>
+        <div id="returnVehicleHolder" style="font-size:13px; color:hsl(var(--text-secondary)); margin-bottom:18px;"></div>
+
+        <div id="returnVehicleStep1" style="display:flex; gap:12px;">
+          <button type="button" class="btn btn-secondary" id="returnVehicleToStockBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="warehouse"></i>
+            <span>На стоянку</span>
+          </button>
+          <button type="button" class="btn btn-secondary" id="goVehicleTransferBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="user-check"></i>
+            <span>Передать другому</span>
+          </button>
+        </div>
+
+        <div id="returnVehicleStep2" style="display:none;">
+          <div class="form-group">
+            <label for="vehicleTransferSearch">Кому передать</label>
+            <input type="text" id="vehicleTransferSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom:8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="vehicleTransferEmployeeList"></div>
+            </div>
+          </div>
+          <input type="hidden" id="vehicleTransferEmployeeId">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelReturnVehicleModalBtn">Отмена</button>
+        <button type="button" class="btn" id="confirmVehicleTransferBtn" style="display:none;">Передать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLE DETAIL (КАРТОЧКА АВТО) -->
+  <div class="modal-overlay" id="vehicleDetailModalOverlay">
+    <div class="modal" style="max-width: 880px;">
+      <div class="modal-header">
+        <h3 id="vehicleDetailTitle">Карточка авто</h3>
+        <button class="modal-close" id="closeVehicleDetailBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="vehicleDetailBody">
+        <div style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Загрузка...</div>
+      </div>
+    </div>
   </div>
 
   <!-- MEDIA PICKER MODAL DIALOG -->

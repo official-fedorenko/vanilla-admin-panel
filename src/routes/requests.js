@@ -42,6 +42,17 @@ const REQUEST_TYPES = {
       { name: 'notes', label: 'Обоснование', type: 'textarea' }
     ]
   },
+  vehicle_order: {
+    label: 'Заказать авто',
+    icon: 'car',
+    fields: [
+      { name: 'name', label: 'Цель / куда', type: 'text', required: true },
+      { name: 'category', label: 'Тип авто', type: 'category', source: 'vehicle' },
+      { name: 'start_date', label: 'С', type: 'date' },
+      { name: 'end_date', label: 'По', type: 'date' },
+      { name: 'notes', label: 'Комментарий', type: 'textarea' }
+    ]
+  },
   vacation: {
     label: 'Заявление на отпуск',
     icon: 'palmtree',
@@ -100,6 +111,7 @@ function buildTitle(type, payload) {
   switch (type) {
     case 'tool_add':    return payload.name || 'Инструмент';
     case 'tool_order':  return (payload.name || 'Инструмент') + (payload.quantity ? ` ×${payload.quantity}` : '');
+    case 'vehicle_order': return 'Авто: ' + (payload.name || '—') + (payload.start_date ? ` (${payload.start_date}${payload.end_date ? ' — ' + payload.end_date : ''})` : '');
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
@@ -301,9 +313,46 @@ function listToolOrders(req, res, user) {
   });
 }
 
+// --- Сводка заказов авто (админ): кому и что одобрили ---
+// Только одобренные заявки type='vehicle_order' (отклонённые «исчезают»).
+// received_at показывает, отметил ли сотрудник получение.
+function listVehicleOrders(req, res, user) {
+  const sql = `
+    SELECT r.id, r.payload, r.title, r.created_at, r.reviewed_at, r.received_at,
+           u.username AS requested_by_name,
+           rv.username AS reviewed_by_name,
+           e.first_name AS emp_first, e.last_name AS emp_last
+    FROM requests r
+    LEFT JOIN users u ON u.id = r.requested_by
+    LEFT JOIN users rv ON rv.id = r.reviewed_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
+    WHERE r.type = 'vehicle_order' AND r.status = 'approved'
+    ORDER BY CASE WHEN r.received_at IS NULL THEN 0 ELSE 1 END, r.reviewed_at DESC, r.id DESC`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    const orders = (rows || []).map(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const name = (r.emp_first || r.emp_last)
+        ? [r.emp_first, r.emp_last].filter(Boolean).join(' ')
+        : (r.requested_by_name || '—');
+      return {
+        id: r.id, name, title: r.title || '',
+        purpose: payload.name || '', category: payload.category || '',
+        start_date: payload.start_date || '', end_date: payload.end_date || '',
+        notes: payload.notes || '',
+        reviewed_by_name: r.reviewed_by_name || '',
+        reviewed_at: r.reviewed_at, received_at: r.received_at,
+        received: !!r.received_at
+      };
+    });
+    sendJson(res, 200, { success: true, orders });
+  });
+}
+
 // --- Отметка получения (сотрудник): «Получил» ---
-// Разрешено только автору заявки, только для одобренного tool_order,
-// который ещё не получен.
+// Разрешено только автору заявки, только для одобренных tool_order/vehicle_order,
+// которые ещё не получены.
 function receiveRequest(req, res, user, parsedUrl) {
   const id = parseId(parsedUrl);
   if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
@@ -311,7 +360,9 @@ function receiveRequest(req, res, user, parsedUrl) {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
     if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
     if (row.requested_by !== user.id) return sendJson(res, 403, { success: false, message: 'Это не ваша заявка' });
-    if (row.type !== 'tool_order') return sendJson(res, 400, { success: false, message: 'Неприменимо к этому типу' });
+    if (row.type !== 'tool_order' && row.type !== 'vehicle_order') {
+      return sendJson(res, 400, { success: false, message: 'Неприменимо к этому типу' });
+    }
     if (row.status !== 'approved') return sendJson(res, 409, { success: false, message: 'Заявка ещё не одобрена' });
     if (row.received_at) return sendJson(res, 409, { success: false, message: 'Уже отмечено как получено' });
     db.run(
@@ -439,6 +490,10 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   if (p === '/api/requests/tool-orders' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return listToolOrders(req, res, user);
+  }
+  if (p === '/api/requests/vehicle-orders' && method === 'GET') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return listVehicleOrders(req, res, user);
   }
   if (p === '/api/requests/receive' && method === 'POST') return receiveRequest(req, res, user, parsedUrl);
 
