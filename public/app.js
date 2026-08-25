@@ -1224,13 +1224,27 @@ function requestColumnFields(def) {
   return (def.fields || []).filter(f => f.type !== 'photo' && f.type !== 'textarea');
 }
 
-// Перестраивает шапку таблицы заявок: если выбран конкретный тип — по
-// колонке на каждое его поле, иначе (все типы) — общая колонка «Описание».
-function renderRequestsHead(typeKey, types) {
+// Объединённый список полей-колонок по всем типам заявок, встретившимся в
+// текущем списке (порядок — по первому появлению). Так в таблице «Все
+// типы» тоже видно отдельные колонки (даты, количество и т.п.), а не одну
+// слепленную ячейку — общие для нескольких типов поля (например «С»/«По»)
+// заполняют одну и ту же колонку.
+function requestUnionColumnFields(list, types) {
+  const seen = new Map();
+  list.forEach(r => {
+    requestColumnFields(types[r.type]).forEach(f => {
+      if (!seen.has(f.name)) seen.set(f.name, f);
+    });
+  });
+  return Array.from(seen.values());
+}
+
+// Перестраивает шапку таблицы заявок: по колонке на каждое встретившееся
+// поле (даты, количество, категория и т.д.); если список пуст — общая
+// колонка «Описание».
+function renderRequestsHead(fields) {
   const thead = document.getElementById('requestsTableHead');
   if (!thead) return [];
-  const def = typeKey ? types[typeKey] : null;
-  const fields = def ? requestColumnFields(def) : [];
   const descTh = fields.length
     ? fields.map(f => `<th>${escapeHtml(f.label)}</th>`).join('')
     : '<th>Описание</th>';
@@ -1250,8 +1264,7 @@ function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
   requestsRenderCache = list;
   requestsTypesCacheForRender = types;
-  const typeKey = document.getElementById('requestsTypeFilter')?.value ?? '';
-  const colFields = renderRequestsHead(typeKey, types);
+  const colFields = renderRequestsHead(requestUnionColumnFields(list, types));
   const colspan = colFields.length ? colFields.length + 4 : 6;
   tbody.innerHTML = '';
   if (!list.length) {
