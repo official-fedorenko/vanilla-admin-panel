@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Diamantas — Панель управления</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%232e7bf6'/%3E%3Cstop offset='100%25' stop-color='%2320e0f5'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='50,6 90,38 50,94 10,38' fill='url(%23g)'/%3E%3Cpolygon points='50,6 90,38 10,38' fill='%23ffffff' fill-opacity='0.18'/%3E%3C/svg%3E">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -25,7 +25,7 @@
       </a>
       
       <ul class="nav-list">
-        <li class="nav-item" data-section="employees">
+        <li class="nav-item active" data-section="employees">
           <a href="#employees" title="Сотрудники">
             <i data-lucide="users-round"></i>
             <span>Сотрудники</span>
@@ -37,13 +37,49 @@
             <span>Инструмент</span>
           </a>
         </li>
+        <li class="nav-item superadmin-only" data-section="catalog" style="display: none;">
+          <a href="#catalog" title="Каталог инструмента">
+            <i data-lucide="book-open"></i>
+            <span>Каталог</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="vehicles">
+          <a href="#vehicles" title="Автопарк">
+            <i data-lucide="car"></i>
+            <span>Автопарк</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="requests">
           <a href="#requests" title="Заявления">
             <i data-lucide="clipboard-list"></i>
             <span>Заявления <span id="requestsBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
-        <li class="nav-item active" data-section="articles">
+        <li class="nav-item" data-section="vacations">
+          <a href="#vacations" title="Отпуска">
+            <i data-lucide="palmtree"></i>
+            <span>Отпуска</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="toolorders">
+          <a href="#toolorders" title="Заказы инструмента">
+            <i data-lucide="shopping-cart"></i>
+            <span>Заказы инструмента <span id="toolOrdersBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="vehicleorders">
+          <a href="#vehicleorders" title="Заказы авто">
+            <i data-lucide="car-front"></i>
+            <span>Заказы авто <span id="vehicleOrdersBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="worktime">
+          <a href="#worktime" title="Учёт времени">
+            <i data-lucide="clock"></i>
+            <span>Учёт времени</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="articles">
           <a href="#articles" title="Статьи (CRUD)">
             <i data-lucide="file-text"></i>
             <span>Статьи (CRUD)</span>
@@ -64,7 +100,7 @@
         <li class="nav-item" data-section="support">
           <a href="#support" title="Обратная связь">
             <i data-lucide="message-square"></i>
-            <span>Обратная связь</span>
+            <span>Обратная связь <span id="supportBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
         <li class="nav-item superadmin-only" data-section="users" style="display: none;">
@@ -82,6 +118,9 @@
       </ul>
       
       <div class="sidebar-footer">
+        <button class="nav-burger" id="navBurger" aria-label="Меню" aria-expanded="false">
+          <i data-lucide="menu"></i>
+        </button>
         <div class="user-info">
           <div class="user-avatar" id="avatarLetter">A</div>
           <div class="user-details">
@@ -99,7 +138,7 @@
     <main class="main-content">
 
       <!-- EMPLOYEES SECTION -->
-      <section id="section-employees" class="app-section">
+      <section id="section-employees" class="app-section active">
         <div class="page-header">
           <div class="page-title">
             <h2>Сотрудники</h2>
@@ -122,10 +161,10 @@
             </div>
           </div>
           <div class="table-scroll">
-            <table class="data-table">
+            <table class="data-table cards-mobile">
               <thead>
                 <tr>
-                  <th style="width: 60px;">ID</th>
+                  <th style="width: 60px;" class="hide-mobile">ID</th>
                   <th>ФИО</th>
                   <th>Должность</th>
                   <th>Отдел</th>
@@ -166,7 +205,7 @@
             </div>
           </div>
           <div class="table-scroll">
-            <table class="data-table">
+            <table class="data-table cards-mobile">
               <thead>
                 <tr>
                   <th style="width: 50px;">ID</th>
@@ -180,6 +219,50 @@
                 </tr>
               </thead>
               <tbody id="toolsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VEHICLES (АВТОПАРК) SECTION -->
+      <section id="section-vehicles" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Автопарк</h2>
+            <p>Учёт транспортных средств и их закрепление за сотрудниками (выдача / возврат)</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="exportCSV('vehicles')">Экспорт CSV</button>
+            <button class="btn btn-secondary" onclick="openVehicleCategoriesManager()"><i data-lucide="tags"></i> Типы</button>
+            <button class="btn" id="addVehicleBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить авто</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="vehiclesSearch" class="form-control" placeholder="Поиск по названию, гос. номеру, VIN, держателю...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">ID</th>
+                  <th>Название</th>
+                  <th>Тип</th>
+                  <th>Гос. номер</th>
+                  <th style="width: 130px;">Статус</th>
+                  <th>У кого сейчас</th>
+                  <th style="width: 190px; text-align: right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="vehiclesTableBody">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
@@ -208,8 +291,8 @@
         </div>
         <div class="table-container">
           <div class="table-scroll">
-            <table class="data-table">
-              <thead>
+            <table class="data-table cards-mobile">
+              <thead id="requestsTableHead">
                 <tr>
                   <th style="width:50px;">ID</th>
                   <th style="width:180px;">Тип</th>
@@ -227,8 +310,163 @@
         </div>
       </section>
 
+      <!-- VACATIONS (ОТПУСКА) SECTION -->
+      <section id="section-vacations" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Отпуска</h2>
+            <p>Сводка: кто и когда в отпуске. По умолчанию — текущие и предстоящие; прошедшие доступны в архиве с выбором года.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="vacationsPhaseFilter" class="form-control" style="width:200px;">
+              <option value="">Текущие и предстоящие</option>
+              <option value="current">Сейчас в отпуске</option>
+              <option value="upcoming">Предстоящие</option>
+              <option value="past">Прошедшие (архив)</option>
+            </select>
+            <select id="vacationsYearFilter" class="form-control" style="width:120px; display:none;"></select>
+            <button class="btn" onclick="openVacationForm()"><i data-lucide="palmtree"></i> Отправить в отпуск</button>
+          </div>
+        </div>
+
+        <!-- Мини-календарь (таймлайн отпусков по неделям) -->
+        <div id="vacationsCalendar" style="margin-bottom:20px;"></div>
+
+        <!-- Список -->
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th style="width:130px;">С</th>
+                  <th style="width:130px;">По</th>
+                  <th style="width:90px;">Дней</th>
+                  <th style="width:150px;">Период</th>
+                  <th style="width:130px;">Статус</th>
+                  <th>Комментарий</th>
+                </tr>
+              </thead>
+              <tbody id="vacationsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TOOL ORDERS (ЗАКАЗЫ ИНСТРУМЕНТА) SECTION -->
+      <section id="section-toolorders" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Заказы инструмента</h2>
+            <p>Одобренные заказы: кому и что выдать. Пока сотрудник не нажал «Получил» — заказ в ожидании получения.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="toolOrdersReceiptFilter" class="form-control" style="width:220px;">
+              <option value="">Все одобренные</option>
+              <option value="awaiting">Ожидают получения</option>
+              <option value="received">Получены</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th>Что заказано</th>
+                  <th style="width:100px;">Кол-во</th>
+                  <th style="width:150px;">Категория</th>
+                  <th style="width:150px;">Одобрил</th>
+                  <th style="width:160px;">Получение</th>
+                </tr>
+              </thead>
+              <tbody id="toolOrdersTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VEHICLE ORDERS (ЗАКАЗЫ АВТО) SECTION -->
+      <section id="section-vehicleorders" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Заказы авто</h2>
+            <p>Одобренные заказы: кому и какое авто выдать. Пока сотрудник не нажал «Получил» — заказ в ожидании получения.</p>
+          </div>
+          <div class="page-header-actions">
+            <select id="vehicleOrdersReceiptFilter" class="form-control" style="width:220px;">
+              <option value="">Все одобренные</option>
+              <option value="awaiting">Ожидают получения</option>
+              <option value="received">Получены</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th>Сотрудник</th>
+                  <th>Цель / куда</th>
+                  <th style="width:150px;">Тип авто</th>
+                  <th style="width:170px;">Период</th>
+                  <th style="width:150px;">Одобрил</th>
+                  <th style="width:160px;">Получение</th>
+                </tr>
+              </thead>
+              <tbody id="vehicleOrdersTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- CATALOG (СТАНДАРТНЫЙ КАТАЛОГ ИНСТРУМЕНТА) SECTION -->
+      <section id="section-catalog" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Каталог инструмента</h2>
+            <p>Стандартные модели для подсказок при добавлении инструмента (в админке и в заявках). Редактирует Superadmin.</p>
+          </div>
+          <div class="page-header-actions">
+            <input type="text" id="catalogModelsSearch" class="form-control" placeholder="Поиск по бренду/модели…" style="width:220px;">
+            <button class="btn btn-secondary" onclick="openCategoriesManager()"><i data-lucide="tags"></i> Категории</button>
+            <button class="btn btn-secondary" onclick="openBrandsModal()"><i data-lucide="award"></i> Бренды</button>
+            <button class="btn" onclick="openCatalogModelModal()"><i data-lucide="plus"></i> Добавить модель</button>
+          </div>
+        </div>
+        <div class="catalog-browser" style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
+          <!-- Слева — категории с числом моделей -->
+          <aside id="catalogCatPanel" style="width:260px; flex-shrink:0; max-height:70vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></aside>
+          <!-- Справа — модели выбранной категории -->
+          <div style="flex:1; min-width:300px;">
+            <div class="table-container" style="margin-top:0;">
+              <div class="table-scroll">
+                <table class="data-table cards-mobile">
+                  <thead>
+                    <tr>
+                      <th>Модель</th>
+                      <th style="width:120px;">Бренд</th>
+                      <th>Характеристики</th>
+                      <th style="width:120px; text-align:right;">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="catalogModelsTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ARTICLES (CRUD) SECTION - теперь с дашборд-элементами -->
-      <section id="section-articles" class="app-section active">
+      <section id="section-articles" class="app-section">
         <div class="page-header">
           <div class="page-title">
             <h2>Менеджер статей</h2>
@@ -260,7 +498,7 @@
             </div>
           </div>
           <div class="table-scroll">
-            <table class="data-table">
+            <table class="data-table cards-mobile">
               <thead>
                 <tr>
                   <th style="width: 80px;">ID</th>
@@ -318,7 +556,7 @@
         <!-- FILES VIEW -->
         <div id="mediaFilesView" style="display: none;">
           <div style="margin-bottom: 16px; display: flex; align-items: center;">
-            <button class="btn btn-secondary" onclick="showMediaFolders()">
+            <button class="btn" onclick="showMediaFolders()" style="background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); color: #fff; border: none;">
               <i data-lucide="arrow-left"></i>
               <span>Назад к категориям</span>
             </button>
@@ -359,16 +597,18 @@
 
           <!-- Стандартные аватары (показывается только в папке «Аватары») -->
           <div id="standardAvatarsPanel" style="display: none; margin-bottom: 24px;">
-            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Стандартные аватары</h3>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Предустановленный набор. Пользователи выбирают их в профиле (Выбрать → Стандартные).</p>
-            <div id="standardAvatarsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px;"></div>
+            <button type="button" class="btn btn-secondary" onclick="openStandardAvatarsModal()">
+              <i data-lucide="users"></i>
+              <span>Стандартные аватары</span>
+            </button>
           </div>
 
           <!-- Иконки категорий инструментов (показывается только в папке «Инструменты») -->
           <div id="categoryIconsPanel" style="display: none; margin-bottom: 24px;">
-            <h3 style="font-size: 15px; color: var(--text-primary); margin: 0 0 4px;">Иконки категорий</h3>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
-            <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+            <button type="button" class="btn btn-secondary" onclick="openCategoryIconsModal()">
+              <i data-lucide="shapes"></i>
+              <span>Стандартные иконки категорий</span>
+            </button>
           </div>
 
           <div class="media-grid" id="mediaGrid">
@@ -376,6 +616,34 @@
           </div>
         </div>
       </section>
+
+      <!-- WORK TIME SECTION -->
+      <section id="section-worktime" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Учёт рабочего времени</h2>
+            <p>Часы, внесённые сотрудниками. Нажмите на пользователя, чтобы увидеть записи.</p>
+          </div>
+        </div>
+        <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          <div id="workTimeSummary">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- WORK TIME DETAIL MODAL -->
+      <div class="modal-overlay" id="workTimeModalOverlay">
+        <div class="modal" style="display:flex; flex-direction:column; max-height:min(82vh,720px);">
+          <div class="modal-header">
+            <h3 id="workTimeModalTitle">Записи</h3>
+            <button class="modal-close" onclick="closeWorkTimeModal()">&times;</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto;">
+            <div id="workTimeEntries"><!-- populated --></div>
+          </div>
+        </div>
+      </div>
 
       <!-- SETTINGS SECTION -->
       <section id="section-settings" class="app-section">
@@ -385,36 +653,100 @@
             <p>Управление конфигурацией вашего сайта</p>
           </div>
         </div>
-        
+
+        <div class="settings-tabs">
+          <button type="button" class="settings-tab-btn active" data-settings-tab="site">Настройка сайта</button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="cards">Настройка карточек</button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="system">Настройка системы</button>
+        </div>
+
         <div style="max-width: 600px; background-color: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); padding: 32px;">
           <form id="settingsForm">
-            <!-- Dynamic elements loaded here -->
-            <div id="settingsContainer"></div>
-            
-            <button type="submit" class="btn" style="margin-top: 10px;">
+            <!-- Настройка сайта: общие поля, главная, о блоге, контакты -->
+            <div id="settingsPanelSite" class="settings-tab-panel" data-settings-panel="site">
+              <div id="settingsContainerSite"></div>
+            </div>
+
+            <!-- Настройка карточек: публичные QR-карточки инструмента и авто -->
+            <div id="settingsPanelCards" class="settings-tab-panel" data-settings-panel="cards" hidden>
+              <div id="settingsContainerCards"></div>
+            </div>
+
+            <button type="submit" class="btn" id="settingsSaveBtn" style="margin-top: 10px;">
               <i data-lucide="save"></i>
               <span>Сохранить настройки</span>
             </button>
           </form>
 
-          <!-- Superadmin-only backup download -->
-          <div id="backupBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Резервная копия (только Superadmin)</div>
-            <a href="/api/admin/backup" id="backupBtn" class="btn btn-secondary" download>
-              <i data-lucide="download"></i>
-              <span>Скачать копию базы данных</span>
-            </a>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Скачивает файл db.sqlite целиком. Восстановление: остановите сервер, замените db.sqlite этим файлом, перезапустите.</div>
-          </div>
+          <!-- Настройка системы: резервная копия, тестовые данные, опасная зона -->
+          <div id="settingsPanelSystem" class="settings-tab-panel" data-settings-panel="system" hidden>
+            <!-- Superadmin-only backup download -->
+            <div id="backupBox" style="padding-top: 4px; display: none;">
+              <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Резервная копия (только Superadmin)</div>
+              <a href="/api/admin/backup" id="backupBtn" class="btn btn-secondary" download>
+                <i data-lucide="download"></i>
+                <span>Скачать копию базы данных</span>
+              </a>
+              <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Скачивает файл db.sqlite целиком. Восстановление: остановите сервер, замените db.sqlite этим файлом, перезапустите.</div>
+            </div>
 
-          <!-- Superadmin-only demo reset (very handy when presenting the project) -->
-          <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
-            <button type="button" id="resetDemoBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
-              <i data-lucide="refresh-cw"></i>
-              <span>Сбросить демо-данные</span>
-            </button>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Удалит статьи, медиа, логи, обращения и пересоздаст тестовые данные.</div>
+            <!-- Superadmin-only: тестовые сотрудники -->
+            <div id="testEmployeesBox" class="test-box superadmin-only">
+              <div class="test-box-title">Тестовые сотрудники (только Superadmin)</div>
+              <div class="test-box-buttons">
+                <button type="button" id="addTestEmpBtn" class="btn">
+                  <i data-lucide="user-plus"></i><span>Добавить</span>
+                </button>
+                <button type="button" id="removeTestEmpBtn" class="btn btn-secondary" style="color:#ff6b6b;">
+                  <i data-lucide="user-minus"></i><span>Удалить</span>
+                </button>
+              </div>
+              <div class="test-box-description">Демо-набор из 5 сотрудников (Diamantas) с аккаунтами (пароль 1234qwer). Реальные записи не затрагиваются.</div>
+            </div>
+
+            <!-- Superadmin-only test tools (add/remove) -->
+            <div id="testToolsBox" class="test-box superadmin-only">
+              <div class="test-box-title">Тестовые инструменты</div>
+              <div class="test-box-buttons">
+                <button type="button" id="addTestToolBtn" class="btn btn-secondary" style="color:#20c997;">
+                  <i data-lucide="tool-plus"></i><span>Добавить</span>
+                </button>
+                <button type="button" id="removeTestToolBtn" class="btn btn-secondary" style="color:#ff6b6b;">
+                  <i data-lucide="tool-minus"></i><span>Удалить</span>
+                </button>
+              </div>
+              <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
+            </div>
+
+            <!-- Superadmin-only: полная очистка склада (раздел «Инструмент») -->
+            <div id="clearToolsCatalogBox" class="test-box superadmin-only">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка склада (раздел «Инструмент»)</div>
+              <button type="button" id="clearToolsCatalogBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="trash-2"></i>
+                <span>Очистить склад</span>
+              </button>
+              <div class="test-box-description">Удалит ВСЕ инструменты со склада (раздел «Инструмент»), включая реальные записи (не только тестовые). Не путать со справочником моделей ниже. Действие необратимо.</div>
+            </div>
+
+            <!-- Superadmin-only: очистка справочника моделей (раздел «Каталог») -->
+            <div id="clearCatalogModelsBox" class="test-box superadmin-only">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка справочника моделей (раздел «Каталог»)</div>
+              <button type="button" id="clearCatalogModelsBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="trash-2"></i>
+                <span>Очистить справочник моделей</span>
+              </button>
+              <div class="test-box-description">Удалит ВСЕ стандартные модели (Bosch/DeWalt и т.д.) из справочника «Каталог». После этого пропадёт быстрое автозаполнение формы при добавлении инструмента. Действие необратимо.</div>
+            </div>
+
+            <!-- Superadmin-only demo reset (very handy when presenting the project) -->
+            <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
+              <button type="button" id="resetDemoBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="refresh-cw"></i>
+                <span>Сбросить демо-данные</span>
+              </button>
+              <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Удалит статьи, медиа, логи, обращения и пересоздаст тестовые данные.</div>
+            </div>
           </div>
         </div>
       </section>
@@ -426,52 +758,58 @@
             <h2>Обратная связь и поддержка</h2>
             <p>Общение с пользователями и ответы на вопросы с сайта</p>
           </div>
-        </div>
-        
-        <div class="support-container">
-
-          <!-- Tickets List -->
-          <div class="support-sidebar">
-            <div style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2);">
-              <h3 style="font-size: 14px; margin: 0;">Диалоги</h3>
-            </div>
-            <div id="ticketsList" style="flex: 1; overflow-y: auto;">
-              <!-- Dynamically populated -->
-            </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-secondary" onclick="openNotificationSettingsModal()">
+              <i data-lucide="settings"></i>
+              <span>Настройки уведомлений</span>
+            </button>
+            <button class="btn" onclick="openSendNotificationModal()">
+              <i data-lucide="bell"></i>
+              <span>Уведомление</span>
+            </button>
           </div>
+        </div>
 
-          <!-- Chat Window -->
-          <div class="support-chat">
-            <!-- Header -->
-            <div id="chatHeader" style="padding: 16px; border-bottom: 1px solid hsl(var(--border-color)); background: rgba(0,0,0,0.2); display: flex; align-items: center; gap: 12px; display: none;">
-              <div class="chat-avatar" style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); display: flex; align-items: center; justify-content: center; font-weight: bold;" id="chatHeaderAvatar">?</div>
-              <div>
-                <div style="font-weight: 600;" id="chatHeaderName">Выберите диалог</div>
-                <div style="font-size: 12px; color: hsl(var(--text-muted));" id="chatHeaderEmail">...</div>
-              </div>
-            </div>
-            
-            <!-- Empty state -->
-            <div id="chatEmptyState" style="flex: 1; display: flex; align-items: center; justify-content: center; color: hsl(var(--text-muted)); flex-direction: column; gap: 10px;">
-              <i data-lucide="message-square" style="width: 48px; height: 48px; opacity: 0.5;"></i>
-              Выберите диалог слева для начала общения
-            </div>
+        <!-- Поиск по пользователям -->
+        <div style="position: relative; margin-bottom: 16px; max-width: 420px;">
+          <i data-lucide="search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:hsl(var(--text-muted));"></i>
+          <input type="text" id="supportUserSearch" class="form-control" placeholder="Поиск по имени или нику..." style="padding-left: 38px;" autocomplete="off">
+        </div>
 
-            <!-- Messages List -->
-            <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 20px; display: none; flex-direction: column; gap: 16px;">
-              <!-- Dynamically populated -->
-            </div>
-            
-            <!-- Input Area -->
-            <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-              <form id="replyForm" style="display: flex; gap: 10px;">
-                <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1;" required autocomplete="off">
-                <button type="submit" class="btn" style="padding: 0 20px;">Отправить</button>
-              </form>
-            </div>
+        <!-- Список всех пользователей (клик → чат в модалке) -->
+        <div style="background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); overflow: hidden;">
+          <div id="ticketsList">
+            <!-- Dynamically populated -->
           </div>
         </div>
       </section>
+
+      <!-- SUPPORT CHAT MODAL -->
+      <div class="modal-overlay" id="supportChatModalOverlay">
+        <div class="modal" style="display: flex; flex-direction: column; height: min(80vh, 640px); padding: 0; overflow: hidden;">
+          <div class="modal-header" style="margin: 0; padding: 16px 20px; border-bottom: 1px solid hsl(var(--border-color));">
+            <div style="display: flex; align-items: center; gap: 12px; min-width:0;">
+              <div class="chat-avatar" style="width: 38px; height: 38px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff;" id="chatHeaderAvatar">?</div>
+              <div style="min-width:0;">
+                <div style="font-weight: 600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="chatHeaderName">Пользователь</div>
+                <div style="font-size: 12px; color: hsl(var(--text-muted)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" id="chatHeaderEmail">...</div>
+              </div>
+            </div>
+            <button class="modal-close" id="closeSupportChatBtn" onclick="closeSupportChat()">&times;</button>
+          </div>
+
+          <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div id="chatInputArea" style="padding: 16px; border-top: 1px solid hsl(var(--border-color));">
+            <form id="replyForm" style="display: flex; gap: 10px; align-items: stretch;">
+              <input type="text" id="replyMessageInput" class="form-control" placeholder="Написать ответ..." style="flex: 1; min-width: 0;" required autocomplete="off">
+              <button type="submit" class="btn" style="padding: 10px 22px; flex-shrink: 0; white-space: nowrap;">Отправить</button>
+            </form>
+          </div>
+        </div>
+      </div>
 
       <!-- USERS SECTION -->
       <section id="section-users" class="app-section">
@@ -485,7 +823,7 @@
             <span>Добавить</span>
           </button>
         </div>
-        
+
         <div class="table-container">
           <div class="table-toolbar">
             <div class="table-search">
@@ -493,7 +831,7 @@
             </div>
           </div>
           <div class="table-scroll">
-            <table class="data-table">
+            <table class="data-table cards-mobile">
               <thead>
                 <tr>
                   <th style="width: 80px;">ID</th>
@@ -532,7 +870,7 @@
             </div>
           </div>
           <div class="table-scroll">
-            <table class="data-table">
+            <table class="data-table cards-mobile">
               <thead>
                 <tr>
                   <th style="width: 200px;">Дата</th>
@@ -587,6 +925,254 @@
     </div>
   </div>
 
+  <!-- CATEGORIES MANAGER (КАТЕГОРИИ ИНСТРУМЕНТА) MODAL -->
+  <div class="modal-overlay" id="categoriesModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>Категории инструмента</h3>
+        <button class="modal-close" onclick="closeCategoriesManager()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:12px;">Единый список категорий — используется и в инструменте, и в каталоге. Переименование меняет категорию везде. Удалить можно только неиспользуемую.</p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="newCategoryName" class="form-control" placeholder="Новая категория…" style="flex:1;">
+          <button type="button" class="btn" onclick="addCategoryFromManager()">Добавить</button>
+        </div>
+        <div id="categoriesList" style="display:flex; flex-direction:column; gap:6px; max-height:340px; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLE CATEGORIES MANAGER (ТИПЫ ТРАНСПОРТА) MODAL -->
+  <div class="modal-overlay" id="vehicleCategoriesModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>Типы транспорта</h3>
+        <button class="modal-close" onclick="closeVehicleCategoriesManager()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:12px;">Справочник типов транспорта — используется в форме авто. Переименование меняет тип везде. Удалить можно только неиспользуемый.</p>
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input type="text" id="newVehicleCategoryName" class="form-control" placeholder="Новый тип…" style="flex:1;">
+          <button type="button" class="btn" onclick="addVehicleCategoryFromManager()">Добавить</button>
+        </div>
+        <div id="vehicleCategoriesList" style="display:flex; flex-direction:column; gap:6px; max-height:340px; overflow-y:auto;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CATALOG MODEL (МОДЕЛЬ КАТАЛОГА) MODAL -->
+  <div class="modal-overlay" id="catalogModelModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="catalogModelModalTitle">Добавить модель</h3>
+        <button class="modal-close" onclick="closeCatalogModelModal()">&times;</button>
+      </div>
+      <form id="catalogModelForm" onsubmit="return submitCatalogModel(event)">
+        <input type="hidden" id="cmId">
+        <div class="modal-body">
+          <div style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:10px;">
+            <span class="required-mark">*</span> — обязательные поля
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+              <label for="cmCategory">Категория<span class="required-mark">*</span></label>
+              <select id="cmCategory" class="form-control" required><option value="">— выберите —</option></select>
+            </div>
+            <div class="form-group">
+              <label for="cmLine">Линейка</label>
+              <input type="text" id="cmLine" class="form-control" placeholder="Professional / XR">
+            </div>
+            <div class="form-group">
+              <label>Бренд<span class="required-mark">*</span></label>
+              <div id="cmBrandDisplay" class="form-control brand-picker-trigger" onclick="openBrandPicker(event, document.getElementById('cmBrand').value, (name) => setBrandDisplay('cm', name))">
+                <img id="cmBrandIcon" src="" style="display:none;">
+                <span id="cmBrandText" class="brand-picker-placeholder">Выбрать бренд…</span>
+              </div>
+              <input type="hidden" id="cmBrand" required>
+            </div>
+            <div class="form-group">
+              <label for="cmModel">Модель<span class="required-mark">*</span></label>
+              <input type="text" id="cmModel" class="form-control" placeholder="GBH 2-28 F" required>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label for="cmName">Название (необязательно — иначе «Бренд Модель»)</label>
+              <input type="text" id="cmName" class="form-control" placeholder="Bosch GBH 2-28 F">
+            </div>
+            <!-- Характеристики зависят от категории (рендерятся динамически) -->
+            <div id="cmDynFields" style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:14px;"></div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label>Картинка (необязательно)</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <img id="cmImagePreview" src="" style="width:44px; height:36px; object-fit:contain; border:1px solid hsl(var(--border-color)); border-radius:6px; display:none;">
+                <input type="hidden" id="cmImageUrl">
+                <button type="button" class="btn btn-secondary" onclick="pickCatalogModelImage()">Выбрать из медиатеки</button>
+                <button type="button" class="btn btn-secondary" onclick="clearCatalogModelImage()">Убрать</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeCatalogModelModal()">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- VACATION (ОТПУСК СОТРУДНИКУ) MODAL -->
+  <div class="modal-overlay" id="vacationModalOverlay">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h3>Отправить в отпуск</h3>
+        <button class="modal-close" onclick="closeVacationForm()">&times;</button>
+      </div>
+      <form id="vacationForm" onsubmit="return submitVacation(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="vacationEmployee">Сотрудник</label>
+            <select id="vacationEmployee" class="form-control" required>
+              <option value="">— выберите —</option>
+            </select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+              <label for="vacationStart">С</label>
+              <input type="date" id="vacationStart" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="vacationEnd">По</label>
+              <input type="date" id="vacationEnd" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="vacationNotes">Комментарий (необязательно)</label>
+            <textarea id="vacationNotes" class="form-control" rows="2" placeholder="Например: ежегодный оплачиваемый"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeVacationForm()">Отмена</button>
+          <button type="submit" class="btn">Оформить отпуск</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- JUSTIFICATION (ОБОСНОВАНИЕ ЗАЯВКИ) MODAL -->
+  <div class="modal-overlay" id="justificationModalOverlay">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="justificationModalTitle">Обоснование</h3>
+          <div id="justificationModalMeta" style="font-size:12px;color:hsl(var(--text-muted));margin-top:2px;"></div>
+        </div>
+        <button class="modal-close" onclick="closeJustification()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="justificationModalText" style="white-space:pre-wrap;line-height:1.6;color:hsl(var(--text-primary));margin:0;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CATEGORY ICONS MODAL -->
+  <div class="modal-overlay" id="categoryIconsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Стандартные иконки категорий</h3>
+        <button class="modal-close" id="closeCategoryIconsModalBtn" onclick="closeCategoryIconsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
+        <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRANDS MODAL -->
+  <div class="modal-overlay" id="brandsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Бренды</h3>
+        <button class="modal-close" id="closeBrandsModalBtn" onclick="closeBrandsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Реестр брендов инструмента с иконками — используется при выборе бренда в форме инструмента/модели каталога.</p>
+        <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <input type="text" id="newBrandName" class="form-control" placeholder="Название нового бренда" style="flex:1;">
+          <button type="button" class="btn btn-secondary" onclick="pickNewBrandIcon()">
+            <img id="newBrandIconPreview" src="" style="width:18px;height:18px;object-fit:contain;display:none;vertical-align:middle;margin-right:4px;">
+            <span id="newBrandIconLabel">Иконка</span>
+          </button>
+          <button type="button" class="btn" onclick="submitNewBrand()">
+            <i data-lucide="plus"></i><span>Добавить</span>
+          </button>
+        </div>
+        <div id="brandsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEND NOTIFICATION MODAL -->
+  <div class="modal-overlay" id="sendNotificationModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Отправить уведомление</h3>
+        <button class="modal-close" onclick="closeSendNotificationModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="notifTargetUser">Кому</label>
+          <select id="notifTargetUser" class="form-control">
+            <option value="">Всем пользователям</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="notifMessage">Сообщение<span class="required-mark">*</span></label>
+          <textarea id="notifMessage" class="form-control" rows="4" maxlength="500" placeholder="Текст уведомления…" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="notifScheduledAt">Отложенная отправка (необязательно)</label>
+          <input type="datetime-local" id="notifScheduledAt" class="form-control">
+          <div style="font-size:12px; color:hsl(var(--text-muted)); margin-top:6px;">Если указать время в будущем — уведомление появится у получателя только тогда. Пусто — отправится сразу.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSendNotificationModal()">Отмена</button>
+        <button type="button" class="btn" onclick="submitNotification()">Отправить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATION SETTINGS MODAL (история отправленных, удаление, статусы) -->
+  <div class="modal-overlay" id="notificationSettingsModalOverlay">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <h3>Настройки уведомлений</h3>
+        <button class="modal-close" onclick="closeNotificationSettingsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="notificationHistoryList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeNotificationSettingsModal()">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STANDARD AVATARS MODAL -->
+  <div class="modal-overlay" id="standardAvatarsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Стандартные аватары</h3>
+        <button class="modal-close" id="closeStandardAvatarsModalBtn" onclick="closeStandardAvatarsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Предустановленный набор. Пользователи выбирают их в профиле (Выбрать → Стандартные).</p>
+        <div id="standardAvatarsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- USER MODAL DIALOG -->
   <div class="modal-overlay" id="userModalOverlay">
     <div class="modal">
@@ -597,6 +1183,7 @@
       <form id="userForm">
         <input type="hidden" id="userId">
         <div class="modal-body">
+          <div id="userEmployeePanel"></div>
           <div class="form-group">
             <label for="userUsername">Имя пользователя</label>
             <input type="text" id="userUsername" class="form-control" placeholder="Например: editor1" required>
@@ -636,6 +1223,30 @@
   </div>
 
   <!-- EMPLOYEE MODAL DIALOG -->
+  <!-- GENERIC ROW DETAIL MODAL (мобильный просмотр строк таблиц) -->
+  <div class="modal-overlay" id="rowDetailModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="rowDetailTitle">Подробности</h3>
+        <button class="modal-close" onclick="closeRowDetail()">&times;</button>
+      </div>
+      <div class="modal-body" id="rowDetailBody"><!-- populated --></div>
+      <div class="modal-footer" id="rowDetailActions"><!-- populated --></div>
+    </div>
+  </div>
+
+  <!-- EMPLOYEE DETAIL MODAL (мобильный просмотр карточки) -->
+  <div class="modal-overlay" id="employeeDetailModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="employeeDetailTitle">Сотрудник</h3>
+        <button class="modal-close" onclick="closeEmployeeDetail()">&times;</button>
+      </div>
+      <div class="modal-body" id="employeeDetailBody"><!-- populated --></div>
+      <div class="modal-footer" id="employeeDetailActions"><!-- populated --></div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="employeeModalOverlay">
     <div class="modal">
       <div class="modal-header">
@@ -645,6 +1256,7 @@
       <form id="employeeForm">
         <input type="hidden" id="employeeId">
         <div class="modal-body">
+          <div id="empAccountPanel"></div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div class="form-group">
               <label for="empFirstName">Имя</label>
@@ -737,8 +1349,12 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="toolBrand">Бренд</label>
-              <input type="text" id="toolBrand" class="form-control" placeholder="Bosch">
+              <label>Бренд</label>
+              <div id="toolBrandDisplay" class="form-control brand-picker-trigger" onclick="openBrandPicker(event, document.getElementById('toolBrand').value, (name) => setBrandDisplay('tool', name))">
+                <img id="toolBrandIcon" src="" style="display:none;">
+                <span id="toolBrandText" class="brand-picker-placeholder">Выбрать бренд…</span>
+              </div>
+              <input type="hidden" id="toolBrand">
             </div>
             <div class="form-group">
               <label for="toolModel">Модель</label>
@@ -760,19 +1376,19 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Фото инструмента</label>
+            <label>Фото инструмента (аватар)</label>
             <div style="display:flex; align-items:center; gap:14px;">
               <div id="toolPhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
                 <i data-lucide="wrench" style="color:hsl(var(--text-muted));"></i>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-secondary" id="toolPhotoBtn">Загрузить</button>
-                <button type="button" class="btn btn-secondary" id="toolPhotoPickBtn">Из медиатеки</button>
                 <button type="button" class="btn btn-secondary" id="toolPhotoClearBtn" style="display:none;">Убрать</button>
               </div>
               <input type="file" id="toolPhotoInput" accept="image/*" style="display:none;">
               <input type="hidden" id="toolPhotoUrl">
             </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">Первое загруженное фото становится аватаром. Аватар можно выбрать из фото инструмента в его карточке.</small>
           </div>
           <div class="form-group">
             <label for="toolNotes">Заметки</label>
@@ -928,9 +1544,206 @@
     </div>
   </div>
 
-  <!-- Lightbox для фото инструмента -->
+  <!-- Lightbox для фото инструмента / авто -->
   <div id="photoLightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:2000; align-items:center; justify-content:center; cursor:zoom-out;">
     <img id="photoLightboxImg" src="" style="max-width:92vw; max-height:92vh; border-radius:8px;">
+  </div>
+
+  <!-- VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="vehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="vehicleModalTitle">Добавить авто</h3>
+        <button class="modal-close" id="closeVehicleModalBtn">&times;</button>
+      </div>
+      <form id="vehicleForm">
+        <input type="hidden" id="vehicleId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="vehicleName">Название / обозначение</label>
+            <input type="text" id="vehicleName" class="form-control" placeholder="Volvo FH16 самосвал" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="vehicleCategory">Тип</label>
+              <div style="display:flex; gap:8px;">
+                <select id="vehicleCategory" class="form-control" style="flex:1;">
+                  <option value="">— выберите —</option>
+                </select>
+                <button type="button" id="addVehicleCategoryBtn" class="btn btn-secondary superadmin-only" style="display:none; white-space:nowrap; padding:0 12px;" title="Добавить тип (только Superadmin)">＋</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="vehicleStatus">Статус</label>
+              <select id="vehicleStatus" class="form-control">
+                <option value="available">На стоянке</option>
+                <option value="assigned">Выдан</option>
+                <option value="repair">В ремонте</option>
+                <option value="written_off">Списан</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="vehicleBrand">Марка</label>
+              <input type="text" id="vehicleBrand" class="form-control" placeholder="Volvo">
+            </div>
+            <div class="form-group">
+              <label for="vehicleModel">Модель</label>
+              <input type="text" id="vehicleModel" class="form-control" placeholder="FH16">
+            </div>
+            <div class="form-group">
+              <label for="vehicleYear">Год выпуска</label>
+              <input type="number" id="vehicleYear" class="form-control" placeholder="2021" min="1900" max="2100">
+            </div>
+            <div class="form-group">
+              <label>Топливо</label>
+              <div id="vehicleFuel" class="fuel-checkbox-group">
+                <label class="fuel-checkbox"><input type="checkbox" value="Бензин"><span>Бензин</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Дизель"><span>Дизель</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Газ"><span>Газ</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Гибрид"><span>Гибрид</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Электро"><span>Электро</span></label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="vehiclePlate">Гос. номер</label>
+              <input type="text" id="vehiclePlate" class="form-control" placeholder="ABC 123" autocomplete="off">
+              <small id="vehiclePlateWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="vehicleVin">VIN</label>
+              <input type="text" id="vehicleVin" class="form-control" placeholder="WВА...17 символов" autocomplete="off">
+              <small id="vehicleVinWarn" class="dup-warn" style="display:none;"></small>
+            </div>
+            <div class="form-group">
+              <label for="vehicleMileage">Пробег, км</label>
+              <input type="number" id="vehicleMileage" class="form-control" placeholder="120000" min="0">
+            </div>
+            <div class="form-group">
+              <label for="vehiclePurchaseDate">Дата покупки</label>
+              <input type="date" id="vehiclePurchaseDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="vehicleInsuranceUntil">Страховка до</label>
+              <input type="date" id="vehicleInsuranceUntil" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="vehicleInspectionUntil">Техосмотр до</label>
+              <input type="date" id="vehicleInspectionUntil" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Фото авто (аватар)</label>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div id="vehiclePhotoPreview" style="width:72px; height:72px; border-radius:12px; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                <i data-lucide="car" style="color:hsl(var(--text-muted));"></i>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="vehiclePhotoBtn">Загрузить</button>
+                <button type="button" class="btn btn-secondary" id="vehiclePhotoClearBtn" style="display:none;">Убрать</button>
+              </div>
+              <input type="file" id="vehiclePhotoInput" accept="image/*" style="display:none;">
+              <input type="hidden" id="vehiclePhotoUrl">
+            </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">Первое загруженное фото становится аватаром. Аватар можно выбрать из фото авто в его карточке.</small>
+          </div>
+          <div class="form-group">
+            <label for="vehicleNotes">Заметки</label>
+            <textarea id="vehicleNotes" class="form-control" rows="2" placeholder="Комплектация, состояние..."></textarea>
+          </div>
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">Статус «Выдан» ставится автоматически при выдаче авто сотруднику — вручную обычно не нужно.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelVehicleModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ISSUE VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="issueVehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Выдать авто</h3>
+        <button class="modal-close" id="closeIssueVehicleModalBtn">&times;</button>
+      </div>
+      <form id="issueVehicleForm">
+        <input type="hidden" id="issueVehicleId">
+        <input type="hidden" id="issueVehicleEmployeeId">
+        <div class="modal-body">
+          <div id="issueVehicleInfo" class="issue-tool-card"></div>
+
+          <div class="form-group">
+            <label for="issueVehicleEmployeeSearch">Кому выдать</label>
+            <input type="text" id="issueVehicleEmployeeSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom: 8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="issueVehicleEmployeeList"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="issueVehicleNotes">Заметка (необязательно)</label>
+            <input type="text" id="issueVehicleNotes" class="form-control" placeholder="Например: для командировки в Клайпеду">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelIssueVehicleModalBtn">Отмена</button>
+          <button type="submit" class="btn">Выдать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- RETURN / TRANSFER VEHICLE MODAL DIALOG -->
+  <div class="modal-overlay" id="returnVehicleModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Вернуть или передать авто</h3>
+        <button class="modal-close" id="closeReturnVehicleModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="returnVehicleInfo" class="issue-tool-card"></div>
+        <div id="returnVehicleHolder" style="font-size:13px; color:hsl(var(--text-secondary)); margin-bottom:18px;"></div>
+
+        <div id="returnVehicleStep1" style="display:flex; gap:12px;">
+          <button type="button" class="btn btn-secondary" id="returnVehicleToStockBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="warehouse"></i>
+            <span>На стоянку</span>
+          </button>
+          <button type="button" class="btn btn-secondary" id="goVehicleTransferBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
+            <i data-lucide="user-check"></i>
+            <span>Передать другому</span>
+          </button>
+        </div>
+
+        <div id="returnVehicleStep2" style="display:none;">
+          <div class="form-group">
+            <label for="vehicleTransferSearch">Кому передать</label>
+            <input type="text" id="vehicleTransferSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom:8px;">
+            <div class="emp-picker">
+              <div class="emp-picker-list" id="vehicleTransferEmployeeList"></div>
+            </div>
+          </div>
+          <input type="hidden" id="vehicleTransferEmployeeId">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelReturnVehicleModalBtn">Отмена</button>
+        <button type="button" class="btn" id="confirmVehicleTransferBtn" style="display:none;">Передать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VEHICLE DETAIL (КАРТОЧКА АВТО) -->
+  <div class="modal-overlay" id="vehicleDetailModalOverlay">
+    <div class="modal" style="max-width: 880px;">
+      <div class="modal-header">
+        <h3 id="vehicleDetailTitle">Карточка авто</h3>
+        <button class="modal-close" id="closeVehicleDetailBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="vehicleDetailBody">
+        <div style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Загрузка...</div>
+      </div>
+    </div>
   </div>
 
   <!-- MEDIA PICKER MODAL DIALOG -->
@@ -968,6 +1781,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- App logic JS -->
-  <script src="app.js?v=8"></script>
+  <!-- ?v= подставляется сервером автоматически по mtime файла (см. injectAssetVersions в server.js) -->
+  <script src="app.js"></script>
 </body>
 </html>

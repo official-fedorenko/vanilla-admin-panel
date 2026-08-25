@@ -7,6 +7,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
+    /* Мобильные: поле с font-size < 16px заставляет iOS зумить при фокусе —
+       держим 16px, чтобы экран не приближался сам. text-size-adjust не даёт
+       масштабировать текст при повороте. Ручной зум пользователю доступен. */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    @media (max-width: 768px) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      select, textarea { font-size: 16px !important; }
+    }
+
     :root {
       --bg-color: #050505;
       --bg-surface: rgba(14, 14, 20, 0.8);
@@ -60,16 +69,197 @@
     }
     .nav-right { display: flex; align-items: center; gap: 16px; }
     .nav-user {
-      display: flex; align-items: center; gap: 10px;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+      padding: 4px 12px 4px 5px; border-radius: 8px;
       font-size: 14px; color: var(--text-secondary);
+      cursor: pointer; transition: all 0.2s;
     }
+    .nav-user:hover { background: rgba(255,255,255,0.1); transform: translateY(-1px); }
     .nav-avatar {
-      width: 34px; height: 34px; border-radius: 50%;
+      width: 26px; height: 26px; border-radius: 50%;
       background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
       display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 14px; color: white; flex-shrink: 0;
+      font-weight: 700; font-size: 12px; color: white; flex-shrink: 0;
     }
     .nav-username { font-weight: 600; color: var(--text-primary); font-size: 14px; }
+    .nav-caret { display: none; align-items: center; color: var(--text-muted); }
+
+    /* Колокольчик уведомлений от администрации */
+    .nav-bell {
+      position: relative;
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 8px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+      color: var(--text-secondary); cursor: pointer; transition: all 0.2s;
+      padding: 0;
+    }
+    .nav-bell:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+    .nav-badge {
+      position: absolute; top: -4px; right: -4px;
+      min-width: 16px; height: 16px; padding: 0 3px;
+      background: var(--red); color: #fff;
+      border-radius: 999px; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+    .notif-dropdown {
+      position: absolute; top: calc(100% + 8px); right: 0;
+      width: 320px; max-width: calc(100vw - 24px);
+      max-height: min(400px, calc(100vh - 100px)); overflow-y: auto;
+      background: rgba(20, 20, 28, 0.97);
+      -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      z-index: 1050;
+    }
+    /* Десктоп: больше места есть — окно покрупнее и повыше, чем на мобильных. */
+    @media (min-width: 641px) {
+      .notif-dropdown {
+        width: 420px;
+        max-height: min(560px, calc(100vh - 100px));
+      }
+    }
+    /* max-width (не max-height) — это про узкий экран в портретной
+       ориентации, где триггер-колокольчик не прижат к правому краю. */
+    @media (max-width: 640px) {
+      .notif-dropdown {
+        position: fixed; top: 62px; right: 10px; left: 10px;
+        width: auto; max-width: none;
+        max-height: calc(100vh - 76px);
+      }
+    }
+    /* Низкий вьюпорт (повёрнутый телефон) — не завязываемся на ширину:
+       окну просто мало места по высоте, растягиваем почти на весь экран. */
+    @media (max-height: 420px) {
+      .notif-dropdown {
+        position: fixed; top: 8px; right: 10px; left: 10px; bottom: 8px;
+        width: auto; max-width: none; max-height: none; height: auto;
+      }
+    }
+    .notif-item {
+      padding: 12px 16px; border-bottom: 1px solid var(--border-color);
+      font-size: 13px; line-height: 1.5; color: var(--text-secondary);
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item.unread { background: rgba(0,210,255,0.06); color: var(--text-primary); }
+    .notif-item-date { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .notif-empty { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+    /* Плавающее окно чата с администрацией */
+    .chat-fab {
+      position: fixed; right: 24px; bottom: 24px; z-index: 1040;
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+      color: #fff; border: none; cursor: pointer;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      transition: transform 0.2s;
+    }
+    .chat-fab:hover { transform: translateY(-2px); }
+    .chat-fab .nav-badge { top: -2px; right: -2px; }
+    .chat-fab-panel {
+      position: fixed; right: 24px; bottom: 92px; z-index: 1040;
+      width: min(400px, calc(100vw - 24px)); height: min(600px, calc(100vh - 100px));
+      background: rgba(20, 20, 28, 0.97);
+      -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .chat-fab-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; border-bottom: 1px solid var(--border-color);
+      font-weight: 700; font-size: 14px; color: var(--text-primary); flex-shrink: 0;
+    }
+    .chat-fab-panel-header button {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
+    }
+    .chat-fab-panel-header button:hover { color: var(--text-primary); }
+    .chat-fab-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px 18px; }
+    /* Карточка чата, перенесённая внутрь плавающей панели — убираем
+       собственные border/padding/фиксированную высоту, ими управляет панель. */
+    .chat-fab-panel-body .chat-card {
+      border: none !important; background: none !important; backdrop-filter: none !important;
+      padding: 0 !important; height: 100% !important; flex: 1; min-height: 0;
+    }
+    .chat-fab-panel-body .chat-card .card-title { display: none !important; }
+    .chat-fab-panel-body .chat-card .cbody { display: flex !important; height: 100% !important; }
+    /* Форма отправки: инпут + кнопка. min-width на инпуте не даёт ему
+       сжиматься до нуля — когда обоим не хватает места, кнопка переносится
+       на отдельную строку и растягивается на всю ширину, а не вылезает
+       вправо за пределы окна. */
+    .chat-form { display: flex; flex-wrap: wrap; gap: 10px; }
+    .chat-form-input {
+      flex: 1 1 160px; min-width: 160px;
+      background: var(--bg-input); border: 1px solid var(--border-color);
+      color: var(--text-primary); padding: 12px; border-radius: 10px;
+      outline: none; font-family: 'Inter', sans-serif;
+    }
+    .chat-form-submit { flex: 0 0 auto; width: auto; padding: 0 20px; margin: 0; }
+    /* Когда для инпута (min-width 160px) и кнопки вместе не хватает
+       ширины — переносим кнопку на отдельную строку во всю ширину,
+       вместо того чтобы она вылезала за пределы окна. */
+    @media (max-width: 480px) {
+      .chat-form-input { flex-basis: 100%; }
+      .chat-form-submit { flex-basis: 100%; }
+    }
+    @media (max-height: 420px) {
+      .chat-form-input { flex-basis: 100%; }
+      .chat-form-submit { flex-basis: 100%; }
+    }
+    @media (max-width: 480px) {
+      .chat-fab { right: 16px; bottom: 16px; width: 52px; height: 52px; }
+      .chat-fab-panel {
+        right: 12px; left: 12px; bottom: 76px;
+        width: auto; height: min(600px, calc(100vh - 96px));
+      }
+    }
+    /* Низкий вьюпорт (повёрнутый телефон) — та же логика, что у уведомлений:
+       окну не хватает высоты, а не ширины, поэтому растягиваем на весь экран
+       и подвигаем кнопку-пузырь, чтобы не перекрывала панель. */
+    @media (max-height: 420px) {
+      .chat-fab { width: 44px; height: 44px; right: 10px; bottom: 10px; }
+      .chat-fab-panel {
+        right: 10px; left: 10px; bottom: 62px; top: 8px;
+        width: auto; height: auto;
+      }
+    }
+
+    /* Модальное меню профиля (мобильные) */
+    .profile-menu-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1100;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+      align-items: flex-start; justify-content: center;
+    }
+    .profile-menu-overlay.open { display: flex; }
+    .profile-menu {
+      margin-top: 64px; width: min(340px, 92vw);
+      background: var(--bg-card, #17171f); border: 1px solid var(--border-color);
+      border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      animation: pmIn .16s ease;
+    }
+    @keyframes pmIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    .profile-menu-head {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 18px; border-bottom: 1px solid var(--border-color);
+    }
+    .profile-menu-head .nav-avatar { width: 40px; height: 40px; font-size: 15px; }
+    .profile-menu-name { font-weight: 700; color: var(--text-primary); font-size: 15px; }
+    .profile-menu-role { font-size: 12px; color: var(--text-muted); }
+    .profile-menu-item {
+      display: flex; align-items: center; gap: 12px; width: 100%;
+      padding: 14px 18px; background: none; border: none; cursor: pointer;
+      color: var(--text-primary); font-size: 15px; font-family: 'Inter', sans-serif;
+      text-align: left; text-decoration: none; transition: background 0.15s;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .profile-menu-item:last-child { border-bottom: none; }
+    .profile-menu-item:hover { background: rgba(255,255,255,0.05); }
+    .profile-menu-item svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--text-muted); }
+    .profile-menu-item.danger { color: var(--red); }
+    .profile-menu-item.danger svg { color: var(--red); }
     .btn-logout {
       background: rgba(255,74,110,0.1); border: 1px solid rgba(255,74,110,0.2);
       color: var(--red); padding: 8px 14px; border-radius: 8px;
@@ -79,11 +269,17 @@
     }
     .btn-logout:hover { background: rgba(255,74,110,0.2); transform: translateY(-1px); }
     .btn-home {
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
       color: var(--text-secondary); text-decoration: none;
-      font-size: 13px; font-weight: 500; transition: color 0.2s;
+      padding: 8px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+      cursor: pointer; transition: all 0.2s;
       display: inline-flex; align-items: center; gap: 6px;
     }
-    .btn-home:hover { color: var(--text-primary); }
+    .btn-home:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); transform: translateY(-1px); }
+    /* Кнопка «Админ-панель» — акцентная бирюзовая */
+    #adminPanelLink { background: rgba(0,210,255,0.1); border-color: rgba(0,210,255,0.25); }
+    #adminPanelLink:hover { background: rgba(0,210,255,0.2); color: var(--accent-cyan); }
 
     /* Layout */
     .page {
@@ -152,6 +348,10 @@
       .mobile-collapse .cbody { display: none; }
       .mobile-collapse.expanded .cbody { display: block; }
       .mobile-collapse.expanded .collapse-chev { transform: rotate(180deg); }
+      /* Чат: убираем фиксированную высоту, чтобы свёрнутая карточка не
+         занимала пустое место; развёрнутый чат получает удобную высоту. */
+      .mobile-collapse.chat-card { height: auto !important; }
+      .mobile-collapse.chat-card.expanded .cbody { height: 70vh; }
     }
 
     /* Адаптив верхнего меню */
@@ -161,8 +361,10 @@
       .nav-logo { font-size: 15px; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .nav-username { display: none; }          /* прячем имя, оставляем аватар */
       .nav-avatar { width: 30px; height: 30px; font-size: 12px; }
-      .btn-home { font-size: 0; gap: 0; }        /* ссылки-иконки без текста */
-      .btn-logout { padding: 7px 9px; font-size: 0; gap: 0; }  /* «Выйти» — только иконка */
+      /* На мобильных прячем отдельные кнопки — их заменяет меню по тапу на ник */
+      #adminPanelLink, .nav-right > .btn-home, #logoutBtn { display: none !important; }
+      .nav-user { cursor: pointer; }
+      .nav-caret { display: inline-flex; }
       .page { padding: 76px 14px 48px; }
       .page-hero { gap: 14px; margin-bottom: 26px; padding-bottom: 26px; }
       .hero-avatar { width: 56px; height: 56px; font-size: 22px; }
@@ -317,6 +519,41 @@
     .toast.success { border-left-color: var(--green); }
     .toast.error { border-left-color: var(--red); }
     .toast.show { transform: translateX(0); }
+
+    /* Модальные диалоги (замена нативных confirm/prompt/alert) */
+    .ui-dialog-overlay {
+      position: fixed; inset: 0; z-index: 3000; display: flex;
+      align-items: center; justify-content: center; padding: 20px;
+      background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
+      opacity: 0; transition: opacity 0.15s ease;
+    }
+    .ui-dialog-overlay.open { opacity: 1; }
+    .ui-dialog {
+      width: 100%; max-width: 420px; background: var(--bg-surface, #14141c);
+      border: 1px solid var(--border-color); border-radius: 16px; padding: 22px 24px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.5);
+      transform: translateY(12px); transition: transform 0.15s ease;
+    }
+    .ui-dialog-overlay.open .ui-dialog { transform: translateY(0); }
+    .ui-dialog__title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+    .ui-dialog__msg { font-size: 14px; line-height: 1.55; color: var(--text-primary); white-space: pre-wrap; }
+    .ui-dialog__input {
+      margin-top: 14px; width: 100%; padding: 10px 12px; font-size: 14px;
+      background: var(--bg-input, rgba(255,255,255,0.04)); color: var(--text-primary);
+      border: 1px solid var(--border-color); border-radius: 8px; box-sizing: border-box;
+    }
+    .ui-dialog__input:focus { outline: none; border-color: var(--accent-purple); }
+    .ui-dialog__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .ui-dialog__btn {
+      padding: 8px 18px; font-size: 13px; font-weight: 600; line-height: 1;
+      border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: all 0.15s;
+      font-family: inherit;
+    }
+    .ui-dialog__btn--cancel { background: transparent; border-color: var(--border-color); color: var(--text-primary); }
+    .ui-dialog__btn--cancel:hover { background: rgba(255,255,255,0.06); }
+    .ui-dialog__btn--ok { background: var(--accent-purple); color: #fff; }
+    .ui-dialog__btn--ok:hover { filter: brightness(1.1); }
+    .ui-dialog__btn--danger { background: var(--red); }
   </style>
 </head>
 <body>
@@ -328,24 +565,61 @@
       <a href="/" class="nav-logo" id="navSiteName">Мой Блог</a>
       <div class="nav-right">
         <a href="/admin/" id="adminPanelLink" class="btn-home" style="display:none; color: var(--accent-cyan);">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14" style="stroke: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="stroke: var(--accent-cyan);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Админ-панель
         </a>
         <a href="/" class="btn-home">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
           На сайт
         </a>
-        <div class="nav-user">
+        <div style="position:relative;">
+          <button class="nav-bell" id="notifBellBtn" type="button">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <span class="nav-badge" id="notifBadge" style="display:none;">0</span>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown" style="display:none;"></div>
+        </div>
+        <div class="nav-user" id="navUserBtn">
           <div class="nav-avatar" id="navAvatar">?</div>
           <span class="nav-username" id="navUsername">...</span>
+          <span class="nav-caret"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg></span>
         </div>
         <button class="btn-logout" id="logoutBtn">
-          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
           Выйти
         </button>
       </div>
     </div>
   </nav>
+
+  <!-- Мобильное меню профиля (открывается тапом по нику/аватару) -->
+  <div class="profile-menu-overlay" id="profileMenuOverlay">
+    <div class="profile-menu" role="menu" aria-label="Меню профиля">
+      <div class="profile-menu-head">
+        <div class="nav-avatar" id="pmAvatar">?</div>
+        <div>
+          <div class="profile-menu-name" id="pmName">...</div>
+          <div class="profile-menu-role" id="pmRole"></div>
+        </div>
+      </div>
+      <a href="/" class="profile-menu-item" role="menuitem">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        На сайт
+      </a>
+      <a href="/admin/" class="profile-menu-item" role="menuitem" id="pmAdmin" style="display:none;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Админ-панель
+      </a>
+      <a href="/cabinet.html" class="profile-menu-item" role="menuitem">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        Профиль
+      </a>
+      <button type="button" class="profile-menu-item danger" role="menuitem" id="pmLogout">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        Выход
+      </button>
+    </div>
+  </div>
 
   <div class="page">
     <!-- Hero -->
@@ -482,12 +756,45 @@
       <!-- Правая колонка: статьи -->
       <div style="display: flex; flex-direction: column; gap: 28px;">
 
-        <!-- Моя карточка сотрудника (read-only, только для сотрудников) -->
-        <div class="card" id="myEmployeeCard" style="display: none;">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V4a2 2 0 114 0v2m-4 0a2 2 0 104 0"/></svg>
-            Моя карточка сотрудника
+        <!-- Учёт рабочего времени -->
+        <div class="card mobile-collapse" id="workLogCard">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Учёт рабочего времени</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
+            <form id="workLogForm" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end;">
+              <div class="form-group" style="margin:0;">
+                <label for="wlDate">Дата</label>
+                <input type="date" id="wlDate" required>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="wlHours">Часов (0–24)</label>
+                <input type="number" id="wlHours" min="0.25" max="24" step="0.25" placeholder="8" required>
+              </div>
+              <div class="form-group" style="margin:0; grid-column:1/-1;">
+                <label for="wlNote">Заметка (необязательно)</label>
+                <input type="text" id="wlNote" maxlength="300" placeholder="Что делали, объект…">
+              </div>
+              <button type="submit" class="btn-save" style="grid-column:1/-1; margin-top:2px;">Добавить запись</button>
+            </form>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px;">
+              <span style="font-size:13px; color:var(--text-secondary);">Мои записи</span>
+              <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong></span>
+            </div>
+            <div id="wlList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
+              <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Моя карточка сотрудника (read-only, только для сотрудников) -->
+        <div class="card mobile-collapse" id="myEmployeeCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V4a2 2 0 114 0v2m-4 0a2 2 0 104 0"/></svg> Моя карточка сотрудника</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
           <div id="myEmployeeCardBody" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
             <div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Загрузка...</div>
           </div>
@@ -495,81 +802,136 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             Данные заполняет администратор. Если что-то неверно — сообщите руководителю.
           </div>
+          </div><!-- /cbody -->
         </div>
 
         <!-- Мой закреплённый инструмент (только для сотрудников) -->
-        <div class="card" id="myToolsCard" style="display: none;">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-            Мой инструмент
+        <div class="card mobile-collapse" id="myToolsCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg> Закреплённый за мной инструмент</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
           <div id="myToolsList" style="display:flex; flex-direction:column; gap:12px;">
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
-          <input type="file" id="myToolPhotoInput" accept="image/*" style="display:none;">
+          </div><!-- /cbody -->
+        </div>
+
+        <!-- Моё закреплённое авто (только для сотрудников) -->
+        <div class="card mobile-collapse" id="myVehiclesCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg> Закреплённое за мной авто</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+          <div id="myVehiclesList" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+          </div>
+          </div><!-- /cbody -->
         </div>
 
         <!-- Заявления -->
-        <div class="card" id="requestsCard">
-          <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+        <div class="card mobile-collapse" id="requestsCard">
+          <div class="card-title collapse-toggle" style="display:flex; align-items:center; justify-content:space-between;">
             <span style="display:flex; align-items:center; gap:8px;">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
               Заявления
             </span>
-            <button type="button" id="newRequestBtn" style="padding:6px 14px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">+ Новое</button>
+            <span style="display:flex; align-items:center; gap:10px;">
+              <button type="button" id="newRequestBtn" style="padding:6px 14px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">+ Новое</button>
+              <span class="collapse-chev">▾</span>
+            </span>
           </div>
+          <div class="cbody">
           <div id="myRequestsList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
             <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
           </div>
+          </div><!-- /cbody -->
         </div>
 
         <!-- Модалка нового заявления -->
-        <div id="requestModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; align-items:center; justify-content:center;">
-          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(520px, 94vw); max-height:88vh; overflow:auto;">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+        <div id="requestModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(520px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
               <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Новое заявление</div>
               <button type="button" id="requestModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
             </div>
-            <div style="padding:20px;">
-              <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:6px;">Тип заявления</label>
-              <select id="requestTypeSelect" class="form-input" style="margin-bottom:18px;"></select>
-              <form id="requestForm">
-                <div id="requestFields" style="display:flex; flex-direction:column; gap:10px;"></div>
-                <button type="submit" style="margin-top:18px; width:100%; padding:10px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Отправить</button>
-              </form>
+            <form id="requestForm" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
+              <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:14px 20px 0;">
+                <div style="font-size:13px; color:var(--text-secondary);">Тип: <strong id="requestFormTypeLabel" style="color:var(--text-primary);"></strong></div>
+                <button type="button" id="requestChangeTypeBtn" style="background:none; border:none; color:var(--accent-cyan); font-size:12px; cursor:pointer; padding:0;">← Изменить тип</button>
+              </div>
+              <select id="requestTypeSelect" style="display:none;"></select>
+              <div id="requestFields" style="flex:1; min-height:0; overflow-y:auto; padding:14px 20px; display:flex; flex-direction:column; gap:10px;"></div>
+              <div style="flex-shrink:0; padding:14px 20px; border-top:1px solid var(--border-color);">
+                <button type="submit" style="width:100%; padding:10px; background:var(--accent-purple); border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Отправить</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Модалка выбора типа заявления (первый шаг) -->
+        <div id="requestTypeModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Выберите тип заявления</div>
+              <button type="button" id="requestTypeModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px; overflow-y:auto; flex:1; min-height:0; display:flex; flex-direction:column; gap:10px;" id="requestTypeList"></div>
+          </div>
+        </div>
+
+        <!-- Модалка просмотра/добавления фото закреплённого инструмента/авто -->
+        <div id="itemPhotoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(480px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;" id="itemPhotoModalTitle">Фото</div>
+              <button type="button" onclick="closeItemPhotoModal()" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px; overflow-y:auto; flex:1; min-height:0;">
+              <div id="itemPhotoModalMain"></div>
+              <div id="itemPhotoModalGallery" style="margin-top:14px; display:none; gap:8px; flex-wrap:wrap;"></div>
+              <button type="button" onclick="triggerItemPhotoUpload()" style="margin-top:16px; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Добавить фото</button>
+              <input type="file" id="itemPhotoModalFileInput" accept="image/*" style="display:none;">
             </div>
           </div>
         </div>
 
         <!-- Чат поддержки -->
-        <div class="card" style="display: flex; flex-direction: column; height: 500px;">
-          <div class="card-title" style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="card mobile-collapse chat-card" id="chatCard" style="display: flex; flex-direction: column; height: 500px;">
+          <div class="card-title collapse-toggle" style="display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="color: var(--accent-purple);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-                <span id="cabinetChatTitle">Чат с поддержкой</span>
+                <span id="cabinetChatTitle">Чат с администрацией</span>
               </div>
-              <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button id="adminBackBtn" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+                <span class="collapse-chev">▾</span>
+              </div>
             </div>
-            <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; gap: 12px; margin-top: 2px;">
-              <span>Создатель: <strong id="ticketCreator" style="color: var(--accent-cyan);">...</strong></span>
-              <span>Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong></span>
+            <div id="cabinetChatSubtitle" style="display: none; font-size: 11px; color: var(--text-secondary); margin-left: 28px; margin-top: 2px;">
+              Последний ответ: <strong id="ticketLastReplier" style="color: var(--text-primary);">...</strong><span id="ticketLastRepliedAt" style="color: var(--text-muted);"></span>
             </div>
           </div>
+          <div class="cbody" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
           <div id="cabinetChatMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
             <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка сообщений...</div>
           </div>
-          <form id="cabinetChatForm" style="display: flex; gap: 10px;">
-            <input type="text" id="cabinetChatMessageInput" placeholder="Напишите сообщение..." required style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 12px; border-radius: 10px; outline: none; font-family: 'Inter', sans-serif;">
-            <button type="submit" class="btn-save" style="width: auto; padding: 0 20px; margin: 0;">Отправить</button>
+          <form id="cabinetChatForm" class="chat-form">
+            <input type="text" id="cabinetChatMessageInput" class="chat-form-input" placeholder="Напишите сообщение..." required>
+            <button type="submit" class="btn-save chat-form-submit">Отправить</button>
           </form>
+          </div><!-- /cbody -->
         </div>
 
-        <div class="card">
-          <div class="card-title">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Последние публикации
+        <div class="card mobile-collapse">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Последние публикации</span>
+            <span class="collapse-chev">▾</span>
           </div>
+          <div class="cbody">
           <div id="articlesList" class="articles-list">
             <!-- Skeleton -->
             <div class="article-item" style="opacity:0.4">
@@ -577,12 +939,27 @@
               <div class="article-title">—</div>
             </div>
           </div>
+          </div><!-- /cbody -->
         </div>
       </div>
     </div>
   </div>
 
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Плавающее окно чата с администрацией (только для обычных пользователей —
+       у Admin/Superadmin в их личном кабинете остаётся встроенный список тикетов) -->
+  <button class="chat-fab" id="chatFabBtn" type="button" style="display:none;">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+    <span class="nav-badge" id="chatFabBadge" style="display:none;">0</span>
+  </button>
+  <div class="chat-fab-panel" id="chatFabPanel" style="display:none;">
+    <div class="chat-fab-panel-header">
+      <span>Чат с администрацией</span>
+      <button type="button" id="chatFabCloseBtn" aria-label="Закрыть">&times;</button>
+    </div>
+    <div class="chat-fab-panel-body" id="chatFabPanelBody"><!-- сюда переносится существующая карточка чата --></div>
+  </div>
 
   <script>
     let currentUserData = null;
@@ -597,9 +974,98 @@
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3500);
     }
 
+    // Модальные диалоги вместо нативных confirm/prompt/alert.
+    function uiDialog(opts) {
+      const { type = 'confirm', title = '', message = '', defaultValue = '',
+              okText, cancelText = 'Отмена', danger = false } = opts || {};
+      const isPrompt = type === 'prompt', isAlert = type === 'alert';
+      const ok = okText || (isAlert ? 'OK' : 'Подтвердить');
+      const esc = (s) => String(s == null ? '' : s)
+        .replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+      return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'ui-dialog-overlay';
+        overlay.innerHTML = `
+          <div class="ui-dialog" role="dialog" aria-modal="true">
+            ${title ? `<div class="ui-dialog__title">${esc(title)}</div>` : ''}
+            <div class="ui-dialog__msg">${esc(message)}</div>
+            ${isPrompt ? `<input class="ui-dialog__input" type="text">` : ''}
+            <div class="ui-dialog__actions">
+              ${isAlert ? '' : `<button type="button" class="ui-dialog__btn ui-dialog__btn--cancel">${esc(cancelText)}</button>`}
+              <button type="button" class="ui-dialog__btn ui-dialog__btn--ok${danger ? ' ui-dialog__btn--danger' : ''}">${esc(ok)}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const input = overlay.querySelector('.ui-dialog__input');
+        if (input) { input.value = defaultValue || ''; setTimeout(() => { input.focus(); input.select(); }, 30); }
+        const done = (val) => { document.removeEventListener('keydown', onKey); overlay.classList.remove('open'); setTimeout(() => overlay.remove(), 150); resolve(val); };
+        const onOk = () => done(isPrompt ? (input ? input.value : '') : true);
+        const onCancel = () => done(isPrompt ? null : false);
+        overlay.querySelector('.ui-dialog__btn--ok').addEventListener('click', onOk);
+        const cancelBtn = overlay.querySelector('.ui-dialog__btn--cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', onCancel);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) onCancel(); });
+        const onKey = (e) => {
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+          else if (e.key === 'Enter') { e.preventDefault(); onOk(); }
+        };
+        document.addEventListener('keydown', onKey);
+        requestAnimationFrame(() => overlay.classList.add('open'));
+      });
+    }
+    const confirmDialog = (message, opts = {}) => uiDialog({ type: 'confirm', message, ...opts });
+    const promptDialog = (message, defaultValue = '', opts = {}) => uiDialog({ type: 'prompt', message, defaultValue, ...opts });
+    const alertDialog = (message, opts = {}) => uiDialog({ type: 'alert', message, ...opts });
+
     function escapeHtml(text) {
       if (!text) return '';
       return text.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+    }
+
+    // Подготовка файла к загрузке: изображения (jpeg/png/webp) ужимаются в
+    // браузере до 1920px по длинной стороне и перекодируются в JPEG, чтобы
+    // большие фото со смартфона не упирались в лимит сервера. Возвращает
+    // { filename, data(base64), mimeType }. SVG/GIF и прочее — как есть.
+    const UPLOAD_MAX_DIMENSION = 1920;
+    function readAsBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result.split(',')[1]);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    }
+    function compressToJpeg(file) {
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          let { width, height } = img;
+          const scale = Math.min(1, UPLOAD_MAX_DIMENSION / Math.max(width, height));
+          width = Math.round(width * scale); height = Math.round(height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(b => resolve(b), 'image/jpeg', 0.85);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+    }
+    async function prepareUploadFile(file) {
+      if (/^image\/(jpeg|png|webp)$/.test(file.type)) {
+        try {
+          const blob = await compressToJpeg(file);
+          if (blob && blob.size < file.size) {
+            const base = (file.name || 'photo').replace(/\.[^.]+$/, '');
+            return { filename: base + '.jpg', data: await readAsBase64(blob), mimeType: 'image/jpeg' };
+          }
+        } catch (_) { /* упадём на оригинал */ }
+      }
+      return { filename: file.name, data: await readAsBase64(file), mimeType: file.type };
     }
 
     async function loadProfile() {
@@ -618,6 +1084,8 @@
           loadMyCard();
           document.getElementById('myToolsCard').style.display = '';
           loadMyTools();
+          document.getElementById('myVehiclesCard').style.display = '';
+          loadMyVehicles();
         }
       } catch (e) {
         window.location.href = '/login.html';
@@ -664,8 +1132,6 @@
     }
 
     // === Мой закреплённый инструмент ===
-    let myToolPhotoTargetId = null;
-
     let myToolsCache = [];
 
     // Скачать QR-код инструмента (PNG с подписью инв.№; фолбэк — SVG)
@@ -720,16 +1186,11 @@
           const issued = t.issued_at ? new Date(t.issued_at).toLocaleDateString('ru-RU') : '';
           const photoSrc = (t.photo_url && t.photo_url.startsWith('/catalog/images/') && !t.photo_url.includes('?'))
             ? t.photo_url + '?v=2' : t.photo_url;
-          const photo = t.photo_url
+          const photoInner = t.photo_url
             ? `<img src="${photoSrc}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
             : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const photo = `<button type="button" onclick="openItemPhotoModal('tool', ${t.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
           const sub = [t.brand, t.model].filter(Boolean).join(' · ');
-          
-          let galleryHtml = '';
-          if (t.gallery_photos && t.gallery_photos.length > 0) {
-            const imgs = t.gallery_photos.map(url => `<img src="${url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`).join('');
-            galleryHtml = `<div style="margin-top:12px; display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">${imgs}</div>`;
-          }
 
           const item = document.createElement('div');
           item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
@@ -744,11 +1205,9 @@
                 ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
               </div>
               <div style="display:flex; flex-direction:column; gap:6px;">
-                <button type="button" onclick="startMyToolPhoto(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Добавить фото</button>
                 <button type="button" onclick="saveMyToolQr(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
               </div>
             </div>
-            ${galleryHtml}
           `;
           list.appendChild(item);
         });
@@ -768,54 +1227,176 @@
       }
     }
 
-    window.startMyToolPhoto = (toolId) => {
-      myToolPhotoTargetId = toolId;
-      document.getElementById('myToolPhotoInput').click();
+    // === Моё закреплённое авто ===
+    let myVehiclesCache = [];
+
+    window.saveMyVehicleQr = async (id) => {
+      const vehicle = myVehiclesCache.find(v => v.id === id) || {};
+      const base = `qr-${String(vehicle.plate_number || vehicle.name || 'vehicle').replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+      try {
+        const res = await fetch(`/api/vehicles/qr?id=${id}`);
+        const svgText = await res.text();
+        const size = 600, pad = 40, labelH = vehicle.plate_number ? 60 : 20;
+        const url = URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' }));
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size + pad * 2;
+          canvas.height = size + pad * 2 + labelH;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, pad, pad, size, size);
+          if (vehicle.plate_number) {
+            ctx.fillStyle = '#111111'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(vehicle.plate_number, canvas.width / 2, size + pad + 44);
+          }
+          URL.revokeObjectURL(url);
+          canvas.toBlob((blob) => { downloadBlob(URL.createObjectURL(blob), base + '.png'); showToast('QR сохранён', 'success'); }, 'image/png');
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); downloadBlob(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg'); showToast('QR сохранён (SVG)', 'success'); };
+        img.src = url;
+      } catch (e) { showToast('Не удалось сохранить QR', 'error'); }
     };
 
-    (function initMyToolPhotoUpload() {
-      const input = document.getElementById('myToolPhotoInput');
+    async function loadMyVehicles() {
+      const list = document.getElementById('myVehiclesList');
+      try {
+        const res = await fetch('/api/cabinet/my-vehicles');
+        const data = res.ok ? await res.json() : { vehicles: [] };
+        const vehicles = data.vehicles || [];
+        myVehiclesCache = vehicles;
+        if (!vehicles.length) {
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплено авто.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        vehicles.forEach(v => {
+          const issued = v.issued_at ? new Date(v.issued_at).toLocaleDateString('ru-RU') : '';
+          const photoInner = v.photo_url
+            ? `<img src="${v.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
+            : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const photo = `<button type="button" onclick="openItemPhotoModal('vehicle', ${v.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
+          const sub = [v.brand, v.model].filter(Boolean).join(' · ');
+
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.innerHTML = `
+            <div style="display:flex; align-items:center; gap:12px;">
+              ${photo}
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(v.name)}</div>
+                ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
+                ${v.plate_number ? `<div style="font-size:12px;color:var(--text-muted);">Гос. номер: ${escapeHtml(v.plate_number)}</div>` : ''}
+                ${v.year ? `<div style="font-size:12px;color:var(--text-muted);">Год: ${escapeHtml(String(v.year))}</div>` : ''}
+                ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
+              </div>
+            </div>
+          `;
+          list.appendChild(item);
+        });
+        if (list.children.length > 5) {
+          let h = 0;
+          for (let i = 0; i < 5; i++) h += list.children[i].offsetHeight;
+          h += 12 * 4;
+          list.style.maxHeight = h + 'px';
+          list.style.overflowY = 'auto';
+          list.style.paddingRight = '4px';
+        } else {
+          list.style.maxHeight = 'none';
+        }
+      } catch (e) {
+        list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить авто.</div>';
+      }
+    }
+
+    // === Модалка просмотра/добавления фото (общая для инструмента и авто) ===
+    let itemPhotoModalCtx = null; // { kind: 'tool'|'vehicle', id }
+
+    window.openItemPhotoModal = (kind, id) => {
+      const cache = kind === 'tool' ? myToolsCache : myVehiclesCache;
+      const item = cache.find(x => x.id === id);
+      if (!item) return;
+      itemPhotoModalCtx = { kind, id };
+      document.getElementById('itemPhotoModalTitle').textContent =
+        item.name || (kind === 'tool' ? 'Инструмент' : 'Авто');
+      renderItemPhotoModalBody(item);
+      document.getElementById('itemPhotoModalOverlay').style.display = 'flex';
+    };
+
+    window.closeItemPhotoModal = () => {
+      document.getElementById('itemPhotoModalOverlay').style.display = 'none';
+      itemPhotoModalCtx = null;
+    };
+
+    function renderItemPhotoModalBody(item) {
+      const main = document.getElementById('itemPhotoModalMain');
+      main.innerHTML = item.photo_url
+        ? `<img src="${item.photo_url}" style="width:100%; max-height:320px; object-fit:contain; border-radius:12px; background:var(--bg-input);">`
+        : `<div style="padding:40px 0; text-align:center; color:var(--text-muted); font-size:13px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:12px;">Нет фото</div>`;
+      const gallery = document.getElementById('itemPhotoModalGallery');
+      if (item.gallery_photos && item.gallery_photos.length > 0) {
+        gallery.style.display = 'flex';
+        gallery.innerHTML = item.gallery_photos.map(url =>
+          `<img src="${url}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`
+        ).join('');
+      } else {
+        gallery.style.display = 'none';
+        gallery.innerHTML = '';
+      }
+    }
+
+    window.triggerItemPhotoUpload = () => {
+      if (!itemPhotoModalCtx) return;
+      document.getElementById('itemPhotoModalFileInput').click();
+    };
+
+    (function initItemPhotoUpload() {
+      const input = document.getElementById('itemPhotoModalFileInput');
       if (!input) return;
       input.addEventListener('change', async () => {
         const file = input.files[0];
-        if (!file || !myToolPhotoTargetId) return;
-        
-        const currentToolId = myToolPhotoTargetId; // Capture before finally block clears it
-        
+        const ctx = itemPhotoModalCtx;
+        if (!file || !ctx) return;
+
         try {
-          // 1) загружаем файл, получаем URL
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
-            const upRes = await fetch('/api/media', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
-            });
-            if (!upRes.ok) { showToast('Ошибка загрузки фото', 'error'); return; }
-            const upData = await upRes.json();
-            const url = upData.urls && upData.urls[0];
-            if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
-            // 2) привязываем URL к инструменту (сервер проверит, что он закреплён за вами)
-            const linkRes = await fetch('/api/cabinet/tool-photo', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tool_id: currentToolId, photo_url: url })
-            });
-            const linkData = await linkRes.json().catch(() => ({}));
-            if (linkRes.ok) {
-              showToast('Фото инструмента сохранено', 'success');
-              loadMyTools();
-            } else {
-              showToast(linkData.message || 'Не удалось сохранить фото', 'error');
-            }
-          };
-          reader.readAsDataURL(file);
+          const prepared = await prepareUploadFile(file);
+          const upRes = await fetch('/api/media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [prepared], category: 'tools' })
+          });
+          if (!upRes.ok) {
+            const e = await upRes.json().catch(() => ({}));
+            showToast(e.message || 'Ошибка загрузки фото', 'error'); return;
+          }
+          const upData = await upRes.json();
+          const url = upData.urls && upData.urls[0];
+          if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
+
+          const endpoint = ctx.kind === 'tool' ? '/api/cabinet/tool-photo' : '/api/cabinet/vehicle-photo';
+          const idKey = ctx.kind === 'tool' ? 'tool_id' : 'vehicle_id';
+          const linkRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [idKey]: ctx.id, photo_url: url })
+          });
+          const linkData = await linkRes.json().catch(() => ({}));
+          if (linkRes.ok) {
+            showToast(ctx.kind === 'tool' ? 'Фото инструмента сохранено' : 'Фото авто сохранено', 'success');
+            if (ctx.kind === 'tool') await loadMyTools(); else await loadMyVehicles();
+            const cache = ctx.kind === 'tool' ? myToolsCache : myVehiclesCache;
+            const item = cache.find(x => x.id === ctx.id);
+            if (item && itemPhotoModalCtx) renderItemPhotoModalBody(item);
+          } else {
+            showToast(linkData.message || 'Не удалось сохранить фото', 'error');
+          }
         } catch (e) {
           showToast('Ошибка при загрузке', 'error');
         } finally {
           input.value = '';
-          myToolPhotoTargetId = null;
         }
       });
     })();
@@ -851,9 +1432,16 @@
       document.getElementById('displayUsername').textContent = user.username;
       document.getElementById('emailInput').value = user.email;
 
-      if (user.role === 'Admin' || user.role === 'Superadmin') {
+      const isAdminUser = user.role === 'Admin' || user.role === 'Superadmin';
+      if (isAdminUser) {
         document.getElementById('adminPanelLink').style.display = 'inline-flex';
       }
+
+      // Наполняем мобильное меню профиля
+      setAvatar(document.getElementById('pmAvatar'), user.avatar_url, letter);
+      document.getElementById('pmName').textContent = user.username;
+      document.getElementById('pmRole').textContent = roleText;
+      document.getElementById('pmAdmin').style.display = isAdminUser ? 'flex' : 'none';
 
       const regDate = new Date(user.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
       document.getElementById('regDate').textContent = regDate;
@@ -961,13 +1549,12 @@
         uploadAvatarBtn.textContent = 'Загрузка...';
 
         try {
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
+          {
+            const prepared = await prepareUploadFile(file);
             const uploadRes = await fetch('/api/media', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'avatars' })
+              body: JSON.stringify({ files: [prepared], category: 'avatars' })
             });
             if (uploadRes.ok) {
               const data = await uploadRes.json();
@@ -985,10 +1572,10 @@
                 }
               }
             } else {
-              showToast('Ошибка загрузки аватарки', 'error');
+              const e = await uploadRes.json().catch(() => ({}));
+              showToast(e.message || 'Ошибка загрузки аватарки', 'error');
             }
-          };
-          reader.readAsDataURL(file);
+          }
         } catch (e) {
           showToast('Ошибка при загрузке', 'error');
         } finally {
@@ -1079,14 +1666,40 @@
     });
 
     // Logout
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
+    async function doLogout() {
       try {
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/login.html';
       } catch (e) {
         window.location.href = '/login.html';
       }
-    });
+    }
+    document.getElementById('logoutBtn').addEventListener('click', doLogout);
+
+    // Мобильное меню профиля: открывается тапом по нику/аватару.
+    (function setupProfileMenu() {
+      const overlay = document.getElementById('profileMenuOverlay');
+      const trigger = document.getElementById('navUserBtn');
+      const logout = document.getElementById('pmLogout');
+      if (!overlay || !trigger) return;
+
+      const openMenu = () => overlay.classList.add('open');
+      const closeMenu = () => overlay.classList.remove('open');
+
+      trigger.addEventListener('click', async () => {
+        // На мобильных — открываем меню профиля (там отдельные кнопки).
+        if (window.matchMedia('(max-width: 640px)').matches) { openMenu(); return; }
+        // На десктопе — клик по себе просто обновляет данные профиля.
+        try {
+          await loadProfile();
+          showToast('Профиль обновлён', 'success');
+        } catch (e) { showToast('Не удалось обновить профиль', 'error'); }
+      });
+      // Клик по фону закрывает; клик по самому меню — нет.
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) closeMenu(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+      if (logout) logout.addEventListener('click', doLogout);
+    })();
 
     // Chat logic - улучшено: используем SSE вместо polling для real-time
     let activeAdminTicketId = null;
@@ -1225,23 +1838,22 @@
       uploadBtn.textContent = '...';
 
       try {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          const base64 = ev.target.result.split(',')[1];
-          const uploadRes = await fetch('/api/media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'support' })
-          });
-          if (uploadRes.ok) {
-            const data = await uploadRes.json();
-            if (data.urls && data.urls.length > 0) {
-              pendingImageUrl = data.urls[0];
-              showToast('Изображение прикреплено', 'success');
-            }
+        const prepared = await prepareUploadFile(file);
+        const uploadRes = await fetch('/api/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: [prepared], category: 'support' })
+        });
+        if (uploadRes.ok) {
+          const data = await uploadRes.json();
+          if (data.urls && data.urls.length > 0) {
+            pendingImageUrl = data.urls[0];
+            showToast('Изображение прикреплено', 'success');
           }
-        };
-        reader.readAsDataURL(file);
+        } else {
+          const e = await uploadRes.json().catch(() => ({}));
+          showToast(e.message || 'Ошибка загрузки изображения', 'error');
+        }
       } catch (e) {
         showToast('Ошибка загрузки изображения', 'error');
       } finally {
@@ -1295,6 +1907,68 @@
         chatInput.focus();
       }
     });
+
+    // === Плавающее окно чата (только для обычных пользователей) ===
+    // У Admin/Superadmin карточка остаётся встроенной — это список тикетов,
+    // а не быстрый попап (см. loadAdminTickets ниже).
+    let chatUnreadPollingInterval = null;
+    let chatWidgetOpen = false;
+
+    async function loadChatUnreadCount() {
+      try {
+        const res = await fetch('/api/support/unread-count');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('chatFabBadge');
+        if (!badge) return;
+        const unread = data.unread || 0;
+        if (unread > 0 && !chatWidgetOpen) {
+          badge.textContent = unread > 9 ? '9+' : String(unread);
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      } catch (e) { /* не критично */ }
+    }
+
+    async function openChatWidget() {
+      const panel = document.getElementById('chatFabPanel');
+      if (!panel) return;
+      chatWidgetOpen = true;
+      panel.style.display = 'flex';
+      document.getElementById('chatFabBadge').style.display = 'none';
+      connectChatStream(); // запускает первую загрузку + polling каждые 4с, пока окно открыто
+      try { await fetch('/api/support/read-by-user', { method: 'POST' }); } catch (e) {}
+    }
+
+    function closeChatWidget() {
+      const panel = document.getElementById('chatFabPanel');
+      if (panel) panel.style.display = 'none';
+      chatWidgetOpen = false;
+      closeChatStream(); // останавливаем 4с polling, пока окно закрыто
+    }
+
+    function setupChatWidget() {
+      const card = document.getElementById('chatCard');
+      const fabBtn = document.getElementById('chatFabBtn');
+      const panelBody = document.getElementById('chatFabPanelBody');
+      const closeBtn = document.getElementById('chatFabCloseBtn');
+      if (!card || !fabBtn || !panelBody) return;
+
+      // Переносим существующую карточку чата (со всей её разметкой и уже
+      // повешенными обработчиками) внутрь плавающей панели.
+      panelBody.appendChild(card);
+      fabBtn.style.display = 'flex';
+
+      fabBtn.addEventListener('click', () => {
+        chatWidgetOpen ? closeChatWidget() : openChatWidget();
+      });
+      if (closeBtn) closeBtn.addEventListener('click', closeChatWidget);
+
+      loadChatUnreadCount();
+      if (chatUnreadPollingInterval) clearInterval(chatUnreadPollingInterval);
+      chatUnreadPollingInterval = setInterval(loadChatUnreadCount, 20000);
+    }
 
     // Admin support ticket management logic
     async function loadAdminTickets() {
@@ -1367,9 +2041,9 @@
       
       document.getElementById('adminBackBtn').style.display = 'inline-block';
       document.getElementById('cabinetChatForm').style.display = 'flex';
-      
-      // Скрываем старый субтитл — в заголовке теперь всегда только аватар + имя собеседника
-      document.getElementById('cabinetChatSubtitle').style.display = 'none';
+
+      // В заголовке — с кем чат; под ним показываем, кто и когда ответил последним.
+      document.getElementById('cabinetChatSubtitle').style.display = 'block';
       
       // Load messages
       await loadActiveTicketMessages(false);
@@ -1400,16 +2074,25 @@
           const data = await res.json();
           renderChatMessages(data.messages, isPolling);
           
-          // Determine last replier
+          // Кто и когда ответил последним
+          const repliedAtEl = document.getElementById('ticketLastRepliedAt');
           if (data.messages && data.messages.length > 0) {
             const lastMsg = data.messages[data.messages.length - 1];
             let lastReplier = lastMsg.name || 'Пользователь';
             if (lastMsg.sender_role === 'Admin' || lastMsg.sender_role === 'Superadmin') {
-              lastReplier = `${lastMsg.name} (Поддержка)`;
+              lastReplier = `${lastMsg.name} (Администрация)`;
             }
             document.getElementById('ticketLastReplier').textContent = lastReplier;
+            if (repliedAtEl && lastMsg.created_at) {
+              const d = new Date(lastMsg.created_at);
+              const when = d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+              repliedAtEl.textContent = ` · ${when}`;
+            } else if (repliedAtEl) {
+              repliedAtEl.textContent = '';
+            }
           } else {
             document.getElementById('ticketLastReplier').textContent = 'Нет сообщений';
+            if (repliedAtEl) repliedAtEl.textContent = '';
           }
         }
       } catch(e) {}
@@ -1503,7 +2186,7 @@
         showToast('Укажите пароль и код из приложения', 'error');
         return;
       }
-      if (!confirm('Отключить двухфакторную аутентификацию?')) return;
+      if (!await confirmDialog('Отключить двухфакторную аутентификацию?', { okText: 'Отключить', danger: true })) return;
 
       try {
         const res = await fetch('/api/cabinet/2fa/disable', {
@@ -1534,6 +2217,7 @@
     };
     let requestTypes = {};
     let toolCategories = [];
+    let vehicleCategoriesCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -1542,15 +2226,17 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat] = await Promise.all([
+        const [rt, cat, vcat] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
-          fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => [])
+          fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
+          fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => [])
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
+        vehicleCategoriesCab = vcat || [];
       } catch (e) { requestTypes = {}; }
 
-      // Заполняем выбор типа
+      // Скрытый select хранит выбранный тип (для submitRequest)
       const typeSel = document.getElementById('requestTypeSelect');
       typeSel.innerHTML = '';
       Object.entries(requestTypes).forEach(([key, t]) => {
@@ -1558,21 +2244,70 @@
         o.value = key; o.textContent = t.label;
         typeSel.appendChild(o);
       });
-      typeSel.onchange = () => renderRequestFields(typeSel.value);
 
-      btn.onclick = () => {
-        document.getElementById('requestModalOverlay').style.display = 'flex';
-        if (typeSel.value) renderRequestFields(typeSel.value);
-      };
+      // Список кнопок выбора типа (первый шаг)
+      const typeList = document.getElementById('requestTypeList');
+      typeList.innerHTML = '';
+      Object.entries(requestTypes).forEach(([key, t]) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.style.cssText = 'display:flex; align-items:center; gap:12px; text-align:left; padding:14px 16px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px; cursor:pointer; color:var(--text-primary); font-size:14px; font-weight:600; font-family:Inter,sans-serif; transition:background .15s;';
+        b.onmouseover = () => b.style.background = 'rgba(138,43,226,0.12)';
+        b.onmouseout = () => b.style.background = 'rgba(255,255,255,0.03)';
+        const icon = t.icon ? `<i data-lucide="${escapeHtmlC(t.icon)}" style="width:18px; height:18px; color:var(--accent-cyan); flex-shrink:0;"></i>` : '';
+        b.innerHTML = icon + `<span>${escapeHtmlC(t.label)}</span>`;
+        b.onclick = () => openRequestForm(key);
+        typeList.appendChild(b);
+      });
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      // «+ Новое» → сначала выбор типа
+      btn.onclick = openRequestTypePicker;
+
+      // Модалки заявлений должны жить в <body>, а не внутри .page: у .page своя
+      // stacking-context (position:relative; z-index:1), и фиксированный верхний
+      // navbar (z-index:100) перекрывал бы шапку модалки с крестиком.
+      ['requestTypeModalOverlay', 'requestModalOverlay', 'avatarPickerOverlay'].forEach(mid => {
+        const m = document.getElementById(mid);
+        if (m && m.parentElement !== document.body) document.body.appendChild(m);
+      });
+
+      document.getElementById('requestTypeModalClose').onclick = closeRequestTypePicker;
+      document.getElementById('requestTypeModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'requestTypeModalOverlay') closeRequestTypePicker();
+      });
+
       document.getElementById('requestModalClose').onclick = closeRequestModal;
       document.getElementById('requestModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'requestModalOverlay') closeRequestModal();
       });
+      // «← Изменить тип» — вернуться к выбору типа
+      document.getElementById('requestChangeTypeBtn').onclick = () => {
+        closeRequestModal();
+        openRequestTypePicker();
+      };
 
       document.getElementById('requestForm').onsubmit = submitRequest;
 
-      if (typeSel.value) renderRequestFields(typeSel.value);
       loadMyRequests();
+    }
+
+    function openRequestTypePicker() {
+      document.getElementById('requestTypeModalOverlay').style.display = 'flex';
+    }
+    function closeRequestTypePicker() {
+      document.getElementById('requestTypeModalOverlay').style.display = 'none';
+    }
+
+    // Выбран тип → открываем форму заявления по этому типу
+    function openRequestForm(typeKey) {
+      const def = requestTypes[typeKey];
+      if (!def) return;
+      document.getElementById('requestTypeSelect').value = typeKey;
+      document.getElementById('requestFormTypeLabel').textContent = def.label || typeKey;
+      renderRequestFields(typeKey);
+      closeRequestTypePicker();
+      document.getElementById('requestModalOverlay').style.display = 'flex';
     }
 
     function closeRequestModal() {
@@ -1604,7 +2339,16 @@
         if (f.type === 'textarea') {
           wrap.innerHTML = label + `<textarea id="${fid}" rows="2" class="form-input"></textarea>`;
         } else if (f.type === 'category') {
-          const opts = ['<option value="">—</option>'].concat(toolCategories.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`)).join('');
+          const sourceList = f.source === 'vehicle' ? vehicleCategoriesCab : toolCategories;
+          const opts = ['<option value="">Выберите категорию</option>']
+            .concat(sourceList.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`))
+            .concat(['<option value="Другое">Другое</option>'])
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
+        } else if (f.type === 'select') {
+          const opts = ['<option value="">Выберите</option>']
+            .concat((f.options || []).map(o => `<option value="${escapeHtmlC(o)}">${escapeHtmlC(o)}</option>`))
+            .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
@@ -1723,23 +2467,22 @@
         if (!file) return;
         btn.disabled = true; btn.textContent = '...';
         try {
-          const reader = new FileReader();
-          reader.onload = async (ev) => {
-            const base64 = ev.target.result.split(',')[1];
-            const up = await fetch('/api/media', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [{ filename: file.name, data: base64, mimeType: file.type }], category: 'tools' })
-            });
-            if (up.ok) {
-              const d = await up.json();
-              if (d.urls && d.urls[0]) {
-                reqPhotoUrls[fieldName] = d.urls[0];
-                document.getElementById(fid + '_prev').innerHTML = `<img src="${d.urls[0]}" style="width:100%;height:100%;object-fit:cover;">`;
-              }
-            } else showToast('Ошибка загрузки фото', 'error');
-            btn.disabled = false; btn.textContent = 'Загрузить';
-          };
-          reader.readAsDataURL(file);
+          const prepared = await prepareUploadFile(file);
+          const up = await fetch('/api/media', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: [prepared], category: 'tools' })
+          });
+          if (up.ok) {
+            const d = await up.json();
+            if (d.urls && d.urls[0]) {
+              reqPhotoUrls[fieldName] = d.urls[0];
+              document.getElementById(fid + '_prev').innerHTML = `<img src="${d.urls[0]}" style="width:100%;height:100%;object-fit:cover;">`;
+            }
+          } else {
+            const e = await up.json().catch(() => ({}));
+            showToast(e.message || 'Ошибка загрузки фото', 'error');
+          }
+          btn.disabled = false; btn.textContent = 'Загрузить';
         } catch (e) { btn.disabled = false; btn.textContent = 'Загрузить'; }
         input.value = '';
       };
@@ -1774,6 +2517,80 @@
       } catch (e) { showToast('Ошибка сети', 'error'); }
     }
 
+    // === Учёт рабочего времени ===
+    function fmtHours(h) {
+      const n = Math.round((h || 0) * 100) / 100;
+      return (Number.isInteger(n) ? n : n.toFixed(2)) + ' ч';
+    }
+
+    function setupWorkLog() {
+      const form = document.getElementById('workLogForm');
+      if (!form) return;
+      // Дата по умолчанию — сегодня.
+      const dateInput = document.getElementById('wlDate');
+      if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const payload = {
+          work_date: document.getElementById('wlDate').value,
+          hours: document.getElementById('wlHours').value,
+          note: document.getElementById('wlNote').value
+        };
+        try {
+          const res = await fetch('/api/worklogs', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) {
+            showToast('Запись добавлена', 'success');
+            document.getElementById('wlHours').value = '';
+            document.getElementById('wlNote').value = '';
+            loadMyWorkLogs();
+          } else showToast(d.message || 'Не удалось сохранить', 'error');
+        } catch (_) { showToast('Ошибка сети', 'error'); }
+      };
+
+      loadMyWorkLogs();
+    }
+
+    async function loadMyWorkLogs() {
+      const box = document.getElementById('wlList');
+      if (!box) return;
+      try {
+        const res = await fetch('/api/worklogs/mine');
+        const d = await res.json();
+        const list = (d && d.entries) || [];
+        document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
+        if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
+        box.innerHTML = '';
+        list.forEach(r => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);';
+          const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+          row.innerHTML = `
+            <div style="min-width:0;">
+              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span></div>
+              ${r.note ? `<div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtmlC(r.note)}</div>` : ''}
+            </div>
+            <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>`;
+          box.appendChild(row);
+        });
+      } catch (_) {
+        box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    window.deleteMyWorkLog = async (id) => {
+      if (!await confirmDialog('Удалить запись рабочего времени?', { okText: 'Удалить', danger: true })) return;
+      try {
+        const res = await fetch('/api/worklogs?id=' + id, { method: 'DELETE' });
+        if (res.ok) { showToast('Запись удалена', 'success'); loadMyWorkLogs(); }
+        else showToast('Не удалось удалить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
     async function loadMyRequests() {
       const box = document.getElementById('myRequestsList');
       if (!box) return;
@@ -1785,16 +2602,30 @@
         box.innerHTML = '';
         list.forEach(r => {
           const st = TR_STATUS[r.status] || TR_STATUS.pending;
+          // Одобренный заказ инструмента, ещё не полученный → кнопка «Получил».
+          const isOrderType = r.type === 'tool_order' || r.type === 'vehicle_order';
+          const awaitingReceipt = isOrderType && r.status === 'approved' && !r.received_at;
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,255,255,0.01);';
+          if (awaitingReceipt) row.style.borderColor = 'rgba(34,197,94,0.4)';
+          const rightSide = awaitingReceipt
+            ? `<button type="button" data-receive-id="${r.id}" style="padding:6px 14px; background:#22c55e; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Получил</button>`
+            : (isOrderType && r.received_at
+                ? `<span style="font-size:11px; font-weight:600; color:#22c55e;">✓ Получено</span>`
+                : `<span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`);
           row.innerHTML = `
             <div style="flex:1; min-width:0;">
               <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(r.title || '')}</div>
               <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(r.type_label || r.type)}</div>
               ${r.status === 'rejected' && r.review_note ? `<div style="font-size:11px; color:#ef4444;">Причина: ${escapeHtmlC(r.review_note)}</div>` : ''}
+              ${awaitingReceipt ? `<div style="font-size:11px; color:#22c55e;">Одобрено — ${r.type === 'vehicle_order' ? 'заберите авто' : 'заберите инструмент'} и нажмите «Получил»</div>` : ''}
             </div>
-            <span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`;
+            ${rightSide}`;
           box.appendChild(row);
+        });
+        // Обработчики кнопок «Получил»
+        box.querySelectorAll('[data-receive-id]').forEach(btn => {
+          btn.addEventListener('click', () => markReceived(btn.getAttribute('data-receive-id'), btn));
         });
         // Ровно 5 строк в высоту, дальше — прокрутка
         const rows = box.children;
@@ -1811,8 +2642,95 @@
       }
     }
 
+    async function markReceived(id, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '...'; }
+      try {
+        const res = await fetch('/api/requests/receive?id=' + encodeURIComponent(id), { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) {
+          showToast('Отмечено как получено', 'success');
+          loadMyRequests();
+        } else {
+          showToast(d.message || 'Не удалось отметить', 'error');
+          if (btn) { btn.disabled = false; btn.textContent = 'Получил'; }
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Получил'; }
+      }
+    }
+
     function escapeHtmlC(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+
+    // === Уведомления от администрации ===
+    let notifCache = [];
+    let notifPollingInterval = null;
+
+    async function loadNotifUnreadCount() {
+      try {
+        const res = await fetch('/api/cabinet/notifications');
+        if (!res.ok) return;
+        const data = await res.json();
+        notifCache = data.notifications || [];
+        const unread = notifCache.filter(n => !n.is_read).length;
+        const badge = document.getElementById('notifBadge');
+        if (!badge) return;
+        if (unread > 0) { badge.textContent = unread > 9 ? '9+' : String(unread); badge.style.display = 'flex'; }
+        else badge.style.display = 'none';
+      } catch (e) { /* тихо игнорируем — не критично */ }
+    }
+
+    function renderNotifDropdown() {
+      const dd = document.getElementById('notifDropdown');
+      if (!dd) return;
+      if (!notifCache.length) {
+        dd.innerHTML = '<div class="notif-empty">Уведомлений пока нет</div>';
+        return;
+      }
+      dd.innerHTML = notifCache.map(n => {
+        const date = new Date(n.created_at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        return `<div class="notif-item ${n.is_read ? '' : 'unread'}">
+          <div>${escapeHtmlC(n.message)}</div>
+          <div class="notif-item-date">${date}</div>
+        </div>`;
+      }).join('');
+    }
+
+    async function toggleNotifDropdown() {
+      const dd = document.getElementById('notifDropdown');
+      if (!dd) return;
+      const isOpen = dd.style.display !== 'none';
+      if (isOpen) { dd.style.display = 'none'; return; }
+      await loadNotifUnreadCount();
+      renderNotifDropdown();
+      dd.style.display = 'block';
+      try {
+        await fetch('/api/cabinet/notifications/read-all', { method: 'POST' });
+        notifCache = notifCache.map(n => ({ ...n, is_read: true }));
+        renderNotifDropdown();
+        const badge = document.getElementById('notifBadge');
+        if (badge) badge.style.display = 'none';
+      } catch (e) { /* не критично */ }
+    }
+
+    function setupNotifications() {
+      const bellBtn = document.getElementById('notifBellBtn');
+      if (!bellBtn) return;
+      bellBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleNotifDropdown();
+      });
+      document.addEventListener('click', (e) => {
+        const dd = document.getElementById('notifDropdown');
+        if (dd && dd.style.display !== 'none' && !dd.contains(e.target) && e.target !== bellBtn && !bellBtn.contains(e.target)) {
+          dd.style.display = 'none';
+        }
+      });
+      loadNotifUnreadCount();
+      if (notifPollingInterval) clearInterval(notifPollingInterval);
+      notifPollingInterval = setInterval(loadNotifUnreadCount, 20000);
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1821,9 +2739,11 @@
         backBtn.addEventListener('click', window.closeAdminChatInline);
       }
 
-      // Сворачивание карточек «Мой профиль» / «2FA» на мобильных
+      // Сворачивание карточек кабинета на мобильных. Клик по кнопкам/ссылкам
+      // внутри заголовка (например «+ Новое», «Назад») не должен сворачивать.
       document.querySelectorAll('.collapse-toggle').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('button, a, input, select')) return;
           const card = el.closest('.mobile-collapse');
           if (card) card.classList.toggle('expanded');
         });
@@ -1834,13 +2754,17 @@
         await Promise.all([loadProfile(), loadArticles(), loadSettings()]);
         loadTwoFactorStatus();
         setupToolRequests();
+        setupWorkLog();
+        setupNotifications();
         if (currentUserData) {
           if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
             await loadAdminTickets();
             // Для админа подключаемся к стриму только когда открыт конкретный чат
           } else {
-            await loadChatMessages();
-            connectChatStream(); // SSE для обычного пользователя
+            // У обычного пользователя чат — плавающее окно, закрытое по
+            // умолчанию: сообщения грузятся и опрашиваются только пока оно
+            // открыто (openChatWidget), в фоне — лишь счётчик непрочитанных.
+            setupChatWidget();
           }
         }
       })();

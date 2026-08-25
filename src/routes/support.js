@@ -13,14 +13,102 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
     }
     const query = `
       SELECT ticket_id, name, email, MAX(created_at) as last_activity,
-             SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count
-      FROM support_messages 
-      GROUP BY ticket_id 
+             SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count,
+             (SELECT m2.message FROM support_messages m2 WHERE m2.ticket_id = support_messages.ticket_id ORDER BY m2.id DESC LIMIT 1) as last_message,
+             (SELECT m3.sender_role FROM support_messages m3 WHERE m3.ticket_id = support_messages.ticket_id ORDER BY m3.id DESC LIMIT 1) as last_sender_role,
+             (SELECT m5.user_id FROM support_messages m5 WHERE m5.ticket_id = support_messages.ticket_id AND m5.sender_role NOT IN ('Admin','Superadmin') ORDER BY m5.id ASC LIMIT 1) as owner_user_id
+      FROM support_messages
+      GROUP BY ticket_id
       ORDER BY last_activity DESC
     `;
     db.all(query, [], (err, rows) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      sendJson(res, 200, { success: true, tickets: rows });
+      const ownerIds = [...new Set((rows || []).map(r => r.owner_user_id).filter(Boolean))];
+      if (!ownerIds.length) return sendJson(res, 200, { success: true, tickets: rows });
+
+      const placeholders = ownerIds.map(() => '?').join(',');
+      db.all(
+        `SELECT user_id, first_name, last_name FROM employees WHERE user_id IN (${placeholders})`,
+        ownerIds,
+        (e2, empRows) => {
+          const namesByUser = {};
+          (empRows || []).forEach(e => {
+            const full = [e.first_name, e.last_name].filter(Boolean).join(' ').trim();
+            if (full) namesByUser[e.user_id] = full;
+          });
+          rows.forEach(r => {
+            const full = namesByUser[r.owner_user_id];
+            if (full) r.name = full;
+            delete r.owner_user_id;
+          });
+          sendJson(res, 200, { success: true, tickets: rows });
+        }
+      );
+    });
+    return;
+  }
+
+  // GET /api/support/users — все пользователи + непрочитанные из поддержки,
+  // чтобы админ мог не только отвечать, но и сам написать любому.
+  if (currentPath === '/api/support/users' && method === 'GET') {
+    if (user.role !== 'Admin' && user.role !== 'Superadmin') {
+      return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
+    }
+    const aggQuery = `
+      SELECT ticket_id,
+             MAX(created_at) as last_activity,
+             SUM(CASE WHEN is_read = 0 AND sender_role NOT IN ('Admin','Superadmin') THEN 1 ELSE 0 END) as unread_count,
+             (SELECT m2.message FROM support_messages m2 WHERE m2.ticket_id = support_messages.ticket_id ORDER BY m2.id DESC LIMIT 1) as last_message,
+             (SELECT m3.sender_role FROM support_messages m3 WHERE m3.ticket_id = support_messages.ticket_id ORDER BY m3.id DESC LIMIT 1) as last_sender_role,
+             (SELECT m4.name FROM support_messages m4 WHERE m4.ticket_id = support_messages.ticket_id AND m4.sender_role NOT IN ('Admin','Superadmin') ORDER BY m4.id DESC LIMIT 1) as guest_name
+      FROM support_messages GROUP BY ticket_id`;
+
+    db.all(
+      `SELECT u.id, u.username, u.email, u.avatar_url, e.first_name, e.last_name
+       FROM users u LEFT JOIN employees e ON e.user_id = u.id
+       ORDER BY u.username COLLATE NOCASE ASC`,
+      [], (err, users) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      db.all(aggQuery, [], (e2, aggs) => {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+
+        const byTicket = {};
+        (aggs || []).forEach(a => { byTicket[a.ticket_id] = a; });
+
+        const list = [];
+        (users || []).forEach(u => {
+          const a = byTicket['user_' + u.id] || {};
+          delete byTicket['user_' + u.id];
+          const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+          list.push({
+            ticket_id: 'user_' + u.id,
+            name: fullName || u.username,
+            email: u.email,
+            avatar_url: u.avatar_url || null,
+            unread_count: a.unread_count || 0,
+            last_message: a.last_message || null,
+            last_sender_role: a.last_sender_role || null,
+            last_activity: a.last_activity || null
+          });
+        });
+
+        // Гостевые диалоги (ticket_id без привязки к аккаунту) — не теряем их.
+        Object.values(byTicket).forEach(a => {
+          list.push({
+            ticket_id: a.ticket_id,
+            name: a.guest_name || 'Гость',
+            email: null,
+            avatar_url: null,
+            unread_count: a.unread_count || 0,
+            last_message: a.last_message || null,
+            last_sender_role: a.last_sender_role || null,
+            last_activity: a.last_activity || null,
+            is_guest: true
+          });
+        });
+
+        sendJson(res, 200, { success: true, users: list });
+      });
     });
     return;
   }
@@ -107,6 +195,37 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
     } catch (e) {
       sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
     }
+    return;
+  }
+
+  // GET /api/support/unread-count — сколько ответов администрации пользователь
+  // ещё не открывал в своём личном чате (для бейджа на плавающем окне).
+  if (currentPath === '/api/support/unread-count' && method === 'GET') {
+    const tId = 'user_' + user.id;
+    db.get(
+      "SELECT COUNT(*) as c FROM support_messages WHERE ticket_id = ? AND sender_role IN ('Admin','Superadmin') AND read_by_user = 0",
+      [tId],
+      (err, row) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, unread: row ? row.c : 0 });
+      }
+    );
+    return;
+  }
+
+  // POST /api/support/read-by-user — пользователь открыл свой чат, отмечаем
+  // ответы администрации прочитанными (отдельно от is_read — той колонкой
+  // отмечается прочтение админом сообщений пользователя, не наоборот).
+  if (currentPath === '/api/support/read-by-user' && method === 'POST') {
+    const tId = 'user_' + user.id;
+    db.run(
+      "UPDATE support_messages SET read_by_user = 1 WHERE ticket_id = ? AND sender_role IN ('Admin','Superadmin')",
+      [tId],
+      (err) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true });
+      }
+    );
     return;
   }
 

@@ -10,6 +10,57 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%238a2be2'/%3E%3Cstop offset='100%25' stop-color='%2300d2ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='42' fill='url(%23g)'/%3E%3Ctext x='50' y='63' font-size='46' text-anchor='middle' fill='white' font-family='system-ui,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* На мобильных чип пользователя открывает меню; отдельную кнопку
+       «Панель» прячем — админ-панель доступна пунктом меню. */
+    #navUserCaret { display: none; }
+    .guest-mobile-only { display: none; }
+    @media (max-width: 768px) {
+      #authNav #navAdminPanel { display: none !important; }
+      #cabinetLink { cursor: pointer; }
+      #navUserCaret { display: inline-flex; align-items: center; }
+      /* Гость: две ссылки → одна кнопка «Вход» с модалкой */
+      .guest-desktop-only { display: none !important; }
+      .guest-mobile-only { display: inline-flex; align-items: center; gap: 6px; }
+    }
+    .profile-menu-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(3px);
+      align-items: flex-start; justify-content: center;
+    }
+    .profile-menu-overlay.open { display: flex; }
+    .profile-menu {
+      margin-top: 64px; width: min(340px, 92vw);
+      background: #17171f; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      animation: pmIn .16s ease;
+    }
+    @keyframes pmIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    .profile-menu-head {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .profile-menu-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: linear-gradient(135deg, #8a2be2, #00d2ff);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px; color: #fff; flex-shrink: 0;
+    }
+    .profile-menu-name { font-weight: 700; color: #f2f2f7; font-size: 15px; }
+    .profile-menu-role { font-size: 12px; color: #a0a0ab; }
+    .profile-menu-item {
+      display: flex; align-items: center; gap: 12px; width: 100%;
+      padding: 14px 18px; background: none; border: none; cursor: pointer;
+      color: #f2f2f7; font-size: 15px; font-family: 'Inter', sans-serif;
+      text-align: left; text-decoration: none; transition: background 0.15s;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .profile-menu-item:last-child { border-bottom: none; }
+    .profile-menu-item:hover { background: rgba(255,255,255,0.05); }
+    .profile-menu-item i { width: 18px; height: 18px; flex-shrink: 0; color: #a0a0ab; }
+    .profile-menu-item.danger { color: #ff4a6e; }
+    .profile-menu-item.danger i { color: #ff4a6e; }
+  </style>
 </head>
 <body>
   
@@ -28,18 +79,45 @@
     <div class="topbar__right">
       <!-- Guest links (shown when not logged in) -->
       <div id="guestNav" style="display:flex;align-items:center;gap:16px;">
-        <a href="/register.html" class="nav-btn-link">Регистрация</a>
-        <a href="/login.html" class="admin-link">Войти <i data-lucide="arrow-right"></i></a>
+        <a href="/register.html" class="nav-btn-link guest-desktop-only">Регистрация</a>
+        <a href="/login.html" class="admin-link guest-desktop-only">Войти <i data-lucide="arrow-right"></i></a>
+        <button type="button" id="guestMenuBtn" class="admin-link guest-mobile-only" style="cursor:pointer;font-family:inherit;">Аккаунт <i data-lucide="chevron-down" style="width:14px;height:14px;"></i></button>
       </div>
       <!-- Auth links (shown when logged in) -->
       <div id="authNav" style="display:none;align-items:center;gap:12px;">
         <a href="/cabinet.html" class="admin-link" id="cabinetLink">
           <i data-lucide="user"></i>
           <span id="navUsername">Кабинет</span>
+          <span id="navUserCaret"><i data-lucide="chevron-down" style="width:14px;height:14px;"></i></span>
         </a>
       </div>
     </div>
   </header>
+
+  <!-- Мобильное меню входа/регистрации (гость) -->
+  <div class="profile-menu-overlay" id="guestMenuOverlay">
+    <div class="profile-menu" role="menu" aria-label="Вход">
+      <a href="/login.html" class="profile-menu-item" role="menuitem"><i data-lucide="log-in"></i> Войти</a>
+      <a href="/register.html" class="profile-menu-item" role="menuitem"><i data-lucide="user-plus"></i> Регистрация</a>
+    </div>
+  </div>
+
+  <!-- Мобильное меню профиля (тап по нику в шапке) -->
+  <div class="profile-menu-overlay" id="profileMenuOverlay">
+    <div class="profile-menu" role="menu" aria-label="Меню профиля">
+      <div class="profile-menu-head">
+        <div class="profile-menu-avatar" id="pmAvatar">?</div>
+        <div>
+          <div class="profile-menu-name" id="pmName">...</div>
+          <div class="profile-menu-role" id="pmRole"></div>
+        </div>
+      </div>
+      <a href="/" class="profile-menu-item" role="menuitem"><i data-lucide="home"></i> На сайт</a>
+      <a href="/admin/" class="profile-menu-item" role="menuitem" id="pmAdmin" style="display:none;"><i data-lucide="settings"></i> Админ-панель</a>
+      <a href="/cabinet.html" class="profile-menu-item" role="menuitem"><i data-lucide="user"></i> Профиль</a>
+      <button type="button" class="profile-menu-item danger" role="menuitem" id="pmLogout"><i data-lucide="log-out"></i> Выход</button>
+    </div>
+  </div>
 
   <div class="layout">
     <!-- SIDEBAR -->
@@ -56,7 +134,7 @@
           <li>
             <a href="#about" class="sidebar__link" onclick="switchSection('about')">
               <span class="sidebar__link-icon"><i data-lucide="info"></i></span>
-              <span>О блоге</span>
+              <span>О компании</span>
             </a>
           </li>
           <li>
@@ -200,6 +278,16 @@
 
   <script src="app.js"></script>
   <script>
+    // Гостевое меню входа/регистрации (мобильные)
+    (function () {
+      const btn = document.getElementById('guestMenuBtn');
+      const overlay = document.getElementById('guestMenuOverlay');
+      if (!btn || !overlay) return;
+      btn.addEventListener('click', () => overlay.classList.add('open'));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') overlay.classList.remove('open'); });
+    })();
+
     // Сайдбар тогглер
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebarToggle');

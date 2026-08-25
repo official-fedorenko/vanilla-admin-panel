@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Карточка инструмента</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔧%3C/text%3E%3C/svg%3E">
+  <title>Карточка автомобиля</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🚗%3C/text%3E%3C/svg%3E">
   <style>
     :root{
       --bg:#050505; --card:rgba(20,20,28,.85); --border:rgba(255,255,255,.08);
@@ -63,11 +63,11 @@
 
       <div id="notfound" class="state hidden">
         <div class="code">404</div>
-        <div>Инструмент не найден</div>
+        <div>Автомобиль не найден</div>
       </div>
 
       <div id="content" class="hidden">
-        <div class="photo" id="photoBox"><div class="ph">🔧</div></div>
+        <div class="photo" id="photoBox"><div class="ph">🚗</div></div>
         <div class="body">
           <h1 id="name"></h1>
           <div class="cat" id="cat"></div>
@@ -75,7 +75,7 @@
           <div class="divider"></div>
           <dl id="specs"></dl>
           <div class="foot">
-            Карточка для идентификации электроинструмента.<br>
+            Карточка для идентификации автомобиля.<br>
             Отсканировано по QR-коду.
           </div>
         </div>
@@ -85,10 +85,10 @@
 
   <script>
     const STATUS = {
-      available:   { label: 'На складе', cls: 'b-success' },
-      assigned:    { label: 'Выдан',     cls: 'b-warning' },
-      repair:      { label: 'В ремонте', cls: 'b-warning' },
-      written_off: { label: 'Списан',    cls: 'b-danger'  }
+      available:   { label: 'На стоянке', cls: 'b-success' },
+      assigned:    { label: 'Выдан',      cls: 'b-warning' },
+      repair:      { label: 'В ремонте',  cls: 'b-warning' },
+      written_off: { label: 'Списан',     cls: 'b-danger'  }
     };
 
     function esc(s){
@@ -102,38 +102,40 @@
         document.getElementById(x).classList.toggle('hidden', x !== id));
     }
 
-    function render(t){
-      document.getElementById('name').textContent = t.name || 'Без названия';
-      document.getElementById('cat').textContent = t.category || '';
+    function render(v){
+      document.getElementById('name').textContent = v.name || 'Без названия';
+      document.getElementById('cat').textContent = v.category || '';
 
       const badge = document.getElementById('status');
-      if (t.status) {
-        const st = STATUS[t.status] || { label: t.status, cls: 'b-muted' };
+      if (v.status) {
+        const st = STATUS[v.status] || { label: v.status, cls: 'b-muted' };
         badge.textContent = st.label;
         badge.className = 'badge ' + st.cls;
       } else {
         badge.classList.add('hidden');
       }
 
-      if (t.photo_url) {
+      if (v.photo_url) {
         document.getElementById('photoBox').innerHTML =
-          '<img src="' + esc(t.photo_url) + '" alt="' + esc(t.name || '') +
-          '" onerror="this.parentNode.innerHTML=\'&lt;div class=&quot;ph&quot;&gt;🔧&lt;/div&gt;\'">';
+          '<img src="' + esc(v.photo_url) + '" alt="' + esc(v.name || '') +
+          '" onerror="this.parentNode.innerHTML=\'&lt;div class=&quot;ph&quot;&gt;🚗&lt;/div&gt;\'">';
       }
 
-      let purchase = t.purchase_date || '';
+      let purchase = v.purchase_date || '';
       if (purchase) {
         const d = new Date(String(purchase).slice(0, 10) + 'T00:00:00');
         if (!isNaN(d)) purchase = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
       }
 
       const rows = [
-        ['Бренд', t.brand],
-        ['Модель', t.model],
-        ['Серийный №', t.serial_number],
-        ['Инвентарный №', t.inventory_number],
+        ['Бренд', v.brand],
+        ['Модель', v.model],
+        ['Год выпуска', v.year],
+        ['Гос. номер', v.plate_number],
+        ['VIN', v.vin],
+        ['Пробег', v.mileage != null ? (v.mileage + ' км') : ''],
         ['Дата покупки', purchase],
-        ['Заметки', t.notes]
+        ['Заметки', v.notes]
       ].filter(r => r[1]);
 
       document.getElementById('specs').innerHTML = rows.map(r =>
@@ -144,9 +146,9 @@
     (function(){
       const id = new URLSearchParams(location.search).get('id');
       if (!id) { show('notfound'); return; }
-      fetch('/api/public/tool?id=' + encodeURIComponent(id))
+      fetch('/api/public/vehicle?id=' + encodeURIComponent(id))
         .then(r => r.ok ? r.json() : Promise.reject())
-        .then(d => { if (d && d.tool) { render(d.tool); show('content'); } else { show('notfound'); } })
+        .then(d => { if (d && d.vehicle) { render(d.vehicle); show('content'); } else { show('notfound'); } })
         .catch(() => show('notfound'));
     })();
   </script>

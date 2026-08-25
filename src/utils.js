@@ -73,13 +73,20 @@ function logAction(user, action) {
   });
 }
 
+// Разрешаем только внутренние пути (загруженные файлы, каталожные иконки,
+// стандартные аватары) — чтобы нельзя было подсунуть внешний URL.
+function isInternalPath(url) {
+  const s = String(url || '');
+  return /^\/(uploads|catalog|avatars)\//.test(s);
+}
+
 /**
  * Base64 file upload handler.
  * UPLOADS_DIR is passed in so the route doesn't need to know project layout.
  */
 async function handleBase64Upload(req, UPLOADS_DIR) {
   const MAX_FILES = 6;
-  const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 МБ после декодирования
+  const MAX_SIZE_BYTES = 25 * 1024 * 1024; // 25 МБ после декодирования
   // base64 раздувает размер на ~33% + запас под JSON-обёртку и метаданные файлов
   const MAX_UPLOAD_BODY_BYTES = Math.ceil(MAX_FILES * MAX_SIZE_BYTES * 1.4);
 
@@ -105,7 +112,7 @@ async function handleBase64Upload(req, UPLOADS_DIR) {
     }
 
     if (buffer.length === 0 || buffer.length > MAX_SIZE_BYTES) {
-      const err = new Error(`Файл "${f.filename}" слишком большой (макс 8 МБ)`);
+      const err = new Error(`Файл "${f.filename}" слишком большой (макс ${Math.round(MAX_SIZE_BYTES / 1024 / 1024)} МБ)`);
       err.expected = true;
       throw err;
     }
@@ -133,5 +140,6 @@ module.exports = {
   sendJson,
   logAction,
   handleBase64Upload,
-  parsePagination
+  parsePagination,
+  isInternalPath
 };

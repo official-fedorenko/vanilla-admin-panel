@@ -20,12 +20,19 @@ const handleSupport = require('./src/routes/support');
 const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
+const handleVehicles = require('./src/routes/vehicles');
 const handleToolCatalog = require('./src/routes/toolCatalog');
+const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
+const handleBrands = require('./src/routes/brands');
+const handleNotifications = require('./src/routes/notifications');
 const handleRequests = require('./src/routes/requests');
+const handleWorklogs = require('./src/routes/worklogs');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
+const handleTestEmployees = require('./src/routes/testEmployees');
+const handleTestTools = require('./src/routes/testTools');
 const handleBackup = require('./src/routes/backup');
 const handleTwoFactor = require('./src/routes/twoFactor');
 const handleAuth = require('./src/routes/auth');
@@ -68,6 +75,27 @@ const NO_CACHE_CONTROL = 'no-cache';
 
 function getStaticCacheControl(ext) {
   return NO_CACHE_EXTENSIONS.has(ext) ? NO_CACHE_CONTROL : STATIC_ASSET_CACHE_CONTROL;
+}
+
+// Авто-версионирование ассетов (cache-busting без ручного бампа ?v=).
+// При отдаче HTML подставляем в ссылки на локальные .js/.css параметр
+// ?v=<время изменения файла>. Меняется файл → меняется URL → браузер
+// гарантированно берёт свежую версию. Забывать про ручной ?v= больше не нужно.
+function assetVersion(filePath) {
+  try { return Math.floor(fs.statSync(filePath).mtimeMs).toString(36); }
+  catch (e) { return null; }
+}
+function injectAssetVersions(html, baseDir) {
+  return html.replace(
+    /((?:src|href)=")([^"?#]+\.(?:js|css))(?:\?[^"#]*)?(#[^"]*)?(")/g,
+    (match, pre, assetPath, hash, post) => {
+      // Внешние ссылки (CDN) не трогаем.
+      if (/^(?:https?:)?\/\//.test(assetPath)) return match;
+      const abs = path.join(baseDir, assetPath.replace(/^\//, ''));
+      const v = assetVersion(abs);
+      return v ? `${pre}${assetPath}?v=${v}${hash || ''}${post}` : match;
+    }
+  );
 }
 
 // === Settings cache (for maintenance_mode etc) + helpers ===
@@ -155,10 +183,11 @@ const server = http.createServer(async (req, res) => {
     return handleAuth(req, res, user, parsedUrl, method);
   }
 
-  // Cabinet (own profile / мой инструмент — needed for cabinet.html after login)
+  // Cabinet (own profile / мой инструмент / моё авто — needed for cabinet.html after login)
   if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
       pathname === '/api/cabinet/my-card' ||
-      pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo') {
+      pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
+      pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo') {
     return handleCabinet(req, res, user, parsedUrl, method);
   }
 
@@ -185,14 +214,38 @@ const server = http.createServer(async (req, res) => {
     return handleTools(req, res, user, parsedUrl, method);
   }
 
-  // Справочник моделей (data/tool-catalog) для подсказок при добавлении инструмента
+  // Автопарк: CRUD инвентаря транспорта + выдача/возврат/история + справочник типов
+  if (pathname.startsWith('/api/crud/vehicles') || pathname.startsWith('/api/vehicles/') ||
+      pathname.startsWith('/api/crud/vehicle-categories')) {
+    return handleVehicles(req, res, user, parsedUrl, method);
+  }
+
+  // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
   if (pathname === '/api/tool-catalog' && method === 'GET') {
     return handleToolCatalog(req, res, user);
   }
 
+  // Управление стандартным каталогом инструмента (Superadmin для изменений)
+  if (pathname === '/api/catalog-models' || pathname === '/api/catalog-models/clear') {
+    return handleCatalogModels(req, res, user, parsedUrl, method);
+  }
+
+  // Схема полей каталога по категориям (для адаптивной модалки)
+  if (pathname === '/api/catalog-schema' && method === 'GET') {
+    if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+    const { FIELD_DEFS, CATEGORY_FIELDS, DEFAULT_FIELDS } = require('./src/catalogSchema');
+    return sendJson(res, 200, { success: true, fieldDefs: FIELD_DEFS, categoryFields: CATEGORY_FIELDS, defaultFields: DEFAULT_FIELDS });
+  }
+
+
   // Универсальные заявления (пользователь создаёт, админ одобряет)
   if (pathname === '/api/request-types' || pathname.startsWith('/api/requests')) {
     return handleRequests(req, res, user, parsedUrl, method);
+  }
+
+  // Учёт рабочего времени (пользователь вносит свои часы, админ видит всех)
+  if (pathname.startsWith('/api/worklogs')) {
+    return handleWorklogs(req, res, user, parsedUrl, method);
   }
 
   // Media
@@ -203,6 +256,16 @@ const server = http.createServer(async (req, res) => {
   // Иконки категорий инструментов (просмотр / переопределение)
   if (pathname === '/api/category-icons') {
     return handleCategoryIcons(req, res, user, parsedUrl, method);
+  }
+
+  // Реестр брендов инструмента с иконками
+  if (pathname === '/api/brands') {
+    return handleBrands(req, res, user, parsedUrl, method);
+  }
+
+  // Внутренние уведомления от администрации (личный кабинет + отправка из админки)
+  if (pathname.startsWith('/api/cabinet/notifications') || pathname.startsWith('/api/admin/notifications')) {
+    return handleNotifications(req, res, user, parsedUrl, method);
   }
 
   // Стандартные (предустановленные) аватары
@@ -238,6 +301,21 @@ const server = http.createServer(async (req, res) => {
   // Superadmin-only: reset demo data
   if (pathname === '/api/admin/reset-demo' && method === 'POST') {
     return handleResetDemo(req, res, user, parsedUrl, method, { UPLOADS_DIR, reloadSettingsCache });
+  }
+
+  // Тестовые сотрудники (добавить/удалить) — только Superadmin
+  if (pathname.startsWith('/api/admin/test-employees/')) {
+    return handleTestEmployees(req, res, user, parsedUrl, method);
+  }
+
+  // Тестовые инструменты (добавить/удалить) — только Superadmin
+  if (pathname.startsWith('/api/admin/test-tools/')) {
+    return handleTestTools(req, res, user, parsedUrl, method);
+  }
+
+  // Полная очистка каталога инструментов (включая реальные записи) — только Superadmin
+  if (pathname.startsWith('/api/admin/tools-catalog/')) {
+    return handleTestTools(req, res, user, parsedUrl, method);
   }
 
   // Superadmin-only: download a full backup of the SQLite database
@@ -335,6 +413,20 @@ const server = http.createServer(async (req, res) => {
     const ext = path.extname(fullStaticPath);
     const contentType = MIME_TYPES[ext] || 'text/plain';
 
+    // HTML читаем и подставляем свежие версии ассетов (авто cache-busting).
+    if (ext === '.html') {
+      fs.readFile(fullStaticPath, 'utf8', (rErr, html) => {
+        if (rErr) { sendHtml404(res); return; }
+        const out = injectAssetVersions(html, path.dirname(fullStaticPath));
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': getStaticCacheControl(ext)
+        });
+        res.end(out);
+      });
+      return;
+    }
+
     res.writeHead(200, {
       'Content-Type': contentType,
       'Cache-Control': getStaticCacheControl(ext)
@@ -375,10 +467,11 @@ if (require.main === module) {
     console.log('     2. Go to "Пользователи" (Users) and change ALL passwords');
     console.log('     3. (Optional) Disable registration in Settings');
     console.log('');
-    console.log('   To completely reset demo data:');
+    console.log('   To completely reset the database:');
     console.log('     1. Stop the server');
     console.log('     2. Delete db.sqlite');
-    console.log('     3. Restart (fresh DB + demo data will be created)');
+    console.log('     3. Restart (fresh DB with only the 3 default accounts above)');
+    console.log('        Test employees/tools can be added via Settings buttons (Superadmin)');
     console.log('');
     console.log('   Never expose this directly to the internet without a reverse proxy + HTTPS.');
     console.log('='.repeat(70));

@@ -121,7 +121,10 @@ body {
 .app-container {
   display: grid;
   grid-template-columns: 260px 1fr;
-  min-height: 100vh;
+  /* Фиксируем высоту окна: сайдбар и контент прокручиваются независимо
+     (на мобильных сбрасывается — см. медиазапросы ниже). */
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Sidebar */
@@ -134,6 +137,7 @@ aside.sidebar {
   position: sticky;
   top: 0;
   padding: 24px;
+  overflow: hidden; /* прокручивается только список меню (.nav-list) */
 }
 
 .brand {
@@ -183,6 +187,12 @@ aside.sidebar {
   flex-direction: column;
   gap: 8px;
   flex-grow: 1;
+  /* Собственная прокрутка меню, независимо от контента справа.
+     min-height:0 нужен, чтобы flex-элемент мог сжиматься и включать скролл. */
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
 }
 
 .nav-item a {
@@ -244,6 +254,20 @@ aside.sidebar {
   color: hsl(var(--text-muted));
 }
 
+/* Кнопка-бургер — только для мобильной раскладки (по умолчанию скрыта). */
+.nav-burger {
+  display: none;
+  background: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-color));
+  color: hsl(var(--text-primary));
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.nav-burger i { width: 22px; height: 22px; }
+
 .logout-btn {
   background: none;
   border: none;
@@ -268,13 +292,18 @@ main.main-content {
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
+  /* Контент прокручивается сам по себе внутри фиксированной высоты окна. */
+  height: 100vh;
+  min-height: 0;
   overflow-y: auto;
 }
 
+/* Единый заголовок раздела: сверху — название и описание, снизу — вся
+   навигация (кнопки и фильтры) в один ряд с переносом. */
 .page-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 32px;
 }
 
@@ -432,15 +461,18 @@ main.main-content {
 }
 
 /* Улучшения для настроек */
-#settingsContainer .form-group label {
+#settingsContainerSite .form-group label,
+#settingsContainerCards .form-group label {
   font-size: 13px;
 }
-#settingsContainer textarea.form-control {
+#settingsContainerSite textarea.form-control,
+#settingsContainerCards textarea.form-control {
   font-family: inherit;
   line-height: 1.5;
 }
 /* Простой красивый чекбокс для boolean настроек */
-#settingsContainer input[type="checkbox"] {
+#settingsContainerSite input[type="checkbox"],
+#settingsContainerCards input[type="checkbox"] {
   accent-color: hsl(var(--accent-purple));
   width: 18px;
   height: 18px;
@@ -493,6 +525,288 @@ main.main-content {
   box-shadow: 0 8px 16px hsl(var(--accent-red) / 0.3);
 }
 
+/* Пометка обязательных полей в формах */
+.required-mark {
+  color: hsl(var(--accent-red));
+  margin-left: 2px;
+}
+
+/* Пикер бренда: триггер-виджет вместо обычного текстового поля */
+.brand-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.brand-picker-trigger img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.brand-picker-placeholder {
+  color: hsl(var(--text-muted));
+}
+
+/* Выпадающая панель выбора бренда */
+.brand-picker-dropdown {
+  position: fixed;
+  z-index: 2000;
+  background: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-color));
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  width: 300px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+.brand-picker-search {
+  padding: 10px;
+  border-bottom: 1px solid hsl(var(--border-color));
+}
+.brand-picker-list {
+  overflow-y: auto;
+  padding: 6px;
+}
+.brand-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.brand-picker-item:hover {
+  background: hsl(var(--border-color) / 0.3);
+}
+.brand-picker-item img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.brand-picker-add {
+  border-top: 1px solid hsl(var(--border-color));
+  padding: 10px;
+  display: flex;
+  gap: 6px;
+}
+.brand-picker-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Тип топлива авто: чекбоксы вместо select — можно выбрать несколько */
+.fuel-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.fuel-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border-color));
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.fuel-checkbox:hover { border-color: hsl(var(--accent-purple)); }
+.fuel-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: hsl(var(--accent-purple));
+  cursor: pointer;
+}
+.fuel-checkbox:has(input:checked) {
+  border-color: hsl(var(--accent-purple));
+  background: hsl(var(--accent-purple) / 0.1);
+}
+
+/* Settings section tabs (Настройка сайта / карточек / системы) */
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.settings-tab-btn {
+  padding: 10px 18px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid hsl(var(--border-color));
+  background: hsl(var(--bg-card));
+  color: hsl(var(--text-muted));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.settings-tab-btn:hover {
+  color: hsl(var(--text-primary));
+  border-color: hsl(var(--accent-purple));
+}
+.settings-tab-btn.active {
+  background: hsl(var(--accent-purple));
+  border-color: hsl(var(--accent-purple));
+  color: #fff;
+}
+
+/* Test Employees & Test Tools Boxes */
+.test-box {
+  padding-top: 20px;
+  border-top: 1px solid hsl(var(--border-color));
+  display: none;
+}
+
+.test-box.visible {
+  display: block;
+}
+
+#testEmployeesBox {
+  margin-top: 28px;
+}
+
+#testToolsBox {
+  margin-top: 20px;
+}
+
+#clearToolsCatalogBox {
+  margin-top: 20px;
+}
+
+#clearCatalogModelsBox {
+  margin-top: 20px;
+}
+
+.test-box-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--text-primary));
+}
+
+#testEmployeesBox .test-box-title {
+  margin-bottom: 8px;
+}
+
+#testToolsBox .test-box-title {
+  margin-bottom: 12px;
+}
+
+.test-box-buttons {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+#testEmployeesBox .test-box-buttons {
+  gap: 10px;
+}
+
+#testToolsBox .test-box-buttons {
+  gap: 8px;
+}
+
+.test-box-buttons .btn,
+.test-box-buttons .btn-secondary {
+  flex: 1;
+  min-width: 140px;
+}
+
+.test-box-description {
+  font-size: 12px;
+  color: hsl(var(--text-muted));
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+/* Mobile: buttons stack vertically */
+@media (max-width: 768px) {
+  #testEmployeesBox .test-box-buttons {
+    gap: 8px;
+  }
+
+  #testToolsBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 13px;
+    padding: 10px 16px;
+  }
+
+  .test-box-buttons span {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  #testEmployeesBox {
+    margin-top: 16px;
+  }
+
+  #testToolsBox {
+    margin-top: 16px;
+  }
+
+  #clearToolsCatalogBox {
+    margin-top: 16px;
+  }
+
+  #clearCatalogModelsBox {
+    margin-top: 16px;
+  }
+
+  .test-box {
+    padding-top: 16px;
+  }
+
+  #testEmployeesBox .test-box-title {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  #testToolsBox .test-box-title {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  #testEmployeesBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  #testToolsBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    padding: 10px 12px;
+    font-size: 12px;
+    min-height: 44px;
+    gap: 6px;
+  }
+
+  .test-box-buttons i {
+    width: 16px;
+    height: 16px;
+  }
+
+  .test-box-description {
+    font-size: 11px;
+    margin-top: 6px;
+  }
+}
+
 /* Table / CRUD UI */
 .table-container {
   background-color: hsl(var(--bg-card));
@@ -516,7 +830,11 @@ main.main-content {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--border-color));
 }
+/* Нет кнопок/фильтров — не рисуем разделитель. */
+.page-header-actions:empty { display: none; }
 
 .table-toolbar {
   padding: 20px 24px;
@@ -561,6 +879,60 @@ table.data-table tbody tr {
 
 table.data-table tbody tr:hover {
   background-color: hsl(var(--border-color) / 0.15);
+}
+
+/* ---- Адаптив таблиц: на телефоне строка -> компактная карточка ----
+   Таблице добавляется класс .cards-mobile. На узких экранах шапка и часть
+   колонок прячутся: строка становится кликабельной карточкой (обычно ФИО +
+   статус). Полная информация открывается в модалке по тапу, поэтому влезает
+   на любой ширине. Ячейки, которые НЕ показываем в свёрнутом виде, помечаются
+   классом .mobile-hidden; действия (.no-label) на телефоне тоже скрыты. */
+@media (max-width: 640px) {
+  .data-table.cards-mobile thead { display: none; }
+  .data-table.cards-mobile,
+  .data-table.cards-mobile tbody { display: block; width: 100%; }
+
+  .data-table.cards-mobile tbody tr {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    border: 1px solid hsl(var(--border-color));
+    border-radius: 12px;
+    margin: 10px 12px;
+    padding: 4px 14px;
+    background: hsl(var(--bg-main));
+    cursor: pointer;
+  }
+  .data-table.cards-mobile tbody tr:active { background: hsl(var(--accent-purple) / 0.08); }
+
+  /* Стрелка-подсказка, что карточка открывается */
+  .data-table.cards-mobile tbody tr::after {
+    content: '›';
+    color: hsl(var(--text-muted));
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .data-table.cards-mobile tbody tr.empty-row::after { content: none; }
+
+  .data-table.cards-mobile td {
+    display: block;
+    border: none;
+    padding: 12px 0;
+  }
+  /* Первая видимая ячейка (ФИО) тянется, остальные — по содержимому */
+  .data-table.cards-mobile td.mobile-primary { flex: 1; min-width: 0; }
+
+  /* Прячем всё, что не нужно в свёрнутой карточке */
+  .data-table.cards-mobile td.mobile-hidden,
+  .data-table.cards-mobile td.no-label,
+  .data-table.cards-mobile .hide-mobile { display: none; }
+
+  /* Пустое состояние */
+  .data-table.cards-mobile td.empty-state { text-align: center; width: 100%; }
+
+  .table-scroll { overflow-x: visible; }
 }
 
 .badge {
@@ -817,33 +1189,6 @@ table.data-table tbody tr:hover {
   background-color: hsl(var(--accent-red));
 }
 
-/* Support / chat layout (replaces inline styles so it can be overridden
-   for narrow screens — see the media queries at the bottom of this file). */
-.support-container {
-  display: flex;
-  gap: 20px;
-  height: 600px;
-  background-color: hsl(var(--bg-card));
-  border: 1px solid hsl(var(--border-color));
-  border-radius: var(--border-radius-md);
-  overflow: hidden;
-}
-
-.support-sidebar {
-  width: 300px;
-  flex-shrink: 0;
-  border-right: 1px solid hsl(var(--border-color));
-  display: flex;
-  flex-direction: column;
-}
-
-.support-chat {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
 /* Modals / Overlays */
 .modal-overlay {
   position: fixed;
@@ -1004,8 +1349,11 @@ table.data-table tbody tr:hover {
 @media (max-width: 1024px) {
   .app-container {
     grid-template-columns: 1fr;
+    /* Сброс независимой прокрутки: сайдбар сверху, страница скроллится целиком. */
+    height: auto;
+    overflow: visible;
   }
-  
+
   aside.sidebar {
     height: auto;
     position: relative;
@@ -1015,21 +1363,51 @@ table.data-table tbody tr:hover {
     justify-content: space-between;
     align-items: center;
     padding: 16px 24px;
+    overflow: visible;
   }
-  
+
   .brand {
     margin-bottom: 0;
   }
-  
+
+  /* Бургер-меню: пункты — выпадающий вертикальный список под верхней панелью. */
+  .nav-burger { display: inline-flex; }
+
   .nav-list {
-    flex-direction: row;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    display: none;
+    flex-direction: column;
     gap: 4px;
     flex-grow: 0;
+    min-height: auto;
+    margin: 0;
+    padding: 8px;
+    background: hsl(var(--bg-sidebar));
+    border-bottom: 1px solid hsl(var(--border-color));
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.4);
+    max-height: calc(100vh - 72px);
+    overflow-y: auto;
   }
-  
+  aside.sidebar.menu-open .nav-list { display: flex; }
+
+  .nav-item a {
+    justify-content: flex-start;
+    padding: 12px 16px;
+  }
+
+  main.main-content {
+    height: auto;
+    overflow-y: visible;
+  }
+
   .sidebar-footer {
     border-top: none;
     padding-top: 0;
+    gap: 8px;
   }
   
   .user-info {
@@ -1042,15 +1420,6 @@ table.data-table tbody tr:hover {
 }
 
 @media (max-width: 768px) {
-  aside.sidebar {
-    flex-direction: column;
-    gap: 16px;
-  }
-  .nav-list {
-    width: 100%;
-    justify-content: space-around;
-    flex-wrap: wrap;
-  }
   .page-header {
     flex-direction: column;
     align-items: flex-start;
@@ -1064,21 +1433,6 @@ table.data-table tbody tr:hover {
     padding: 16px;
   }
 
-  /* Support/chat: two side-by-side panes don't fit — stack list above chat */
-  .support-container {
-    flex-direction: column;
-    height: auto;
-  }
-  .support-sidebar {
-    width: 100%;
-    max-height: 220px;
-    border-right: none;
-    border-bottom: 1px solid hsl(var(--border-color));
-  }
-  .support-chat {
-    height: 420px;
-  }
-
   table.data-table th,
   table.data-table td {
     padding: 12px 16px;
@@ -1088,20 +1442,6 @@ table.data-table tbody tr:hover {
 @media (max-width: 480px) {
   aside.sidebar {
     padding: 12px 16px;
-  }
-
-  .brand span {
-    display: none;
-  }
-
-  /* Icon-only nav: text labels would make 4-6 items unreadable at this
-     width. The <a title="..."> added in index.html keeps a hover/long-press
-     hint, and lucide icons stay legible at small sizes. */
-  .nav-item a span {
-    display: none;
-  }
-  .nav-item a {
-    padding: 10px;
   }
 
   .page-title h2 {
@@ -1129,10 +1469,6 @@ table.data-table tbody tr:hover {
     flex: 1;
   }
 
-  .support-chat {
-    height: 360px;
-  }
-
   .toast-container {
     left: 12px;
     right: 12px;
@@ -1143,3 +1479,94 @@ table.data-table tbody tr:hover {
     width: 100%;
   }
 }
+
+
+/* Мобильные: поле ввода с font-size < 16px заставляет iOS зумить при фокусе.
+   Держим 16px, чтобы экран не приближался сам. text-size-adjust не даёт
+   браузеру масштабировать текст при повороте. Ручной зум пользователю
+   остаётся доступен (user-scalable не запрещаем). */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ==== Заявления: карточка строки ==== */
+.req-desc { display: flex; gap: 12px; align-items: flex-start; }
+.req-desc-photo {
+  width: 44px; height: 44px; border-radius: 8px; object-fit: cover;
+  flex-shrink: 0; border: 1px solid hsl(var(--border-color));
+}
+.req-title { font-weight: 600; font-size: 14px; margin-bottom: 6px; color: hsl(var(--text-primary)); }
+.req-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.req-chip {
+  font-size: 12px; line-height: 1.4;
+  background: hsl(var(--bg-main)); border: 1px solid hsl(var(--border-color));
+  border-radius: 6px; padding: 3px 9px; color: hsl(var(--text-primary));
+}
+.req-chip-label { color: hsl(var(--text-muted)); margin-right: 3px; }
+
+/* Единые кнопки действий в «Заявлениях»: Одобрить / Отклонить / Обоснование —
+   один размер и форма, различаются только цветом по смыслу. */
+.req-action {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 6px 14px; font-size: 12px; font-weight: 600; line-height: 1;
+  border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+  min-width: 112px; /* одинаковая ширина всех трёх кнопок */
+}
+.req-action--green {
+  background: hsl(var(--accent-green) / 0.15); color: hsl(var(--accent-green));
+  border-color: hsl(var(--accent-green) / 0.45);
+}
+.req-action--green:hover {
+  background: hsl(var(--accent-green) / 0.25);
+  box-shadow: 0 0 0 3px hsl(var(--accent-green) / 0.12);
+}
+.req-action--red {
+  background: hsl(var(--accent-red) / 0.12); color: hsl(var(--accent-red));
+  border-color: hsl(var(--accent-red) / 0.4);
+}
+.req-action--red:hover {
+  background: hsl(var(--accent-red) / 0.22);
+  box-shadow: 0 0 0 3px hsl(var(--accent-red) / 0.12);
+}
+.req-action:disabled { cursor: not-allowed; opacity: 0.85; box-shadow: none; }
+.req-action:disabled:hover { box-shadow: none; }
+/* ==== Модальные диалоги (замена нативных alert/confirm/prompt) ==== */
+.ui-dialog-overlay {
+  position: fixed; inset: 0; z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px);
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.ui-dialog-overlay.open { opacity: 1; }
+.ui-dialog {
+  width: 100%; max-width: 420px;
+  background: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color));
+  border-radius: var(--border-radius-lg); padding: 22px 24px;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.4);
+  transform: translateY(12px); transition: transform 0.15s ease;
+}
+.ui-dialog-overlay.open .ui-dialog { transform: translateY(0); }
+.ui-dialog__title { font-size: 16px; font-weight: 700; color: hsl(var(--text-primary)); margin-bottom: 8px; }
+.ui-dialog__msg { font-size: 14px; line-height: 1.55; color: hsl(var(--text-primary)); white-space: pre-wrap; }
+.ui-dialog__input { margin-top: 14px; width: 100%; }
+.ui-dialog__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.ui-dialog__btn {
+  padding: 8px 18px; font-size: 13px; font-weight: 600; line-height: 1;
+  border-radius: 8px; border: 1px solid transparent; cursor: pointer; transition: all 0.15s;
+}
+.ui-dialog__btn--cancel {
+  background: transparent; border-color: hsl(var(--border-color)); color: hsl(var(--text-primary));
+}
+.ui-dialog__btn--cancel:hover { background: hsl(var(--border-color) / 0.3); }
+.ui-dialog__btn--ok {
+  background: hsl(var(--accent-purple)); color: #fff;
+}
+.ui-dialog__btn--ok:hover { background: hsl(var(--accent-purple) / 0.9); }
+.ui-dialog__btn--danger { background: hsl(var(--accent-red)); }
+.ui-dialog__btn--danger:hover { background: hsl(var(--accent-red) / 0.9); }

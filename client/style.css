@@ -289,7 +289,9 @@ a {
 /* Mobile Sidebar Toggle */
 .sidebar-toggle {
     position: fixed;
-    bottom: 24px;
+    /* Над фиксированным футером, а не поверх него (иначе кнопка «наполовину
+       под футером»). +16px — зазор над полосой футера. */
+    bottom: calc(var(--footer-h) + 16px);
     right: 24px;
     width: 50px;
     height: 50px;
@@ -747,4 +749,18 @@ a {
     .contact-grid {
         grid-template-columns: 1fr;
     }
+}
+
+
+/* Мобильные: поле ввода с font-size < 16px заставляет iOS зумить при фокусе.
+   Держим 16px, чтобы экран не приближался сам. text-size-adjust не даёт
+   браузеру масштабировать текст при повороте. Ручной зум пользователю
+   остаётся доступен (user-scalable не запрещаем). */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

@@ -403,18 +403,71 @@ async function handleCategories(req, res, user, parsedUrl, method) {
     return;
   }
 
+  // Переименование категории: новое имя распространяется на все места, где
+  // категория используется по названию (инструменты, каталог, иконки) — чтобы
+  // список категорий оставался единым и синхронным.
+  if (method === 'PUT') {
+    try {
+      const id = parseId(parsedUrl);
+      if (!id) return sendJson(res, 400, { success: false, message: 'Не указан корректный id' });
+      const body = await getJsonBody(req);
+      const newName = (body.name || '').trim().slice(0, 100);
+      if (newName.length < 2) return sendJson(res, 400, { success: false, message: 'Название категории слишком короткое' });
+
+      db.get("SELECT name FROM tool_categories WHERE id = ?", [id], (err, row) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!row) return sendJson(res, 404, { success: false, message: 'Категория не найдена' });
+        const oldName = row.name;
+        if (oldName === newName) return sendJson(res, 200, { success: true, name: newName });
+
+        db.run("UPDATE tool_categories SET name = ? WHERE id = ?", [newName, id], function (uErr) {
+          if (uErr) {
+            const msg = uErr.message.includes('UNIQUE') ? 'Такая категория уже есть' : 'Ошибка переименования';
+            return sendJson(res, 400, { success: false, message: msg });
+          }
+          // Распространяем новое имя на все ссылки по названию.
+          db.serialize(() => {
+            db.run("UPDATE tools SET category = ? WHERE category = ?", [newName, oldName]);
+            db.run("UPDATE catalog_models SET category = ? WHERE category = ?", [newName, oldName]);
+            db.run("UPDATE category_icons SET category = ? WHERE category = ?", [newName, oldName], () => {
+              logAction(user.username, `Категория переименована «${oldName}» → «${newName}»`);
+              sendJson(res, 200, { success: true, name: newName });
+            });
+          });
+        });
+      });
+    } catch (e) {
+      sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+    }
+    return;
+  }
+
   if (method === 'DELETE') {
     const id = parseId(parsedUrl);
     if (!id) return sendJson(res, 400, { success: false, message: 'Не указан корректный id' });
-    db.get("SELECT is_default FROM tool_categories WHERE id = ?", [id], (err, row) => {
+    db.get("SELECT name FROM tool_categories WHERE id = ?", [id], (err, row) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       if (!row) return sendJson(res, 404, { success: false, message: 'Категория не найдена' });
-      if (row.is_default) return sendJson(res, 400, { success: false, message: 'Стандартную категорию удалить нельзя' });
-      db.run("DELETE FROM tool_categories WHERE id = ?", [id], function (dErr) {
-        if (dErr) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
-        logAction(user.username, `Удалена категория инструмента id=${id}`);
-        sendJson(res, 200, { success: true });
-      });
+      const name = row.name;
+      // Не удаляем категорию, пока она используется — иначе появятся «висячие»
+      // категории у инструментов и моделей каталога.
+      db.get(
+        "SELECT (SELECT COUNT(*) FROM tools WHERE category = ?) + (SELECT COUNT(*) FROM catalog_models WHERE category = ?) AS c",
+        [name, name],
+        (e2, cnt) => {
+          if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          const used = (cnt && cnt.c) || 0;
+          if (used > 0) return sendJson(res, 409, { success: false, message: `Категория используется (${used}). Сначала переназначьте инструменты и модели каталога.` });
+          db.serialize(() => {
+            db.run("DELETE FROM tool_categories WHERE id = ?", [id]);
+            db.run("DELETE FROM category_icons WHERE category = ?", [name], function (dErr) {
+              if (dErr) return sendJson(res, 500, { success: false, message: 'Ошибка удаления' });
+              logAction(user.username, `Удалена категория инструмента «${name}»`);
+              sendJson(res, 200, { success: true });
+            });
+          });
+        }
+      );
     });
     return;
   }
@@ -492,66 +545,60 @@ function handleDetails(req, res, user, parsedUrl) {
   });
 }
 
-// ---- Настройки публичной карточки инструмента ----
-// GET  /api/tools/public-card?id=  — текущие настройки (с дефолтами)
-// POST /api/tools/public-card       — сохранить (Admin/Superadmin)
-// Управляет тем, что видно на публичной странице /tool.html (по QR-коду).
+// ---- Галерея фото инструмента ----
+// POST /api/tools/photo       — добавить фото в галерею (первое станет аватаром)
+// POST /api/tools/set-avatar  — назначить аватаром фото ИЗ галереи этого инструмента
 
-const PUBLIC_CARD_FIELDS = ['enabled', 'show_brand', 'show_model', 'show_serial',
-  'show_inventory', 'show_status', 'show_photo'];
+const UPLOAD_PATH_RE = /^\/uploads\/[A-Za-z0-9._-]+$/;
 
-// Дефолт, когда записи в tool_public_cards ещё нет: всё включено.
-function defaultPublicCard(toolId) {
-  const card = { tool_id: toolId };
-  PUBLIC_CARD_FIELDS.forEach(f => { card[f] = 1; });
-  return card;
-}
-
-function getPublicCard(req, res, user, parsedUrl) {
-  const toolId = parseId(parsedUrl);
-  if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан id' });
-
-  db.get("SELECT id FROM tools WHERE id = ?", [toolId], (err, tool) => {
-    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
-
-    db.get("SELECT * FROM tool_public_cards WHERE tool_id = ?", [toolId], (e2, row) => {
-      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      sendJson(res, 200, { success: true, card: row || defaultPublicCard(toolId) });
-    });
-  });
-}
-
-async function savePublicCard(req, res, user) {
+async function addToolPhoto(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
     const body = await getJsonBody(req);
     const toolId = parseInt(body.tool_id, 10);
+    const photoUrl = (body.photo_url == null ? '' : String(body.photo_url)).trim();
     if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан инструмент' });
+    if (!UPLOAD_PATH_RE.test(photoUrl)) return sendJson(res, 400, { success: false, message: 'Некорректный адрес фото' });
 
-    // Нормализуем каждое поле в 0/1 (по умолчанию 1, если не передано).
-    const vals = PUBLIC_CARD_FIELDS.map(f => (
-      body[f] === undefined ? 1 : (body[f] ? 1 : 0)
-    ));
-
-    db.get("SELECT id, name FROM tools WHERE id = ?", [toolId], (err, tool) => {
+    db.get("SELECT id, name, photo_url FROM tools WHERE id = ?", [toolId], (err, tool) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       if (!tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
 
-      const cols = PUBLIC_CARD_FIELDS.join(', ');
-      const placeholders = PUBLIC_CARD_FIELDS.map(() => '?').join(', ');
-      const updates = PUBLIC_CARD_FIELDS.map(f => `${f} = excluded.${f}`).join(', ');
-      const sql = `
-        INSERT INTO tool_public_cards (tool_id, ${cols}, updated_at)
-        VALUES (?, ${placeholders}, CURRENT_TIMESTAMP)
-        ON CONFLICT(tool_id) DO UPDATE SET ${updates}, updated_at = CURRENT_TIMESTAMP`;
+      db.run("INSERT INTO tool_photos (tool_id, photo_url, uploaded_by) VALUES (?, ?, ?)", [toolId, photoUrl, user.id], function (e2) {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить фото' });
 
-      db.run(sql, [toolId, ...vals], function (e2) {
-        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
-        logAction(user.username, `Обновлена публичная карточка инструмента «${tool.name}»`);
-        const card = defaultPublicCard(toolId);
-        PUBLIC_CARD_FIELDS.forEach((f, i) => { card[f] = vals[i]; });
-        sendJson(res, 200, { success: true, card });
+        // Первое фото инструмента автоматически становится аватаром.
+        const isFirst = !tool.photo_url;
+        const finish = () => {
+          logAction(user.username, `Добавил фото к инструменту «${tool.name}»${isFirst ? ' (стало аватаром)' : ''}`);
+          sendJson(res, 200, { success: true, photo_url: photoUrl, is_avatar: isFirst });
+        };
+        if (isFirst) db.run("UPDATE tools SET photo_url = ? WHERE id = ?", [photoUrl, toolId], finish);
+        else finish();
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
+}
+
+async function setToolAvatar(req, res, user) {
+  if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
+  try {
+    const body = await getJsonBody(req);
+    const toolId = parseInt(body.tool_id, 10);
+    const photoUrl = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+    if (!toolId || !photoUrl) return sendJson(res, 400, { success: false, message: 'Не указаны данные' });
+
+    // Аватаром можно назначить ТОЛЬКО фото из галереи этого инструмента.
+    db.get("SELECT id FROM tool_photos WHERE tool_id = ? AND photo_url = ?", [toolId, photoUrl], (err, row) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!row) return sendJson(res, 400, { success: false, message: 'Это фото не из галереи инструмента' });
+
+      db.run("UPDATE tools SET photo_url = ? WHERE id = ?", [photoUrl, toolId], function (e2) {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Не удалось обновить аватар' });
+        logAction(user.username, `Сменил аватар инструмента id=${toolId}`);
+        sendJson(res, 200, { success: true, photo_url: photoUrl });
       });
     });
   } catch (e) {
@@ -597,8 +644,8 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (pathname === '/api/tools/history' && method === 'GET') return handleHistory(req, res, user, parsedUrl);
   if (pathname === '/api/tools/details' && method === 'GET') return handleDetails(req, res, user, parsedUrl);
   if (pathname === '/api/tools/qr' && method === 'GET') return handleQr(req, res, user, parsedUrl);
-  if (pathname === '/api/tools/public-card' && method === 'GET') return getPublicCard(req, res, user, parsedUrl);
-  if (pathname === '/api/tools/public-card' && method === 'POST') return savePublicCard(req, res, user);
+  if (pathname === '/api/tools/photo' && method === 'POST') return addToolPhoto(req, res, user);
+  if (pathname === '/api/tools/set-avatar' && method === 'POST') return setToolAvatar(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };

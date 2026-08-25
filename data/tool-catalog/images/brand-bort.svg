@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg_brand_bort" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="hsl(47, 70%, 55%)"/>
+      <stop offset="1" stop-color="hsl(82, 75%, 65%)"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg_brand_bort)"/>
+  <text x="32" y="32" text-anchor="middle" dominant-baseline="central" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="22" font-weight="700" fill="#ffffff">Bt</text>
+</svg>

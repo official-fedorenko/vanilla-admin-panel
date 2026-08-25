@@ -15,6 +15,27 @@ const db = new sqlite3.Database(dbPath);
 let resolveDbReady;
 const dbReady = new Promise((resolve) => { resolveDbReady = resolve; });
 
+// Предустановленный набор известных брендов инструмента с сгенерированными
+// плейсхолдер-иконками (монограмма на градиенте, БЕЗ реальных логотипов).
+// Иконки лежат в data/tool-catalog/images/brand-*.svg, отдаются тем же
+// маршрутом, что и иконки категорий (/catalog/images/*.svg).
+const PRESET_BRANDS = [
+  { name: 'Bosch', icon_url: '/catalog/images/brand-bosch.svg' },
+  { name: 'DeWalt', icon_url: '/catalog/images/brand-dewalt.svg' },
+  { name: 'Makita', icon_url: '/catalog/images/brand-makita.svg' },
+  { name: 'Metabo', icon_url: '/catalog/images/brand-metabo.svg' },
+  { name: 'Hilti', icon_url: '/catalog/images/brand-hilti.svg' },
+  { name: 'Milwaukee', icon_url: '/catalog/images/brand-milwaukee.svg' },
+  { name: 'Ryobi', icon_url: '/catalog/images/brand-ryobi.svg' },
+  { name: 'AEG', icon_url: '/catalog/images/brand-aeg.svg' },
+  { name: 'Skil', icon_url: '/catalog/images/brand-skil.svg' },
+  { name: 'Interskol', icon_url: '/catalog/images/brand-interskol.svg' },
+  { name: 'Einhell', icon_url: '/catalog/images/brand-einhell.svg' },
+  { name: 'Sturm', icon_url: '/catalog/images/brand-sturm.svg' },
+  { name: 'Зубр', icon_url: '/catalog/images/brand-zubr.svg' },
+  { name: 'Bort', icon_url: '/catalog/images/brand-bort.svg' }
+];
+
 // === Простая система миграций (для надёжности) ===
 const MIGRATIONS = [
   {
@@ -154,6 +175,167 @@ const MIGRATIONS = [
         )
       `, () => {});
     }
+  },
+  {
+    version: 12,
+    description: 'Add received_at to requests (сотрудник отметил получение заказа)',
+    up: () => {
+      // Для заявок type='tool_order': после одобрения сотрудник нажимает
+      // «Получил» → проставляется received_at. Пока NULL — заявка «висит».
+      db.run("ALTER TABLE requests ADD COLUMN received_at DATETIME", () => {});
+    }
+  },
+  {
+    version: 13,
+    description: 'Create catalog_models (редактируемый каталог стандартного инструмента) + seed из tools.json',
+    up: () => {
+      // Стандартный каталог моделей для подсказок при добавлении инструмента
+      // (и в админке, и в заявке). Раньше — статичный файл data/tool-catalog;
+      // теперь редактируется из админпанели. Сидим первоначальным содержимым.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS catalog_models (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category TEXT NOT NULL,
+          brand TEXT NOT NULL,
+          model TEXT NOT NULL,
+          name TEXT,
+          line TEXT,
+          power_type TEXT,
+          power_w INTEGER,
+          voltage_v INTEGER,
+          brushless INTEGER NOT NULL DEFAULT 0,
+          impact INTEGER NOT NULL DEFAULT 0,
+          chuck TEXT,
+          disc_mm INTEGER,
+          image_url TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {
+        try {
+          const cat = require('./data/tool-catalog');
+          const toUrl = (img) => img ? '/catalog/' + String(img).replace(/^\/+/, '') : null;
+          const stmt = db.prepare(`INSERT INTO catalog_models
+            (category, brand, model, name, line, power_type, power_w, voltage_v, brushless, impact, chuck, disc_mm, image_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+          (cat.raw.categories || []).forEach((c) => {
+            const catImg = toUrl(c.image);
+            (c.tools || []).forEach((t) => {
+              stmt.run([
+                c.category, t.brand, t.model, t.name || `${t.brand} ${t.model}`,
+                t.line || null, t.powerType || null, t.powerW || null, t.voltageV || null,
+                t.brushless ? 1 : 0, t.impact ? 1 : 0, t.chuck || null, t.discMm || null,
+                t.image ? toUrl(t.image) : catImg
+              ]);
+            });
+          });
+          stmt.finalize();
+          logger.info('[db] catalog_models засеян из data/tool-catalog');
+        } catch (e) {
+          logger.error('[db] Не удалось засеять catalog_models:', e.message);
+        }
+      });
+    }
+  },
+  {
+    version: 14,
+    description: 'Add specs (JSON) to tools — характеристики по категории',
+    up: () => {
+      // Характеристики инструмента, зависящие от категории (диск, патрон,
+      // мощность, вольтаж…). Хранятся как JSON, набор полей задаёт схема
+      // src/toolSpecs.js. NULL/'{}' — характеристик нет.
+      db.run("ALTER TABLE tools ADD COLUMN specs TEXT", () => {});
+    }
+  },
+  {
+    version: 15,
+    description: 'Add specs (JSON) to catalog_models — характеристики модели по категории',
+    up: () => {
+      // Узкоспециальные характеристики модели каталога, зависящие от категории
+      // (энергия удара, Ø бурения…). Общие поля остаются колонками; здесь — JSON.
+      db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", () => {});
+    }
+  },
+  {
+    version: 16,
+    description: 'Create brands table (справочник брендов инструмента с иконками) + seed стандартных брендов',
+    up: () => {
+      // Реестр брендов: id (не name), т.к. бренды свободно добавляются/
+      // переименовываются/удаляются пользователем — это первоклассная
+      // сущность, а не override поверх фиксированного списка (как
+      // category_icons). brand на tools/catalog_models остаётся обычной
+      // строкой без FK — удаление бренда из реестра не ломает старые записи.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS brands (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          icon_url TEXT,
+          is_preset INTEGER NOT NULL DEFAULT 0,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {
+        try {
+          const stmt = db.prepare(`INSERT OR IGNORE INTO brands (name, icon_url, is_preset) VALUES (?, ?, 1)`);
+          PRESET_BRANDS.forEach(b => stmt.run([b.name, b.icon_url]));
+          stmt.finalize();
+          logger.info('[db] brands засеян стандартным набором');
+        } catch (e) {
+          logger.error('[db] Не удалось засеять brands:', e.message);
+        }
+      });
+    }
+  },
+  {
+    version: 17,
+    description: 'Create notifications + notification_reads (внутренние уведомления от администрации)',
+    up: () => {
+      // Уведомления от администрации в личном кабинете. user_id = NULL —
+      // уведомление для всех пользователей. Прочтения храним отдельной
+      // таблицей (a не колонкой is_read на самой notifications), чтобы
+      // бродкаст на всех не плодил по строке на каждого пользователя —
+      // один уведомление = одна строка независимо от адресатов.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          message TEXT NOT NULL,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+      db.run(`
+        CREATE TABLE IF NOT EXISTS notification_reads (
+          notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (notification_id, user_id)
+        )
+      `, () => {});
+    }
+  },
+  {
+    version: 18,
+    description: 'Add read_by_user to support_messages (непрочитанные ответы админа в личном чате пользователя)',
+    up: () => {
+      // is_read на support_messages отвечает только за «прочитано админом»
+      // (используется в списке тикетов) — нельзя переиспользовать для
+      // обратного направления. read_by_user — отдельная колонка: отмечает,
+      // видел ли пользователь ответы администрации в своём чате.
+      db.run("ALTER TABLE support_messages ADD COLUMN read_by_user INTEGER NOT NULL DEFAULT 0", () => {});
+    }
+  },
+  {
+    version: 19,
+    description: 'Add scheduled_at to notifications (отложенная отправка)',
+    up: () => {
+      // NULL — отправлено сразу. Если задано, уведомление появляется у
+      // получателя (GET /api/cabinet/notifications) только после наступления
+      // этого момента — никакого фонового планировщика не нужно, просто
+      // фильтр в выборке. Таблица notifications создаётся миграцией 17,
+      // которая гарантированно уже отработала к этому моменту.
+      db.run("ALTER TABLE notifications ADD COLUMN scheduled_at DATETIME", () => {});
+    }
   }
 ];
 
@@ -180,6 +362,13 @@ function runMigrations() {
           );
         }
       });
+
+      // Вызываем здесь (а не в верхнеуровневом db.serialize() ниже), чтобы
+      // PRAGMA-проверка гарантированно шла в очереди sqlite3 ПОСЛЕ операторов
+      // самих миграций (включая CREATE TABLE requests и ALTER ADD COLUMN
+      // received_at выше) — иначе на свежей базе она может выполниться раньше
+      // (см. комментарий у ensureRequestsReceivedAtColumn).
+      ensureRequestsReceivedAtColumn();
     });
   });
 }
@@ -205,9 +394,70 @@ function verifyPassword(password, storedHash) {
   return true;
 }
 
+// Набор тестовых сотрудников (демо). Используется при первичном сиде и
+// кнопкой «Добавить/Удалить тестовых сотрудников» в настройках (Superadmin).
+const TEST_EMPLOYEES = [
+  { username: 'jonas.k',   email: 'jonas.kazlauskas@diamantas.lt',     first: 'Jonas',   last: 'Kazlauskas',   position: 'Электромонтажник', department: 'Монтаж',  phone: '+370 600 11111', hire: '2021-03-15' },
+  { username: 'petras.p',  email: 'petras.petrauskas@diamantas.lt',    first: 'Petras',  last: 'Petrauskas',   position: 'Бригадир',         department: 'Монтаж',  phone: '+370 600 22222', hire: '2019-06-01' },
+  { username: 'tomas.j',   email: 'tomas.jankauskas@diamantas.lt',     first: 'Tomas',   last: 'Jankauskas',   position: 'Электромонтажник', department: 'Сервис',  phone: '+370 600 33333', hire: '2022-01-10' },
+  { username: 'mantas.s',  email: 'mantas.stankevicius@diamantas.lt',  first: 'Mantas',  last: 'Stankevičius', position: 'Монтажник',        department: 'Монтаж',  phone: '+370 600 44444', hire: '2023-09-20' },
+  { username: 'andrius.v', email: 'andrius.vasiliauskas@diamantas.lt', first: 'Andrius', last: 'Vasiliauskas', position: 'Мастер участка',   department: 'Монтаж',  phone: '+370 600 55555', hire: '2018-05-05' }
+];
+
+// Набор тестовых инструментов (демо). Используется при первичном сиде и
+// кнопкой «Добавить/Удалить тестовых инструментов» в настройках (Superadmin).
+const TEST_TOOLS = [
+  { name: 'Bosch GBH 2-26 DRE', category: 'Перфоратор', brand: 'Bosch', model: 'GBH 2-26 DRE', serial_number: 'BSH-GBH-0001', inventory_number: 'INV-001', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'Bosch GBH 2-28 F', category: 'Перфоратор', brand: 'Bosch', model: 'GBH 2-28 F', serial_number: 'BSH-GBH-0002', inventory_number: 'INV-002', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'DeWalt D25143K', category: 'Перфоратор', brand: 'DeWalt', model: 'D25143K', serial_number: 'DW-D25-0003', inventory_number: 'INV-003', photo_url: '/catalog/images/rotary-hammer.svg' },
+  { name: 'Bosch GSR 18V-55', category: 'Шуруповёрт', brand: 'Bosch', model: 'GSR 18V-55', serial_number: 'BSH-GSR-0004', inventory_number: 'INV-004', photo_url: '/catalog/images/drill-driver.svg' },
+  { name: 'DeWalt DCD791', category: 'Шуруповёрт', brand: 'DeWalt', model: 'DCD791', serial_number: 'DW-DCD-0005', inventory_number: 'INV-005', photo_url: '/catalog/images/drill-driver.svg' },
+  { name: 'Bosch GWS 850', category: 'Углошлифовальная машина (болгарка)', brand: 'Bosch', model: 'GWS 850', serial_number: 'BSH-GWS-0006', inventory_number: 'INV-006', photo_url: '/catalog/images/angle-grinder.svg' },
+  { name: 'DeWalt DWE4237', category: 'Углошлифовальная машина (болгарка)', brand: 'DeWalt', model: 'DWE4237', serial_number: 'DW-DWE-0007', inventory_number: 'INV-007', photo_url: '/catalog/images/angle-grinder.svg' },
+  { name: 'Bosch GWS 18V-10', category: 'Углошлифовальная машина (болгарка)', brand: 'Bosch', model: 'GWS 18V-10', serial_number: 'BSH-GWS-0008', inventory_number: 'INV-008', photo_url: '/catalog/images/angle-grinder.svg' }
+];
+
+// Самолечение: миграция 15 (ALTER TABLE catalog_models ADD COLUMN specs)
+// на части инсталляций отметилась применённой, но саму колонку не добавила
+// (fire-and-forget ALTER без проверки ошибки). Без неё падает любое
+// добавление/изменение модели каталога. Проверяем факт наличия колонки
+// напрямую через PRAGMA и досоздаём при необходимости — безопасно и
+// идемпотентно, можно гонять на каждом старте.
+function ensureCatalogModelsSpecsColumn() {
+  db.all("PRAGMA table_info(catalog_models)", (err, rows) => {
+    if (err || !rows) return;
+    const hasSpecs = rows.some((r) => r.name === 'specs');
+    if (!hasSpecs) {
+      db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", (alterErr) => {
+        if (alterErr) logger.error('[db] Не удалось добавить catalog_models.specs:', alterErr.message);
+        else logger.info('[db] Восстановлена отсутствовавшая колонка catalog_models.specs');
+      });
+    }
+  });
+}
+
+// Тот же самолечащийся паттерн для миграции 12 (ALTER TABLE requests ADD
+// COLUMN received_at) — на свежих базах ALTER, идущий сразу вслед за CREATE
+// TABLE requests в той же миграционной последовательности, иногда
+// «отмечается применённым», но колонку не добавляет. Без неё падает
+// отметка получения одобренного заказа инструмента/авто.
+function ensureRequestsReceivedAtColumn() {
+  db.all("PRAGMA table_info(requests)", (err, rows) => {
+    if (err || !rows) return;
+    const hasColumn = rows.some((r) => r.name === 'received_at');
+    if (!hasColumn) {
+      db.run("ALTER TABLE requests ADD COLUMN received_at DATETIME", (alterErr) => {
+        if (alterErr) logger.error('[db] Не удалось добавить requests.received_at:', alterErr.message);
+        else logger.info('[db] Восстановлена отсутствовавшая колонка requests.received_at');
+      });
+    }
+  });
+}
+
 // Инициализация базы данных
 db.serialize(() => {
   runMigrations();
+  ensureCatalogModelsSpecsColumn();
   // 1. Таблица пользователей
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -382,22 +632,84 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
-  // Публичные (урезанные) карточки инструмента — то, что открывается по
-  // QR-коду любым человеком без авторизации. Одна запись на инструмент.
-  // enabled=1 — карточка доступна; поля show_* управляют тем, какие данные
-  // видны на публичной странице. Если записи нет — действуют дефолты
-  // (карточка включена, показываются все поля).
+  // 5c. Автопарк: инвентарь транспортных средств + история закреплений за
+  // сотрудниками. Та же модель «выдача-возврат», что и у инструмента
+  // (tools/tool_assignments) — активное закрепление = строка в
+  // vehicle_assignments с returned_at IS NULL.
   db.run(`
-    CREATE TABLE IF NOT EXISTS tool_public_cards (
-      tool_id INTEGER PRIMARY KEY REFERENCES tools(id) ON DELETE CASCADE,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      show_brand INTEGER NOT NULL DEFAULT 1,
-      show_model INTEGER NOT NULL DEFAULT 1,
-      show_serial INTEGER NOT NULL DEFAULT 1,
-      show_inventory INTEGER NOT NULL DEFAULT 1,
-      show_status INTEGER NOT NULL DEFAULT 1,
-      show_photo INTEGER NOT NULL DEFAULT 1,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT,
+      brand TEXT,
+      model TEXT,
+      year INTEGER,
+      plate_number TEXT,
+      vin TEXT,
+      fuel_type TEXT,
+      mileage INTEGER,
+      status TEXT NOT NULL DEFAULT 'available',
+      purchase_date DATE,
+      insurance_until DATE,
+      inspection_until DATE,
+      photo_url TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      returned_at DATETIME,
+      issued_by TEXT,
+      notes TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+      photo_url TEXT NOT NULL,
+      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Справочник категорий (типов) транспорта — тот же принцип, что и у
+  // tool_categories: is_default=1 удалять нельзя, свои типы добавляет
+  // только Superadmin.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS vehicle_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `, () => {
+    const defaults = [
+      'Легковой автомобиль', 'Грузовой автомобиль', 'Микроавтобус', 'Автобус',
+      'Спецтехника', 'Погрузчик', 'Прицеп', 'Мотоцикл/скутер'
+    ];
+    const catStmt = db.prepare("INSERT OR IGNORE INTO vehicle_categories (name, is_default) VALUES (?, 1)");
+    defaults.forEach(name => catStmt.run(name));
+    catStmt.finalize();
+  });
+
+  // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
+  // администраторы видят данные по всем. Одна строка — одна запись за день.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS work_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      work_date DATE NOT NULL,
+      hours REAL NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -418,6 +730,7 @@ db.serialize(() => {
   `, () => {
     db.run("ALTER TABLE support_messages ADD COLUMN is_read INTEGER DEFAULT 0", () => {});
     db.run("ALTER TABLE support_messages ADD COLUMN image_url TEXT", () => {});
+    db.run("ALTER TABLE support_messages ADD COLUMN read_by_user INTEGER NOT NULL DEFAULT 0", () => {});
   });
 
   // 7. Простая таблица сессий (для надёжности — переживают перезапуск сервера)
@@ -451,6 +764,30 @@ db.serialize(() => {
   stmt.run("contact_subtitle", "Остались вопросы или хотите предложить сотрудничество?", "Контакты: Подзаголовок");
   stmt.run("contact_email", "info@example.com", "Контакты: Электронная почта");
   stmt.run("contact_address", "г. Вильнюс, ул. Разработчиков, д. 42", "Контакты: Адрес");
+  // Публичная карточка инструмента (общие настройки для всех QR-карточек)
+  stmt.run("public_card_enabled", "true", "Публичная карточка: доступна всем по QR");
+  stmt.run("public_card_show_photo", "true", "Публичная карточка: показывать фото");
+  stmt.run("public_card_show_brand", "true", "Публичная карточка: показывать бренд");
+  stmt.run("public_card_show_model", "true", "Публичная карточка: показывать модель");
+  stmt.run("public_card_show_serial", "true", "Публичная карточка: показывать серийный №");
+  stmt.run("public_card_show_inventory", "true", "Публичная карточка: показывать инвентарный №");
+  stmt.run("public_card_show_status", "true", "Публичная карточка: показывать статус");
+  stmt.run("public_card_show_category", "true", "Публичная карточка: показывать категорию");
+  stmt.run("public_card_show_purchase_date", "false", "Публичная карточка: показывать дату покупки");
+  stmt.run("public_card_show_notes", "false", "Публичная карточка: показывать заметки");
+  // Публичная карточка транспортного средства (общие настройки для всех QR-карточек автопарка)
+  stmt.run("public_vehicle_card_enabled", "true", "Публичная карточка авто: доступна всем по QR");
+  stmt.run("public_vehicle_card_show_photo", "true", "Публичная карточка авто: показывать фото");
+  stmt.run("public_vehicle_card_show_brand", "true", "Публичная карточка авто: показывать бренд");
+  stmt.run("public_vehicle_card_show_model", "true", "Публичная карточка авто: показывать модель");
+  stmt.run("public_vehicle_card_show_plate", "true", "Публичная карточка авто: показывать гос. номер");
+  stmt.run("public_vehicle_card_show_vin", "false", "Публичная карточка авто: показывать VIN");
+  stmt.run("public_vehicle_card_show_status", "true", "Публичная карточка авто: показывать статус");
+  stmt.run("public_vehicle_card_show_category", "true", "Публичная карточка авто: показывать тип");
+  stmt.run("public_vehicle_card_show_year", "true", "Публичная карточка авто: показывать год выпуска");
+  stmt.run("public_vehicle_card_show_mileage", "false", "Публичная карточка авто: показывать пробег");
+  stmt.run("public_vehicle_card_show_purchase_date", "false", "Публичная карточка авто: показывать дату покупки");
+  stmt.run("public_vehicle_card_show_notes", "false", "Публичная карточка авто: показывать заметки");
   stmt.finalize();
 
   // Заполняем тестовые статьи
@@ -465,69 +802,11 @@ db.serialize(() => {
     }
   });
 
-  // Тестовые сотрудники (только на свежей БД, если таблица пуста).
-  // Литовские имена и ники; у каждого — аккаунт (account_type='employee')
-  // с паролем 1234qwer и привязанная карточка сотрудника, чтобы можно было
-  // войти в кабинет и сразу видеть свою карточку/инструмент.
-  db.get("SELECT COUNT(*) as count FROM employees", (err, row) => {
-    if (err || (row && row.count > 0)) return;
-
-    const testPass = hashPassword('1234qwer');
-    const seed = [
-      { username: 'jonas.k',   email: 'jonas.kazlauskas@diamantas.lt',     first: 'Jonas',   last: 'Kazlauskas',   position: 'Электромонтажник', department: 'Монтаж',  phone: '+370 600 11111', hire: '2021-03-15' },
-      { username: 'petras.p',  email: 'petras.petrauskas@diamantas.lt',    first: 'Petras',  last: 'Petrauskas',   position: 'Бригадир',         department: 'Монтаж',  phone: '+370 600 22222', hire: '2019-06-01' },
-      { username: 'tomas.j',   email: 'tomas.jankauskas@diamantas.lt',     first: 'Tomas',   last: 'Jankauskas',   position: 'Электромонтажник', department: 'Сервис',  phone: '+370 600 33333', hire: '2022-01-10' },
-      { username: 'mantas.s',  email: 'mantas.stankevicius@diamantas.lt',  first: 'Mantas',  last: 'Stankevičius', position: 'Монтажник',        department: 'Монтаж',  phone: '+370 600 44444', hire: '2023-09-20' },
-      { username: 'andrius.v', email: 'andrius.vasiliauskas@diamantas.lt', first: 'Andrius', last: 'Vasiliauskas', position: 'Мастер участка',   department: 'Монтаж',  phone: '+370 600 55555', hire: '2018-05-05' }
-    ];
-
-    seed.forEach((e) => {
-      db.run(
-        "INSERT OR IGNORE INTO users (username, email, password_hash, role, account_type) VALUES (?, ?, ?, 'User', 'employee')",
-        [e.username, e.email, testPass],
-        function (uErr) {
-          if (uErr) return;
-          const userId = this.lastID || null;
-          db.run(
-            "INSERT INTO employees (first_name, last_name, position, department, phone, email, hire_date, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)",
-            [e.first, e.last, e.position, e.department, e.phone, e.email, e.hire, userId]
-          );
-        }
-      );
-    });
-    logger.info(`[db] Добавлены тестовые сотрудники: ${seed.length} (пароль у всех 1234qwer)`);
-  });
-
-  // Тестовый инструмент на складе (только на свежей БД, если tools пуста).
-  // Реальные модели Bosch/DeWalt с уникальными серийными и инв. номерами;
-  // картинки — из каталога (data/tool-catalog/images).
-  db.get("SELECT COUNT(*) as count FROM tools", (err, row) => {
-    if (err || (row && row.count > 0)) return;
-
-    const perf = '/catalog/images/rotary-hammer.svg';
-    const drill = '/catalog/images/drill-driver.svg';
-    const grind = '/catalog/images/angle-grinder.svg';
-    const CAT_PERF = 'Перфоратор';
-    const CAT_DRILL = 'Шуруповёрт';
-    const CAT_GRIND = 'Углошлифовальная машина (болгарка)';
-
-    const tools = [
-      ['Bosch GBH 2-26 DRE', CAT_PERF,  'Bosch',  'GBH 2-26 DRE', 'BSH-GBH-0001', 'INV-001', perf],
-      ['Bosch GBH 2-28 F',   CAT_PERF,  'Bosch',  'GBH 2-28 F',   'BSH-GBH-0002', 'INV-002', perf],
-      ['DeWalt D25143K',     CAT_PERF,  'DeWalt', 'D25143K',      'DW-D25-0003',  'INV-003', perf],
-      ['Bosch GSR 18V-55',   CAT_DRILL, 'Bosch',  'GSR 18V-55',   'BSH-GSR-0004', 'INV-004', drill],
-      ['DeWalt DCD791',      CAT_DRILL, 'DeWalt', 'DCD791',       'DW-DCD-0005',  'INV-005', drill],
-      ['Bosch GWS 850',      CAT_GRIND, 'Bosch',  'GWS 850',      'BSH-GWS-0006', 'INV-006', grind],
-      ['DeWalt DWE4237',     CAT_GRIND, 'DeWalt', 'DWE4237',      'DW-DWE-0007',  'INV-007', grind],
-      ['Bosch GWS 18V-10',   CAT_GRIND, 'Bosch',  'GWS 18V-10',   'BSH-GWS-0008', 'INV-008', grind]
-    ];
-    const toolStmt = db.prepare(
-      "INSERT INTO tools (name, category, brand, model, serial_number, inventory_number, status, photo_url) VALUES (?, ?, ?, ?, ?, ?, 'available', ?)"
-    );
-    tools.forEach(t => toolStmt.run(t));
-    toolStmt.finalize();
-    logger.info(`[db] Добавлен тестовый инструмент на склад: ${tools.length} шт.`);
-  });
+  // Тестовые сотрудники и тестовый инструмент больше НЕ добавляются
+  // автоматически при старте на свежей БД. Используйте кнопки
+  // «Добавить тестовых сотрудников» / «Добавить тестовые инструменты»
+  // в настройках (Superadmin) — см. src/routes/testEmployees.js
+  // и src/routes/testTools.js.
 });
 
 // === Простые helpers для персистентных сессий (надёжность) ===
@@ -565,6 +844,8 @@ module.exports = {
   db,
   dbPath,
   dbReady,
+  TEST_EMPLOYEES,
+  TEST_TOOLS,
   hashPassword,
   verifyPassword,
   saveSession,
