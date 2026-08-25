@@ -33,7 +33,7 @@ const REQUEST_TYPES = {
     ]
   },
   tool_order: {
-    label: 'Заказать инструмент',
+    label: 'Заказать снабжение',
     icon: 'shopping-cart',
     fields: [
       { name: 'name', label: 'Что заказать', type: 'text', required: true },
@@ -46,7 +46,7 @@ const REQUEST_TYPES = {
     label: 'Заказать авто',
     icon: 'car',
     fields: [
-      { name: 'name', label: 'Цель / куда', type: 'text', required: true },
+      { name: 'purpose', label: 'Цель', type: 'select', options: ['По работе', 'В личное пользование'], required: true },
       { name: 'category', label: 'Тип авто', type: 'category', source: 'vehicle' },
       { name: 'start_date', label: 'С', type: 'date' },
       { name: 'end_date', label: 'По', type: 'date' },
@@ -56,6 +56,15 @@ const REQUEST_TYPES = {
   vacation: {
     label: 'Заявление на отпуск',
     icon: 'palmtree',
+    fields: [
+      { name: 'start_date', label: 'С', type: 'date', required: true },
+      { name: 'end_date', label: 'По', type: 'date', required: true },
+      { name: 'notes', label: 'Комментарий', type: 'textarea' }
+    ]
+  },
+  sick_leave: {
+    label: 'Заявление на больничный',
+    icon: 'thermometer',
     fields: [
       { name: 'start_date', label: 'С', type: 'date', required: true },
       { name: 'end_date', label: 'По', type: 'date', required: true },
@@ -97,6 +106,7 @@ function buildPayload(typeDef, body) {
     if (f.type === 'photo') val = cleanPhoto(val);
     else if (f.type === 'number') { const n = parseInt(val, 10); val = Number.isFinite(n) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
+    else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
     if (f.required && (val === '' || val == null)) {
       return { error: `Поле «${f.label}» обязательно` };
@@ -111,8 +121,9 @@ function buildTitle(type, payload) {
   switch (type) {
     case 'tool_add':    return payload.name || 'Инструмент';
     case 'tool_order':  return (payload.name || 'Инструмент') + (payload.quantity ? ` ×${payload.quantity}` : '');
-    case 'vehicle_order': return 'Авто: ' + (payload.name || '—') + (payload.start_date ? ` (${payload.start_date}${payload.end_date ? ' — ' + payload.end_date : ''})` : '');
+    case 'vehicle_order': return 'Авто: ' + (payload.purpose || '—') + (payload.start_date ? ` (${payload.start_date}${payload.end_date ? ' — ' + payload.end_date : ''})` : '');
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
+    case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
@@ -344,7 +355,7 @@ function listVehicleOrders(req, res, user) {
         : (r.requested_by_name || '—');
       return {
         id: r.id, name, title: r.title || '',
-        purpose: payload.name || '', category: payload.category || '',
+        purpose: payload.purpose || '', category: payload.category || '',
         start_date: payload.start_date || '', end_date: payload.end_date || '',
         notes: payload.notes || '',
         reviewed_by_name: r.reviewed_by_name || '',
