@@ -524,7 +524,6 @@ main.main-content {
 
 /* Test Employees & Test Tools Boxes */
 .test-box {
-  margin-top: 28px;
   padding-top: 20px;
   border-top: 1px solid hsl(var(--border-color));
   display: none;
@@ -534,17 +533,39 @@ main.main-content {
   display: block;
 }
 
+#testEmployeesBox {
+  margin-top: 28px;
+}
+
+#testToolsBox {
+  margin-top: 20px;
+}
+
 .test-box-title {
   font-size: 13px;
   font-weight: 600;
-  margin-bottom: 12px;
   color: hsl(var(--text-primary));
+}
+
+#testEmployeesBox .test-box-title {
+  margin-bottom: 8px;
+}
+
+#testToolsBox .test-box-title {
+  margin-bottom: 12px;
 }
 
 .test-box-buttons {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+}
+
+#testEmployeesBox .test-box-buttons {
+  gap: 10px;
+}
+
+#testToolsBox .test-box-buttons {
+  gap: 8px;
 }
 
 .test-box-buttons .btn,
@@ -562,8 +583,12 @@ main.main-content {
 
 /* Mobile: buttons stack vertically */
 @media (max-width: 768px) {
-  .test-box-buttons {
+  #testEmployeesBox .test-box-buttons {
     gap: 8px;
+  }
+
+  #testToolsBox .test-box-buttons {
+    gap: 6px;
   }
 
   .test-box-buttons .btn,
@@ -580,17 +605,33 @@ main.main-content {
 }
 
 @media (max-width: 480px) {
-  .test-box {
+  #testEmployeesBox {
     margin-top: 16px;
+  }
+
+  #testToolsBox {
+    margin-top: 16px;
+  }
+
+  .test-box {
     padding-top: 16px;
   }
 
-  .test-box-title {
+  #testEmployeesBox .test-box-title {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  #testToolsBox .test-box-title {
     font-size: 12px;
     margin-bottom: 10px;
   }
 
-  .test-box-buttons {
+  #testEmployeesBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  #testToolsBox .test-box-buttons {
     gap: 6px;
   }
 
