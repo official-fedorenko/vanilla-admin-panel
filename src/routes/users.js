@@ -28,7 +28,13 @@ module.exports = async function handleUsers(req, res, user, parsedUrl, method) {
     // Указав offset, можно достать записи за пределами этого потолка, пока
     // в UI не появится полноценная пагинация.
     const { limit, offset } = parsePagination(parsedUrl);
-    db.all("SELECT id, username, email, role, account_type, avatar_url, created_at FROM users ORDER BY id DESC LIMIT ? OFFSET ?", [limit, offset], (err, rows) => {
+    db.all(
+      `SELECT u.id, u.username, u.email, u.role, u.account_type, u.avatar_url, u.created_at,
+              e.first_name, e.last_name
+       FROM users u
+       LEFT JOIN employees e ON e.user_id = u.id
+       ORDER BY u.id DESC LIMIT ? OFFSET ?`,
+      [limit, offset], (err, rows) => {
       if (err) return sendJson(res, 500, { message: 'Ошибка базы данных' });
       db.get("SELECT COUNT(*) as count FROM users", [], (err2, countRow) => {
         res.setHeader('X-Total-Count', String((countRow && countRow.count) || 0));

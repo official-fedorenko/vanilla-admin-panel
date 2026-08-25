@@ -324,6 +324,18 @@ const MIGRATIONS = [
       // видел ли пользователь ответы администрации в своём чате.
       db.run("ALTER TABLE support_messages ADD COLUMN read_by_user INTEGER NOT NULL DEFAULT 0", () => {});
     }
+  },
+  {
+    version: 19,
+    description: 'Add scheduled_at to notifications (отложенная отправка)',
+    up: () => {
+      // NULL — отправлено сразу. Если задано, уведомление появляется у
+      // получателя (GET /api/cabinet/notifications) только после наступления
+      // этого момента — никакого фонового планировщика не нужно, просто
+      // фильтр в выборке. Таблица notifications создаётся миграцией 17,
+      // которая гарантированно уже отработала к этому моменту.
+      db.run("ALTER TABLE notifications ADD COLUMN scheduled_at DATETIME", () => {});
+    }
   }
 ];
 

@@ -1080,12 +1080,13 @@ async function loadWorkTimeSummary() {
     }
     box.innerHTML = users.map(u => {
       const last = u.last_date ? new Date(u.last_date + 'T00:00:00').toLocaleDateString('ru-RU', { day:'numeric', month:'short', year:'numeric' }) : '—';
+      const name = userDisplayName(u);
       return `
-      <div onclick="openWorkTimeUser(${u.user_id}, '${escapeHtml(u.username)}')" style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid hsl(var(--border-color)); cursor:pointer;"
+      <div onclick="openWorkTimeUser(${u.user_id}, '${escapeHtml(name)}')" style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-bottom:1px solid hsl(var(--border-color)); cursor:pointer;"
            onmouseover="this.style.background='hsl(var(--accent-purple) / 0.08)'" onmouseout="this.style.background='transparent'">
-        <div style="width:40px; height:40px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">${escapeHtml((u.username||'?').charAt(0).toUpperCase())}</div>
+        <div style="width:40px; height:40px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display:flex; align-items:center; justify-content:center; font-weight:bold; color:#fff;">${escapeHtml((name||'?').charAt(0).toUpperCase())}</div>
         <div style="flex:1; min-width:0;">
-          <div style="font-weight:600;">${escapeHtml(u.username)}</div>
+          <div style="font-weight:600;">${escapeHtml(name)}</div>
           <div style="font-size:12px; color:hsl(var(--text-muted));">Записей: ${u.entries} · последняя: ${last}</div>
         </div>
         <div style="font-size:18px; font-weight:700; color:hsl(var(--accent-cyan));">${fmtHoursAdmin(u.total_hours)}</div>
@@ -1787,14 +1788,16 @@ window.deleteBrandItem = async (id) => {
 };
 
 // === Отправка уведомлений пользователям (в личный кабинет) ===
-window.openSendNotificationModal = (userId = null) => {
+window.openSendNotificationModal = async (userId = null) => {
   const overlay = document.getElementById('sendNotificationModalOverlay');
   if (!overlay) return;
+  if (!usersList.length) { try { await loadUsers(); } catch (e) {} }
   const sel = document.getElementById('notifTargetUser');
-  const names = usersList.map(u => `<option value="${u.id}">${escapeHtml(u.username)} (${escapeHtml(u.email)})</option>`).join('');
+  const names = usersList.map(u => `<option value="${u.id}">${escapeHtml(userDisplayName(u))} (${escapeHtml(u.email)})</option>`).join('');
   sel.innerHTML = '<option value="">Всем пользователям</option>' + names;
   sel.value = userId != null ? String(userId) : '';
   document.getElementById('notifMessage').value = '';
+  document.getElementById('notifScheduledAt').value = '';
   overlay.classList.add('active');
 };
 window.closeSendNotificationModal = () => {
@@ -1804,20 +1807,89 @@ window.closeSendNotificationModal = () => {
 window.submitNotification = async () => {
   const targetVal = document.getElementById('notifTargetUser').value;
   const message = document.getElementById('notifMessage').value.trim();
+  const scheduledAt = document.getElementById('notifScheduledAt').value || null;
   if (!message) { showToast('Введите текст уведомления', 'error'); return; }
   try {
     const res = await fetch('/api/admin/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: targetVal ? parseInt(targetVal, 10) : null, message })
+      body: JSON.stringify({ user_id: targetVal ? parseInt(targetVal, 10) : null, message, scheduled_at: scheduledAt })
     });
     const d = await res.json().catch(() => ({}));
     if (res.ok && d.success) {
-      showToast('Уведомление отправлено', 'success');
+      showToast(scheduledAt ? 'Уведомление запланировано' : 'Уведомление отправлено', 'success');
       closeSendNotificationModal();
+      if (typeof loadNotificationHistory === 'function') loadNotificationHistory();
     } else {
       showToast(d.message || 'Не удалось отправить', 'error');
     }
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+// === Настройки уведомлений: история отправленных, удаление, статусы ===
+window.openNotificationSettingsModal = () => {
+  const overlay = document.getElementById('notificationSettingsModalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+  loadNotificationHistory();
+};
+window.closeNotificationSettingsModal = () => {
+  const overlay = document.getElementById('notificationSettingsModalOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+function shortWhenNotif(iso) {
+  if (!iso) return '';
+  const d = new Date(String(iso).replace(' ', 'T'));
+  if (isNaN(d)) return '';
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadNotificationHistory() {
+  const box = document.getElementById('notificationHistoryList');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:20px; color:hsl(var(--text-muted));">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/admin/notifications');
+    const d = await res.json();
+    const list = (d && d.notifications) || [];
+    if (!list.length) {
+      box.innerHTML = '<div style="padding:30px; text-align:center; color:hsl(var(--text-muted));">Уведомлений пока не отправляли</div>';
+      return;
+    }
+    box.innerHTML = list.map(n => {
+      const target = n.target_name ? escapeHtml(n.target_name) : 'Всем пользователям';
+      const statusBadge = n.is_pending
+        ? `<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Запланировано на ${shortWhenNotif(n.scheduled_at)}</span>`
+        : `<span class="badge" style="background:hsl(var(--accent-green) / 0.15);color:hsl(var(--accent-green))">Отправлено</span>`;
+      const readInfo = n.total_recipients > 1
+        ? `Прочитали: ${n.read_count} из ${n.total_recipients}`
+        : (n.read_count > 0 ? 'Прочитано' : 'Не прочитано');
+      return `
+        <div style="border:1px solid hsl(var(--border-color)); border-radius:10px; padding:14px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
+            <div style="font-size:13px; color:hsl(var(--text-muted));">${target} · ${shortWhenNotif(n.created_at)}</div>
+            <button class="action-btn delete" title="Удалить" onclick="deleteNotificationHistoryItem(${n.id})"><i data-lucide="trash-2"></i></button>
+          </div>
+          <div style="font-size:14px; margin-bottom:8px;">${escapeHtml(n.message)}</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            ${statusBadge}
+            ${!n.is_pending ? `<span style="font-size:12px; color:hsl(var(--text-muted));">${readInfo}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    box.innerHTML = '<div style="padding:20px; color:#ff6b6b;">Ошибка загрузки</div>';
+  }
+}
+
+window.deleteNotificationHistoryItem = async (id) => {
+  if (!await confirmDialog('Удалить это уведомление? Если оно ещё не отправлено (запланировано) — отправки не будет.', { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/admin/notifications?id=${id}`, { method: 'DELETE' });
+    if (res.ok) { showToast('Удалено', 'success'); loadNotificationHistory(); }
+    else showToast('Не удалось удалить', 'error');
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
@@ -2302,6 +2374,13 @@ function escapeHtml(text) {
   return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
+// Имя+фамилия для сотрудников (карточка привязана к аккаунту), иначе —
+// логин (у клиентов карточки сотрудника нет).
+function userDisplayName(u) {
+  const full = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
+  return full || u.username;
+}
+
 // API: Users loader
 async function loadUsers() {
   if (currentUser.role !== 'Superadmin') return;
@@ -2321,9 +2400,10 @@ function renderUsers(filterQuery = '') {
   if (!tbody) return;
   tbody.innerHTML = '';
   
-  const filtered = usersList.filter(u => 
-    u.username.toLowerCase().includes(filterQuery) || 
-    u.email.toLowerCase().includes(filterQuery)
+  const filtered = usersList.filter(u =>
+    u.username.toLowerCase().includes(filterQuery) ||
+    u.email.toLowerCase().includes(filterQuery) ||
+    userDisplayName(u).toLowerCase().includes(filterQuery)
   );
 
   if (filtered.length === 0) {
@@ -2341,10 +2421,14 @@ function renderUsers(filterQuery = '') {
     const dateFormatted = new Date(u.created_at).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'long', year: 'numeric'
     });
+    const name = userDisplayName(u);
+    const primaryCell = name !== u.username
+      ? `<strong>${escapeHtml(name)}</strong><div style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(u.username)}</div>`
+      : `<strong>${escapeHtml(name)}</strong>`;
 
     tr.innerHTML = `
       <td class="hide-mobile">${u.id}</td>
-      <td class="mobile-primary"><strong>${escapeHtml(u.username)}</strong></td>
+      <td class="mobile-primary">${primaryCell}</td>
       <td class="mobile-hidden">${escapeHtml(u.email)}</td>
       <td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${roleBadge}${typeBadge}</div></td>
       <td class="mobile-hidden">${dateFormatted}</td>
@@ -2352,7 +2436,7 @@ function renderUsers(filterQuery = '') {
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editUser(${u.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteUser(${u.id})"><i data-lucide="trash-2"></i></button>
-          <button class="action-btn chat" onclick="adminStartChat(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.email)}')"><i data-lucide="message-circle"></i></button>
+          <button class="action-btn chat" onclick="adminStartChat(${u.id}, '${escapeHtml(name)}', '${escapeHtml(u.email)}')"><i data-lucide="message-circle"></i></button>
           <button class="action-btn" title="Отправить уведомление" onclick="openSendNotificationModal(${u.id})"><i data-lucide="bell"></i></button>
         </div>
       </td>
@@ -2376,18 +2460,20 @@ window.openUserDetail = (id) => {
     ? '<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Сотрудник</span>'
     : '<span class="badge" style="background:hsl(var(--accent-cyan) / 0.15);color:hsl(var(--accent-cyan))">Клиент</span>';
   const dateFormatted = new Date(u.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const name = userDisplayName(u);
   const rows = [
     ['ID', u.id],
+    ...(name !== u.username ? [['Логин', u.username]] : []),
     ['Email', u.email],
     ['Роль', userRoleBadge(u.role), true],
     ['Тип', typeBadge, true],
     ['Создан', dateFormatted]
   ];
   const actions = `
-    <button class="btn btn-secondary" onclick="closeRowDetail(); adminStartChat(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.email)}')">Чат</button>
+    <button class="btn btn-secondary" onclick="closeRowDetail(); adminStartChat(${u.id}, '${escapeHtml(name)}', '${escapeHtml(u.email)}')">Чат</button>
     <button class="btn btn-secondary" onclick="closeRowDetail(); deleteUser(${u.id})" style="color:hsl(var(--accent-red));">Удалить</button>
     <button class="btn" onclick="closeRowDetail(); editUser(${u.id})">Редактировать</button>`;
-  showRowDetail(u.username, rows, actions);
+  showRowDetail(name, rows, actions);
 };
 
 // API: Full logs loader

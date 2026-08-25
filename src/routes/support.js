@@ -15,14 +15,35 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
       SELECT ticket_id, name, email, MAX(created_at) as last_activity,
              SUM(CASE WHEN is_read = 0 AND sender_role != 'Admin' AND sender_role != 'Superadmin' THEN 1 ELSE 0 END) as unread_count,
              (SELECT m2.message FROM support_messages m2 WHERE m2.ticket_id = support_messages.ticket_id ORDER BY m2.id DESC LIMIT 1) as last_message,
-             (SELECT m3.sender_role FROM support_messages m3 WHERE m3.ticket_id = support_messages.ticket_id ORDER BY m3.id DESC LIMIT 1) as last_sender_role
+             (SELECT m3.sender_role FROM support_messages m3 WHERE m3.ticket_id = support_messages.ticket_id ORDER BY m3.id DESC LIMIT 1) as last_sender_role,
+             (SELECT m5.user_id FROM support_messages m5 WHERE m5.ticket_id = support_messages.ticket_id AND m5.sender_role NOT IN ('Admin','Superadmin') ORDER BY m5.id ASC LIMIT 1) as owner_user_id
       FROM support_messages
       GROUP BY ticket_id
       ORDER BY last_activity DESC
     `;
     db.all(query, [], (err, rows) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      sendJson(res, 200, { success: true, tickets: rows });
+      const ownerIds = [...new Set((rows || []).map(r => r.owner_user_id).filter(Boolean))];
+      if (!ownerIds.length) return sendJson(res, 200, { success: true, tickets: rows });
+
+      const placeholders = ownerIds.map(() => '?').join(',');
+      db.all(
+        `SELECT user_id, first_name, last_name FROM employees WHERE user_id IN (${placeholders})`,
+        ownerIds,
+        (e2, empRows) => {
+          const namesByUser = {};
+          (empRows || []).forEach(e => {
+            const full = [e.first_name, e.last_name].filter(Boolean).join(' ').trim();
+            if (full) namesByUser[e.user_id] = full;
+          });
+          rows.forEach(r => {
+            const full = namesByUser[r.owner_user_id];
+            if (full) r.name = full;
+            delete r.owner_user_id;
+          });
+          sendJson(res, 200, { success: true, tickets: rows });
+        }
+      );
     });
     return;
   }
@@ -42,7 +63,11 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
              (SELECT m4.name FROM support_messages m4 WHERE m4.ticket_id = support_messages.ticket_id AND m4.sender_role NOT IN ('Admin','Superadmin') ORDER BY m4.id DESC LIMIT 1) as guest_name
       FROM support_messages GROUP BY ticket_id`;
 
-    db.all("SELECT id, username, email, avatar_url FROM users ORDER BY username COLLATE NOCASE ASC", [], (err, users) => {
+    db.all(
+      `SELECT u.id, u.username, u.email, u.avatar_url, e.first_name, e.last_name
+       FROM users u LEFT JOIN employees e ON e.user_id = u.id
+       ORDER BY u.username COLLATE NOCASE ASC`,
+      [], (err, users) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       db.all(aggQuery, [], (e2, aggs) => {
         if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
@@ -54,9 +79,10 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
         (users || []).forEach(u => {
           const a = byTicket['user_' + u.id] || {};
           delete byTicket['user_' + u.id];
+          const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ').trim();
           list.push({
             ticket_id: 'user_' + u.id,
-            name: u.username,
+            name: fullName || u.username,
             email: u.email,
             avatar_url: u.avatar_url || null,
             unread_count: a.unread_count || 0,

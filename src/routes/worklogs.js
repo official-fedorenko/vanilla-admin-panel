@@ -91,8 +91,10 @@ function listAll(req, res, user, parsedUrl) {
   if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) { where.push("w.work_date <= ?"); params.push(to); }
   const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
   const sql = `
-    SELECT w.id, w.user_id, u.username, w.work_date, w.hours, w.note, w.created_at
-    FROM work_logs w JOIN users u ON u.id = w.user_id
+    SELECT w.id, w.user_id, u.username, e.first_name, e.last_name, w.work_date, w.hours, w.note, w.created_at
+    FROM work_logs w
+    JOIN users u ON u.id = w.user_id
+    LEFT JOIN employees e ON e.user_id = u.id
     ${whereSql}
     ORDER BY w.work_date DESC, w.id DESC LIMIT 1000`;
   db.all(sql, params, (err, rows) => {
@@ -105,11 +107,13 @@ function listAll(req, res, user, parsedUrl) {
 function summary(req, res, user) {
   if (!isAdmin(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   const sql = `
-    SELECT u.id AS user_id, u.username,
+    SELECT u.id AS user_id, u.username, e.first_name, e.last_name,
            COALESCE(SUM(w.hours), 0) AS total_hours,
            COUNT(w.id) AS entries,
            MAX(w.work_date) AS last_date
-    FROM users u LEFT JOIN work_logs w ON w.user_id = u.id
+    FROM users u
+    LEFT JOIN work_logs w ON w.user_id = u.id
+    LEFT JOIN employees e ON e.user_id = u.id
     GROUP BY u.id
     HAVING entries > 0
     ORDER BY total_hours DESC`;
