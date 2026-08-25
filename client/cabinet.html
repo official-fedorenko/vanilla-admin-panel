@@ -119,6 +119,49 @@
     .notif-item-date { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
     .notif-empty { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
 
+    /* Плавающее окно чата с администрацией */
+    .chat-fab {
+      position: fixed; right: 24px; bottom: 24px; z-index: 1040;
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+      color: #fff; border: none; cursor: pointer;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      transition: transform 0.2s;
+    }
+    .chat-fab:hover { transform: translateY(-2px); }
+    .chat-fab .nav-badge { top: -2px; right: -2px; }
+    .chat-fab-panel {
+      position: fixed; right: 24px; bottom: 92px; z-index: 1040;
+      width: min(380px, calc(100vw - 32px)); height: min(560px, calc(100vh - 140px));
+      background: var(--bg-card, #17171f); border: 1px solid var(--border-color);
+      border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .chat-fab-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; border-bottom: 1px solid var(--border-color);
+      font-weight: 700; font-size: 14px; color: var(--text-primary); flex-shrink: 0;
+    }
+    .chat-fab-panel-header button {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px;
+    }
+    .chat-fab-panel-header button:hover { color: var(--text-primary); }
+    .chat-fab-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 18px 18px; }
+    /* Карточка чата, перенесённая внутрь плавающей панели — убираем
+       собственные border/padding/фиксированную высоту, ими управляет панель. */
+    .chat-fab-panel-body .chat-card {
+      border: none !important; background: none !important; backdrop-filter: none !important;
+      padding: 0 !important; height: 100% !important; flex: 1; min-height: 0;
+    }
+    .chat-fab-panel-body .chat-card .card-title { display: none !important; }
+    .chat-fab-panel-body .chat-card .cbody { display: flex !important; height: 100% !important; }
+    @media (max-width: 480px) {
+      .chat-fab { right: 16px; bottom: 16px; width: 52px; height: 52px; }
+      .chat-fab-panel { right: 16px; bottom: 80px; }
+    }
+
     /* Модальное меню профиля (мобильные) */
     .profile-menu-overlay {
       display: none; position: fixed; inset: 0; z-index: 1100;
@@ -763,7 +806,7 @@
         </div>
 
         <!-- Чат поддержки -->
-        <div class="card mobile-collapse chat-card" style="display: flex; flex-direction: column; height: 500px;">
+        <div class="card mobile-collapse chat-card" id="chatCard" style="display: flex; flex-direction: column; height: 500px;">
           <div class="card-title collapse-toggle" style="display: flex; flex-direction: column; gap: 4px;">
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
               <div style="display: flex; align-items: center; gap: 10px;">
@@ -810,6 +853,20 @@
   </div>
 
   <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Плавающее окно чата с администрацией (только для обычных пользователей —
+       у Admin/Superadmin в их личном кабинете остаётся встроенный список тикетов) -->
+  <button class="chat-fab" id="chatFabBtn" type="button" style="display:none;">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+    <span class="nav-badge" id="chatFabBadge" style="display:none;">0</span>
+  </button>
+  <div class="chat-fab-panel" id="chatFabPanel" style="display:none;">
+    <div class="chat-fab-panel-header">
+      <span>Чат с администрацией</span>
+      <button type="button" id="chatFabCloseBtn" aria-label="Закрыть">&times;</button>
+    </div>
+    <div class="chat-fab-panel-body" id="chatFabPanelBody"><!-- сюда переносится существующая карточка чата --></div>
+  </div>
 
   <script>
     let currentUserData = null;
@@ -1644,6 +1701,68 @@
       }
     });
 
+    // === Плавающее окно чата (только для обычных пользователей) ===
+    // У Admin/Superadmin карточка остаётся встроенной — это список тикетов,
+    // а не быстрый попап (см. loadAdminTickets ниже).
+    let chatUnreadPollingInterval = null;
+    let chatWidgetOpen = false;
+
+    async function loadChatUnreadCount() {
+      try {
+        const res = await fetch('/api/support/unread-count');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('chatFabBadge');
+        if (!badge) return;
+        const unread = data.unread || 0;
+        if (unread > 0 && !chatWidgetOpen) {
+          badge.textContent = unread > 9 ? '9+' : String(unread);
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      } catch (e) { /* не критично */ }
+    }
+
+    async function openChatWidget() {
+      const panel = document.getElementById('chatFabPanel');
+      if (!panel) return;
+      chatWidgetOpen = true;
+      panel.style.display = 'flex';
+      document.getElementById('chatFabBadge').style.display = 'none';
+      connectChatStream(); // запускает первую загрузку + polling каждые 4с, пока окно открыто
+      try { await fetch('/api/support/read-by-user', { method: 'POST' }); } catch (e) {}
+    }
+
+    function closeChatWidget() {
+      const panel = document.getElementById('chatFabPanel');
+      if (panel) panel.style.display = 'none';
+      chatWidgetOpen = false;
+      closeChatStream(); // останавливаем 4с polling, пока окно закрыто
+    }
+
+    function setupChatWidget() {
+      const card = document.getElementById('chatCard');
+      const fabBtn = document.getElementById('chatFabBtn');
+      const panelBody = document.getElementById('chatFabPanelBody');
+      const closeBtn = document.getElementById('chatFabCloseBtn');
+      if (!card || !fabBtn || !panelBody) return;
+
+      // Переносим существующую карточку чата (со всей её разметкой и уже
+      // повешенными обработчиками) внутрь плавающей панели.
+      panelBody.appendChild(card);
+      fabBtn.style.display = 'flex';
+
+      fabBtn.addEventListener('click', () => {
+        chatWidgetOpen ? closeChatWidget() : openChatWidget();
+      });
+      if (closeBtn) closeBtn.addEventListener('click', closeChatWidget);
+
+      loadChatUnreadCount();
+      if (chatUnreadPollingInterval) clearInterval(chatUnreadPollingInterval);
+      chatUnreadPollingInterval = setInterval(loadChatUnreadCount, 20000);
+    }
+
     // Admin support ticket management logic
     async function loadAdminTickets() {
       if (activeAdminTicketId) return;
@@ -2422,8 +2541,10 @@
             await loadAdminTickets();
             // Для админа подключаемся к стриму только когда открыт конкретный чат
           } else {
-            await loadChatMessages();
-            connectChatStream(); // SSE для обычного пользователя
+            // У обычного пользователя чат — плавающее окно, закрытое по
+            // умолчанию: сообщения грузятся и опрашиваются только пока оно
+            // открыто (openChatWidget), в фоне — лишь счётчик непрочитанных.
+            setupChatWidget();
           }
         }
       })();

@@ -313,6 +313,17 @@ const MIGRATIONS = [
         )
       `, () => {});
     }
+  },
+  {
+    version: 18,
+    description: 'Add read_by_user to support_messages (непрочитанные ответы админа в личном чате пользователя)',
+    up: () => {
+      // is_read на support_messages отвечает только за «прочитано админом»
+      // (используется в списке тикетов) — нельзя переиспользовать для
+      // обратного направления. read_by_user — отдельная колонка: отмечает,
+      // видел ли пользователь ответы администрации в своём чате.
+      db.run("ALTER TABLE support_messages ADD COLUMN read_by_user INTEGER NOT NULL DEFAULT 0", () => {});
+    }
   }
 ];
 
@@ -614,6 +625,7 @@ db.serialize(() => {
   `, () => {
     db.run("ALTER TABLE support_messages ADD COLUMN is_read INTEGER DEFAULT 0", () => {});
     db.run("ALTER TABLE support_messages ADD COLUMN image_url TEXT", () => {});
+    db.run("ALTER TABLE support_messages ADD COLUMN read_by_user INTEGER NOT NULL DEFAULT 0", () => {});
   });
 
   // 7. Простая таблица сессий (для надёжности — переживают перезапуск сервера)

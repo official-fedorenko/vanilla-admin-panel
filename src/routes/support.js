@@ -172,6 +172,37 @@ module.exports = async function handleSupport(req, res, user, parsedUrl, method)
     return;
   }
 
+  // GET /api/support/unread-count — сколько ответов администрации пользователь
+  // ещё не открывал в своём личном чате (для бейджа на плавающем окне).
+  if (currentPath === '/api/support/unread-count' && method === 'GET') {
+    const tId = 'user_' + user.id;
+    db.get(
+      "SELECT COUNT(*) as c FROM support_messages WHERE ticket_id = ? AND sender_role IN ('Admin','Superadmin') AND read_by_user = 0",
+      [tId],
+      (err, row) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true, unread: row ? row.c : 0 });
+      }
+    );
+    return;
+  }
+
+  // POST /api/support/read-by-user — пользователь открыл свой чат, отмечаем
+  // ответы администрации прочитанными (отдельно от is_read — той колонкой
+  // отмечается прочтение админом сообщений пользователя, не наоборот).
+  if (currentPath === '/api/support/read-by-user' && method === 'POST') {
+    const tId = 'user_' + user.id;
+    db.run(
+      "UPDATE support_messages SET read_by_user = 1 WHERE ticket_id = ? AND sender_role IN ('Admin','Superadmin')",
+      [tId],
+      (err) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        sendJson(res, 200, { success: true });
+      }
+    );
+    return;
+  }
+
   // POST /api/support/create (light ensure ticket)
   if (currentPath === '/api/support/create' && method === 'POST') {
     try {
