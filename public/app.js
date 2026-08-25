@@ -1302,13 +1302,31 @@ function renderRequests(list, types) {
           : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => {
+      const def = types[r.type];
       const rows = [
+        ['Заявка', null, 'section'],
         ['Тип', r.type_label || r.type],
-        ['Описание', describeRequest(r, types), true],
-        ['Кто', r.requested_by_name || '—'],
+        ['От кого', r.requested_by_name || '—'],
         ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true]
       ];
-      if (r.review_note) rows.push(['Причина', r.review_note]);
+      const mainFields = requestColumnFields(def)
+        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
+      if (mainFields.length) {
+        rows.push(['Описание', null, 'section']);
+        mainFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+      }
+      const secFields = requestSecondaryFields(def)
+        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
+      if (secFields.length) {
+        rows.push(['Дополнительно', null, 'section']);
+        secFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+      }
+      if (r.payload.photo_url) {
+        rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
+      }
+      const just = requestJustification(r, types);
+      if (just.text) rows.push([just.label || 'Обоснование', just.text, 'block']);
+      if (r.review_note) rows.push(['Комментарий администратора', r.review_note, 'block']);
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
            <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
@@ -3119,15 +3137,30 @@ window.editEmployee = (id) => {
 };
 
 // --- Общая модалка просмотра строки (для мобильных) ---
-// rows: массив [метка, значение, isHtml?]. Пустые значения пропускаются.
+// rows: массив [метка, значение, mode?]. Пустые значения пропускаются
+// (кроме mode === 'section', для которого значение не нужно).
+// mode: true — значение вставляется как HTML; 'section' — заголовок группы
+// (без значения); 'block' — метка сверху + значение снизу на всю ширину
+// (для длинного текста типа обоснования/комментария).
 function rowDetailHtml(rows) {
   return rows
-    .filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '')
-    .map(([k, v, isHtml]) => `
+    .filter(r => r[2] === 'section' || (r[1] !== undefined && r[1] !== null && r[1] !== ''))
+    .map(([k, v, mode]) => {
+      if (mode === 'section') {
+        return `<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:hsl(var(--text-muted));margin:18px 0 6px;">${escapeHtml(k)}</div>`;
+      }
+      if (mode === 'block') {
+        return `<div style="padding:2px 0 14px;">
+          <div style="font-size:13px;color:hsl(var(--text-muted));margin-bottom:4px;">${escapeHtml(k)}</div>
+          <div style="font-size:14px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(String(v))}</div>
+        </div>`;
+      }
+      return `
       <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid hsl(var(--border-color));">
         <span style="color:hsl(var(--text-muted));font-size:13px;flex-shrink:0;">${escapeHtml(k)}</span>
-        <span style="font-size:14px;text-align:right;word-break:break-word;">${isHtml ? v : escapeHtml(String(v))}</span>
-      </div>`).join('');
+        <span style="font-size:14px;text-align:right;word-break:break-word;">${mode ? v : escapeHtml(String(v))}</span>
+      </div>`;
+    }).join('');
 }
 window.showRowDetail = (title, rows, actionsHtml = '') => {
   document.getElementById('rowDetailTitle').textContent = title;
