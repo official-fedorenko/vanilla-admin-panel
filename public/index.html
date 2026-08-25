@@ -653,84 +653,100 @@
             <p>Управление конфигурацией вашего сайта</p>
           </div>
         </div>
-        
+
+        <div class="settings-tabs">
+          <button type="button" class="settings-tab-btn active" data-settings-tab="site">Настройка сайта</button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="cards">Настройка карточек</button>
+          <button type="button" class="settings-tab-btn" data-settings-tab="system">Настройка системы</button>
+        </div>
+
         <div style="max-width: 600px; background-color: hsl(var(--bg-card)); border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-md); padding: 32px;">
           <form id="settingsForm">
-            <!-- Dynamic elements loaded here -->
-            <div id="settingsContainer"></div>
-            
-            <button type="submit" class="btn" style="margin-top: 10px;">
+            <!-- Настройка сайта: общие поля, главная, о блоге, контакты -->
+            <div id="settingsPanelSite" class="settings-tab-panel" data-settings-panel="site">
+              <div id="settingsContainerSite"></div>
+            </div>
+
+            <!-- Настройка карточек: публичные QR-карточки инструмента и авто -->
+            <div id="settingsPanelCards" class="settings-tab-panel" data-settings-panel="cards" hidden>
+              <div id="settingsContainerCards"></div>
+            </div>
+
+            <button type="submit" class="btn" id="settingsSaveBtn" style="margin-top: 10px;">
               <i data-lucide="save"></i>
               <span>Сохранить настройки</span>
             </button>
           </form>
 
-          <!-- Superadmin-only backup download -->
-          <div id="backupBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Резервная копия (только Superadmin)</div>
-            <a href="/api/admin/backup" id="backupBtn" class="btn btn-secondary" download>
-              <i data-lucide="download"></i>
-              <span>Скачать копию базы данных</span>
-            </a>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Скачивает файл db.sqlite целиком. Восстановление: остановите сервер, замените db.sqlite этим файлом, перезапустите.</div>
-          </div>
-
-          <!-- Superadmin-only: тестовые сотрудники -->
-          <div id="testEmployeesBox" class="test-box superadmin-only">
-            <div class="test-box-title">Тестовые сотрудники (только Superadmin)</div>
-            <div class="test-box-buttons">
-              <button type="button" id="addTestEmpBtn" class="btn">
-                <i data-lucide="user-plus"></i><span>Добавить</span>
-              </button>
-              <button type="button" id="removeTestEmpBtn" class="btn btn-secondary" style="color:#ff6b6b;">
-                <i data-lucide="user-minus"></i><span>Удалить</span>
-              </button>
+          <!-- Настройка системы: резервная копия, тестовые данные, опасная зона -->
+          <div id="settingsPanelSystem" class="settings-tab-panel" data-settings-panel="system" hidden>
+            <!-- Superadmin-only backup download -->
+            <div id="backupBox" style="padding-top: 4px; display: none;">
+              <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Резервная копия (только Superadmin)</div>
+              <a href="/api/admin/backup" id="backupBtn" class="btn btn-secondary" download>
+                <i data-lucide="download"></i>
+                <span>Скачать копию базы данных</span>
+              </a>
+              <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Скачивает файл db.sqlite целиком. Восстановление: остановите сервер, замените db.sqlite этим файлом, перезапустите.</div>
             </div>
-            <div class="test-box-description">Демо-набор из 5 сотрудников (Diamantas) с аккаунтами (пароль 1234qwer). Реальные записи не затрагиваются.</div>
-          </div>
 
-          <!-- Superadmin-only test tools (add/remove) -->
-          <div id="testToolsBox" class="test-box superadmin-only">
-            <div class="test-box-title">Тестовые инструменты</div>
-            <div class="test-box-buttons">
-              <button type="button" id="addTestToolBtn" class="btn btn-secondary" style="color:#20c997;">
-                <i data-lucide="tool-plus"></i><span>Добавить</span>
-              </button>
-              <button type="button" id="removeTestToolBtn" class="btn btn-secondary" style="color:#ff6b6b;">
-                <i data-lucide="tool-minus"></i><span>Удалить</span>
-              </button>
+            <!-- Superadmin-only: тестовые сотрудники -->
+            <div id="testEmployeesBox" class="test-box superadmin-only">
+              <div class="test-box-title">Тестовые сотрудники (только Superadmin)</div>
+              <div class="test-box-buttons">
+                <button type="button" id="addTestEmpBtn" class="btn">
+                  <i data-lucide="user-plus"></i><span>Добавить</span>
+                </button>
+                <button type="button" id="removeTestEmpBtn" class="btn btn-secondary" style="color:#ff6b6b;">
+                  <i data-lucide="user-minus"></i><span>Удалить</span>
+                </button>
+              </div>
+              <div class="test-box-description">Демо-набор из 5 сотрудников (Diamantas) с аккаунтами (пароль 1234qwer). Реальные записи не затрагиваются.</div>
             </div>
-            <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
-          </div>
 
-          <!-- Superadmin-only: полная очистка склада (раздел «Инструмент») -->
-          <div id="clearToolsCatalogBox" class="test-box superadmin-only">
-            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка склада (раздел «Инструмент»)</div>
-            <button type="button" id="clearToolsCatalogBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
-              <i data-lucide="trash-2"></i>
-              <span>Очистить склад</span>
-            </button>
-            <div class="test-box-description">Удалит ВСЕ инструменты со склада (раздел «Инструмент»), включая реальные записи (не только тестовые). Не путать со справочником моделей ниже. Действие необратимо.</div>
-          </div>
+            <!-- Superadmin-only test tools (add/remove) -->
+            <div id="testToolsBox" class="test-box superadmin-only">
+              <div class="test-box-title">Тестовые инструменты</div>
+              <div class="test-box-buttons">
+                <button type="button" id="addTestToolBtn" class="btn btn-secondary" style="color:#20c997;">
+                  <i data-lucide="tool-plus"></i><span>Добавить</span>
+                </button>
+                <button type="button" id="removeTestToolBtn" class="btn btn-secondary" style="color:#ff6b6b;">
+                  <i data-lucide="tool-minus"></i><span>Удалить</span>
+                </button>
+              </div>
+              <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
+            </div>
 
-          <!-- Superadmin-only: очистка справочника моделей (раздел «Каталог») -->
-          <div id="clearCatalogModelsBox" class="test-box superadmin-only">
-            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка справочника моделей (раздел «Каталог»)</div>
-            <button type="button" id="clearCatalogModelsBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
-              <i data-lucide="trash-2"></i>
-              <span>Очистить справочник моделей</span>
-            </button>
-            <div class="test-box-description">Удалит ВСЕ стандартные модели (Bosch/DeWalt и т.д.) из справочника «Каталог». После этого пропадёт быстрое автозаполнение формы при добавлении инструмента. Действие необратимо.</div>
-          </div>
+            <!-- Superadmin-only: полная очистка склада (раздел «Инструмент») -->
+            <div id="clearToolsCatalogBox" class="test-box superadmin-only">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка склада (раздел «Инструмент»)</div>
+              <button type="button" id="clearToolsCatalogBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="trash-2"></i>
+                <span>Очистить склад</span>
+              </button>
+              <div class="test-box-description">Удалит ВСЕ инструменты со склада (раздел «Инструмент»), включая реальные записи (не только тестовые). Не путать со справочником моделей ниже. Действие необратимо.</div>
+            </div>
 
-          <!-- Superadmin-only demo reset (very handy when presenting the project) -->
-          <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
-            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
-            <button type="button" id="resetDemoBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
-              <i data-lucide="refresh-cw"></i>
-              <span>Сбросить демо-данные</span>
-            </button>
-            <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Удалит статьи, медиа, логи, обращения и пересоздаст тестовые данные.</div>
+            <!-- Superadmin-only: очистка справочника моделей (раздел «Каталог») -->
+            <div id="clearCatalogModelsBox" class="test-box superadmin-only">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка справочника моделей (раздел «Каталог»)</div>
+              <button type="button" id="clearCatalogModelsBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="trash-2"></i>
+                <span>Очистить справочник моделей</span>
+              </button>
+              <div class="test-box-description">Удалит ВСЕ стандартные модели (Bosch/DeWalt и т.д.) из справочника «Каталог». После этого пропадёт быстрое автозаполнение формы при добавлении инструмента. Действие необратимо.</div>
+            </div>
+
+            <!-- Superadmin-only demo reset (very handy when presenting the project) -->
+            <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
+              <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>
+              <button type="button" id="resetDemoBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+                <i data-lucide="refresh-cw"></i>
+                <span>Сбросить демо-данные</span>
+              </button>
+              <div style="font-size: 12px; color: hsl(var(--text-muted)); margin-top: 6px;">Удалит статьи, медиа, логи, обращения и пересоздаст тестовые данные.</div>
+            </div>
           </div>
         </div>
       </section>

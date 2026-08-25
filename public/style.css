@@ -461,15 +461,18 @@ main.main-content {
 }
 
 /* Улучшения для настроек */
-#settingsContainer .form-group label {
+#settingsContainerSite .form-group label,
+#settingsContainerCards .form-group label {
   font-size: 13px;
 }
-#settingsContainer textarea.form-control {
+#settingsContainerSite textarea.form-control,
+#settingsContainerCards textarea.form-control {
   font-family: inherit;
   line-height: 1.5;
 }
 /* Простой красивый чекбокс для boolean настроек */
-#settingsContainer input[type="checkbox"] {
+#settingsContainerSite input[type="checkbox"],
+#settingsContainerCards input[type="checkbox"] {
   accent-color: hsl(var(--accent-purple));
   width: 18px;
   height: 18px;
@@ -596,6 +599,34 @@ main.main-content {
 .brand-picker-add input {
   flex: 1;
   min-width: 0;
+}
+
+/* Settings section tabs (Настройка сайта / карточек / системы) */
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.settings-tab-btn {
+  padding: 10px 18px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid hsl(var(--border-color));
+  background: hsl(var(--bg-card));
+  color: hsl(var(--text-muted));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.settings-tab-btn:hover {
+  color: hsl(var(--text-primary));
+  border-color: hsl(var(--accent-purple));
+}
+.settings-tab-btn.active {
+  background: hsl(var(--accent-purple));
+  border-color: hsl(var(--accent-purple));
+  color: #fff;
 }
 
 /* Test Employees & Test Tools Boxes */

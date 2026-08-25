@@ -434,7 +434,7 @@ function initApp() {
   // Settings Save handler (поддерживает input, textarea, checkbox)
   document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const container = document.getElementById('settingsContainer');
+    const container = document.getElementById('settingsForm');
     const settings = {};
 
     // Собираем обычные input и textarea
@@ -2356,18 +2356,25 @@ function blobToBase64(blob) {
 
 // API: Settings loader с типами полей и группировкой
 async function loadSettings() {
-  const container = document.getElementById('settingsContainer');
-  container.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка настроек...</div>';
+  const siteContainer = document.getElementById('settingsContainerSite');
+  const cardsContainer = document.getElementById('settingsContainerCards');
+  siteContainer.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка настроек...</div>';
+  cardsContainer.innerHTML = '';
 
-  // Группировка настроек (для удобства)
-  const GROUPS = {
+  // Группировка настроек (для удобства). Группы из SITE_GROUPS рендерятся в
+  // «Настройка сайта», из CARD_GROUPS — в «Настройка карточек» (вкладки
+  // раздела «Настройки»).
+  const SITE_GROUPS = {
     'Общие': ['site_name', 'maintenance_mode', 'allow_registration'],
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
-    'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address'],
+    'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
+  };
+  const CARD_GROUPS = {
     'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
     'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes']
   };
+  const GROUPS = { ...SITE_GROUPS, ...CARD_GROUPS };
 
   // Понятные подписи (не зависят от description в БД, который может теряться
   // при сохранении из-за INSERT OR REPLACE).
@@ -2415,9 +2422,10 @@ async function loadSettings() {
     const settingsMap = {};
     allSettings.forEach(s => { settingsMap[s.key] = s; });
 
-    container.innerHTML = '';
+    siteContainer.innerHTML = '';
 
     Object.entries(GROUPS).forEach(([groupTitle, keys]) => {
+      const container = groupTitle in CARD_GROUPS ? cardsContainer : siteContainer;
       // Заголовок группы
       const groupHeader = document.createElement('div');
       groupHeader.style.cssText = 'margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;';
@@ -2459,10 +2467,24 @@ async function loadSettings() {
       });
     });
   } catch (err) {
-    container.innerHTML = '<div style="color: #ff6b6b;">Не удалось загрузить настройки</div>';
+    siteContainer.innerHTML = '<div style="color: #ff6b6b;">Не удалось загрузить настройки</div>';
     showToast('Ошибка загрузки настроек', 'error');
   }
 }
+
+// Переключение вкладок раздела «Настройки»: сайт / карточки / система.
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.settingsTab === tab);
+  });
+  document.getElementById('settingsForm').hidden = tab === 'system';
+  document.getElementById('settingsPanelSite').hidden = tab !== 'site';
+  document.getElementById('settingsPanelCards').hidden = tab !== 'cards';
+  document.getElementById('settingsPanelSystem').hidden = tab !== 'system';
+}
+document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchSettingsTab(btn.dataset.settingsTab));
+});
 
 // Helpers
 window.exportJSON = async (type) => {
