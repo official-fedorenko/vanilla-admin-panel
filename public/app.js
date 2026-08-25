@@ -1786,6 +1786,41 @@ window.deleteBrandItem = async (id) => {
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
+// === Отправка уведомлений пользователям (в личный кабинет) ===
+window.openSendNotificationModal = (userId = null) => {
+  const overlay = document.getElementById('sendNotificationModalOverlay');
+  if (!overlay) return;
+  const sel = document.getElementById('notifTargetUser');
+  const names = usersList.map(u => `<option value="${u.id}">${escapeHtml(u.username)} (${escapeHtml(u.email)})</option>`).join('');
+  sel.innerHTML = '<option value="">Всем пользователям</option>' + names;
+  sel.value = userId != null ? String(userId) : '';
+  document.getElementById('notifMessage').value = '';
+  overlay.classList.add('active');
+};
+window.closeSendNotificationModal = () => {
+  const overlay = document.getElementById('sendNotificationModalOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+window.submitNotification = async () => {
+  const targetVal = document.getElementById('notifTargetUser').value;
+  const message = document.getElementById('notifMessage').value.trim();
+  if (!message) { showToast('Введите текст уведомления', 'error'); return; }
+  try {
+    const res = await fetch('/api/admin/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: targetVal ? parseInt(targetVal, 10) : null, message })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast('Уведомление отправлено', 'success');
+      closeSendNotificationModal();
+    } else {
+      showToast(d.message || 'Не удалось отправить', 'error');
+    }
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
 async function loadMedia(filter = '') {
   const grid = document.getElementById('mediaGrid');
   const categorySelect = document.getElementById('mediaCategorySelect');
@@ -2318,6 +2353,7 @@ function renderUsers(filterQuery = '') {
           <button class="action-btn edit" onclick="editUser(${u.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteUser(${u.id})"><i data-lucide="trash-2"></i></button>
           <button class="action-btn chat" onclick="adminStartChat(${u.id}, '${escapeHtml(u.username)}', '${escapeHtml(u.email)}')"><i data-lucide="message-circle"></i></button>
+          <button class="action-btn" title="Отправить уведомление" onclick="openSendNotificationModal(${u.id})"><i data-lucide="bell"></i></button>
         </div>
       </td>
     `;

@@ -285,6 +285,34 @@ const MIGRATIONS = [
         }
       });
     }
+  },
+  {
+    version: 17,
+    description: 'Create notifications + notification_reads (внутренние уведомления от администрации)',
+    up: () => {
+      // Уведомления от администрации в личном кабинете. user_id = NULL —
+      // уведомление для всех пользователей. Прочтения храним отдельной
+      // таблицей (a не колонкой is_read на самой notifications), чтобы
+      // бродкаст на всех не плодил по строке на каждого пользователя —
+      // один уведомление = одна строка независимо от адресатов.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+          message TEXT NOT NULL,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {});
+      db.run(`
+        CREATE TABLE IF NOT EXISTS notification_reads (
+          notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (notification_id, user_id)
+        )
+      `, () => {});
+    }
   }
 ];
 

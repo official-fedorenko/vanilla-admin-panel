@@ -700,12 +700,16 @@
             <h2>Управление пользователями</h2>
             <p>Просмотр, создание, изменение и удаление учетных записей администраторов и редакторов</p>
           </div>
+          <button class="btn btn-secondary" onclick="openSendNotificationModal()">
+            <i data-lucide="bell"></i>
+            <span>Уведомление</span>
+          </button>
           <button class="btn" id="addUserBtn">
             <i data-lucide="user-plus"></i>
             <span>Добавить</span>
           </button>
         </div>
-        
+
         <div class="table-container">
           <div class="table-toolbar">
             <div class="table-search">
@@ -972,6 +976,32 @@
           </button>
         </div>
         <div id="brandsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEND NOTIFICATION MODAL -->
+  <div class="modal-overlay" id="sendNotificationModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Отправить уведомление</h3>
+        <button class="modal-close" onclick="closeSendNotificationModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="notifTargetUser">Кому</label>
+          <select id="notifTargetUser" class="form-control">
+            <option value="">Всем пользователям</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="notifMessage">Сообщение<span class="required-mark">*</span></label>
+          <textarea id="notifMessage" class="form-control" rows="4" maxlength="500" placeholder="Текст уведомления…" required></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeSendNotificationModal()">Отмена</button>
+        <button type="button" class="btn" onclick="submitNotification()">Отправить</button>
       </div>
     </div>
   </div>
