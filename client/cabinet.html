@@ -113,6 +113,13 @@
       border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
       z-index: 1050;
     }
+    /* Десктоп: больше места есть — окно покрупнее и повыше, чем на мобильных. */
+    @media (min-width: 641px) {
+      .notif-dropdown {
+        width: 420px;
+        max-height: min(560px, calc(100vh - 100px));
+      }
+    }
     /* max-width (не max-height) — это про узкий экран в портретной
        ориентации, где триггер-колокольчик не прижат к правому краю. */
     @media (max-width: 640px) {
