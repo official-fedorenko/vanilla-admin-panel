@@ -434,7 +434,7 @@ function initApp() {
   // Settings Save handler (поддерживает input, textarea, checkbox)
   document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const container = document.getElementById('settingsContainer');
+    const container = document.getElementById('settingsForm');
     const settings = {};
 
     // Собираем обычные input и textarea
@@ -1302,13 +1302,31 @@ function renderRequests(list, types) {
           : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => {
+      const def = types[r.type];
       const rows = [
+        ['Заявка', null, 'section'],
         ['Тип', r.type_label || r.type],
-        ['Описание', describeRequest(r, types), true],
-        ['Кто', r.requested_by_name || '—'],
+        ['От кого', r.requested_by_name || '—'],
         ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true]
       ];
-      if (r.review_note) rows.push(['Причина', r.review_note]);
+      const mainFields = requestColumnFields(def)
+        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
+      if (mainFields.length) {
+        rows.push(['Описание', null, 'section']);
+        mainFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+      }
+      const secFields = requestSecondaryFields(def)
+        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
+      if (secFields.length) {
+        rows.push(['Дополнительно', null, 'section']);
+        secFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+      }
+      if (r.payload.photo_url) {
+        rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
+      }
+      const just = requestJustification(r, types);
+      if (just.text) rows.push([just.label || 'Обоснование', just.text, 'block']);
+      if (r.review_note) rows.push(['Комментарий администратора', r.review_note, 'block']);
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
            <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
@@ -2338,18 +2356,25 @@ function blobToBase64(blob) {
 
 // API: Settings loader с типами полей и группировкой
 async function loadSettings() {
-  const container = document.getElementById('settingsContainer');
-  container.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка настроек...</div>';
+  const siteContainer = document.getElementById('settingsContainerSite');
+  const cardsContainer = document.getElementById('settingsContainerCards');
+  siteContainer.innerHTML = '<div style="color: hsl(var(--text-muted));">Загрузка настроек...</div>';
+  cardsContainer.innerHTML = '';
 
-  // Группировка настроек (для удобства)
-  const GROUPS = {
+  // Группировка настроек (для удобства). Группы из SITE_GROUPS рендерятся в
+  // «Настройка сайта», из CARD_GROUPS — в «Настройка карточек» (вкладки
+  // раздела «Настройки»).
+  const SITE_GROUPS = {
     'Общие': ['site_name', 'maintenance_mode', 'allow_registration'],
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
-    'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address'],
+    'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
+  };
+  const CARD_GROUPS = {
     'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
     'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes']
   };
+  const GROUPS = { ...SITE_GROUPS, ...CARD_GROUPS };
 
   // Понятные подписи (не зависят от description в БД, который может теряться
   // при сохранении из-за INSERT OR REPLACE).
@@ -2397,9 +2422,10 @@ async function loadSettings() {
     const settingsMap = {};
     allSettings.forEach(s => { settingsMap[s.key] = s; });
 
-    container.innerHTML = '';
+    siteContainer.innerHTML = '';
 
     Object.entries(GROUPS).forEach(([groupTitle, keys]) => {
+      const container = groupTitle in CARD_GROUPS ? cardsContainer : siteContainer;
       // Заголовок группы
       const groupHeader = document.createElement('div');
       groupHeader.style.cssText = 'margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;';
@@ -2441,10 +2467,24 @@ async function loadSettings() {
       });
     });
   } catch (err) {
-    container.innerHTML = '<div style="color: #ff6b6b;">Не удалось загрузить настройки</div>';
+    siteContainer.innerHTML = '<div style="color: #ff6b6b;">Не удалось загрузить настройки</div>';
     showToast('Ошибка загрузки настроек', 'error');
   }
 }
+
+// Переключение вкладок раздела «Настройки»: сайт / карточки / система.
+function switchSettingsTab(tab) {
+  document.querySelectorAll('.settings-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.settingsTab === tab);
+  });
+  document.getElementById('settingsForm').hidden = tab === 'system';
+  document.getElementById('settingsPanelSite').hidden = tab !== 'site';
+  document.getElementById('settingsPanelCards').hidden = tab !== 'cards';
+  document.getElementById('settingsPanelSystem').hidden = tab !== 'system';
+}
+document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchSettingsTab(btn.dataset.settingsTab));
+});
 
 // Helpers
 window.exportJSON = async (type) => {
@@ -3119,15 +3159,30 @@ window.editEmployee = (id) => {
 };
 
 // --- Общая модалка просмотра строки (для мобильных) ---
-// rows: массив [метка, значение, isHtml?]. Пустые значения пропускаются.
+// rows: массив [метка, значение, mode?]. Пустые значения пропускаются
+// (кроме mode === 'section', для которого значение не нужно).
+// mode: true — значение вставляется как HTML; 'section' — заголовок группы
+// (без значения); 'block' — метка сверху + значение снизу на всю ширину
+// (для длинного текста типа обоснования/комментария).
 function rowDetailHtml(rows) {
   return rows
-    .filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '')
-    .map(([k, v, isHtml]) => `
+    .filter(r => r[2] === 'section' || (r[1] !== undefined && r[1] !== null && r[1] !== ''))
+    .map(([k, v, mode]) => {
+      if (mode === 'section') {
+        return `<div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:hsl(var(--text-muted));margin:18px 0 6px;">${escapeHtml(k)}</div>`;
+      }
+      if (mode === 'block') {
+        return `<div style="padding:2px 0 14px;">
+          <div style="font-size:13px;color:hsl(var(--text-muted));margin-bottom:4px;">${escapeHtml(k)}</div>
+          <div style="font-size:14px;white-space:pre-wrap;word-break:break-word;">${escapeHtml(String(v))}</div>
+        </div>`;
+      }
+      return `
       <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid hsl(var(--border-color));">
         <span style="color:hsl(var(--text-muted));font-size:13px;flex-shrink:0;">${escapeHtml(k)}</span>
-        <span style="font-size:14px;text-align:right;word-break:break-word;">${isHtml ? v : escapeHtml(String(v))}</span>
-      </div>`).join('');
+        <span style="font-size:14px;text-align:right;word-break:break-word;">${mode ? v : escapeHtml(String(v))}</span>
+      </div>`;
+    }).join('');
 }
 window.showRowDetail = (title, rows, actionsHtml = '') => {
   document.getElementById('rowDetailTitle').textContent = title;
@@ -5213,6 +5268,19 @@ function scheduleVehicleDupCheck() {
   vehicleDupCheckTimer = setTimeout(checkVehicleDuplicates, 350);
 }
 
+// Тип топлива у авто — набор чекбоксов (можно выбрать несколько, например
+// Бензин+Газ), хранится/передаётся как строка через запятую.
+function getVehicleFuelValue() {
+  return Array.from(document.querySelectorAll('#vehicleFuel input[type="checkbox"]:checked'))
+    .map(cb => cb.value).join(', ');
+}
+function setVehicleFuelValue(value) {
+  const selected = new Set(String(value || '').split(',').map(s => s.trim()).filter(Boolean));
+  document.querySelectorAll('#vehicleFuel input[type="checkbox"]').forEach(cb => {
+    cb.checked = selected.has(cb.value);
+  });
+}
+
 function setupVehicles() {
   const modal = document.getElementById('vehicleModalOverlay');
   if (!modal) return;
@@ -5274,7 +5342,7 @@ function setupVehicles() {
         brand: document.getElementById('vehicleBrand').value,
         model: document.getElementById('vehicleModel').value,
         year: document.getElementById('vehicleYear').value,
-        fuel_type: document.getElementById('vehicleFuel').value,
+        fuel_type: getVehicleFuelValue(),
         plate_number: document.getElementById('vehiclePlate').value,
         vin: document.getElementById('vehicleVin').value,
         mileage: document.getElementById('vehicleMileage').value,
@@ -5464,7 +5532,7 @@ async function openVehicleModal(vehicle = null) {
   document.getElementById('vehicleBrand').value = vehicle ? (vehicle.brand || '') : '';
   document.getElementById('vehicleModel').value = vehicle ? (vehicle.model || '') : '';
   document.getElementById('vehicleYear').value = vehicle && vehicle.year ? vehicle.year : '';
-  document.getElementById('vehicleFuel').value = vehicle ? (vehicle.fuel_type || '') : '';
+  setVehicleFuelValue(vehicle ? (vehicle.fuel_type || '') : '');
   document.getElementById('vehiclePlate').value = vehicle ? (vehicle.plate_number || '') : '';
   document.getElementById('vehicleVin').value = vehicle ? (vehicle.vin || '') : '';
   document.getElementById('vehicleMileage').value = vehicle && vehicle.mileage != null ? vehicle.mileage : '';
