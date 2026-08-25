@@ -1865,6 +1865,10 @@ async function loadNotificationHistory() {
       const readInfo = n.total_recipients > 1
         ? `Прочитали: ${n.read_count} из ${n.total_recipients}`
         : (n.read_count > 0 ? 'Прочитано' : 'Не прочитано');
+      const canShowReaders = !n.is_pending && n.read_count > 0;
+      const readInfoHtml = canShowReaders
+        ? `<span style="font-size:12px; color:hsl(var(--accent-cyan)); cursor:pointer; text-decoration:underline;" onclick="toggleNotificationReaders(${n.id})">${readInfo} — кто?</span>`
+        : `<span style="font-size:12px; color:hsl(var(--text-muted));">${readInfo}</span>`;
       return `
         <div style="border:1px solid hsl(var(--border-color)); border-radius:10px; padding:14px 16px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
@@ -1874,8 +1878,9 @@ async function loadNotificationHistory() {
           <div style="font-size:14px; margin-bottom:8px;">${escapeHtml(n.message)}</div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             ${statusBadge}
-            ${!n.is_pending ? `<span style="font-size:12px; color:hsl(var(--text-muted));">${readInfo}</span>` : ''}
+            ${!n.is_pending ? readInfoHtml : ''}
           </div>
+          <div id="notifReaders-${n.id}" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid hsl(var(--border-color));"></div>
         </div>`;
     }).join('');
     if (window.lucide) lucide.createIcons();
@@ -1883,6 +1888,30 @@ async function loadNotificationHistory() {
     box.innerHTML = '<div style="padding:20px; color:#ff6b6b;">Ошибка загрузки</div>';
   }
 }
+
+window.toggleNotificationReaders = async (id) => {
+  const box = document.getElementById(`notifReaders-${id}`);
+  if (!box) return;
+  if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px; color:hsl(var(--text-muted));">Загрузка...</div>';
+  try {
+    const res = await fetch(`/api/admin/notifications/reads?id=${id}`);
+    const d = await res.json();
+    const readers = (d && d.readers) || [];
+    if (!readers.length) {
+      box.innerHTML = '<div style="font-size:12px; color:hsl(var(--text-muted));">Пока никто не прочитал</div>';
+      return;
+    }
+    box.innerHTML = readers.map(r => `
+      <div style="display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:4px 0;">
+        <span>${escapeHtml(r.name)}</span>
+        <span style="color:hsl(var(--text-muted));">${shortWhenNotif(r.read_at)}</span>
+      </div>`).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="font-size:12px; color:#ff6b6b;">Ошибка загрузки</div>';
+  }
+};
 
 window.deleteNotificationHistoryItem = async (id) => {
   if (!await confirmDialog('Удалить это уведомление? Если оно ещё не отправлено (запланировано) — отправки не будет.', { okText: 'Удалить', danger: true })) return;
