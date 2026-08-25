@@ -307,9 +307,29 @@ const TEST_TOOLS = [
   { name: 'Bosch GWS 18V-10', category: 'Углошлифовальная машина (болгарка)', brand: 'Bosch', model: 'GWS 18V-10', serial_number: 'BSH-GWS-0008', inventory_number: 'INV-008', photo_url: '/catalog/images/angle-grinder.svg' }
 ];
 
+// Самолечение: миграция 15 (ALTER TABLE catalog_models ADD COLUMN specs)
+// на части инсталляций отметилась применённой, но саму колонку не добавила
+// (fire-and-forget ALTER без проверки ошибки). Без неё падает любое
+// добавление/изменение модели каталога. Проверяем факт наличия колонки
+// напрямую через PRAGMA и досоздаём при необходимости — безопасно и
+// идемпотентно, можно гонять на каждом старте.
+function ensureCatalogModelsSpecsColumn() {
+  db.all("PRAGMA table_info(catalog_models)", (err, rows) => {
+    if (err || !rows) return;
+    const hasSpecs = rows.some((r) => r.name === 'specs');
+    if (!hasSpecs) {
+      db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", (alterErr) => {
+        if (alterErr) logger.error('[db] Не удалось добавить catalog_models.specs:', alterErr.message);
+        else logger.info('[db] Восстановлена отсутствовавшая колонка catalog_models.specs');
+      });
+    }
+  });
+}
+
 // Инициализация базы данных
 db.serialize(() => {
   runMigrations();
+  ensureCatalogModelsSpecsColumn();
   // 1. Таблица пользователей
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
