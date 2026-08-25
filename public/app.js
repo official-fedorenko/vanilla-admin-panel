@@ -5268,6 +5268,19 @@ function scheduleVehicleDupCheck() {
   vehicleDupCheckTimer = setTimeout(checkVehicleDuplicates, 350);
 }
 
+// Тип топлива у авто — набор чекбоксов (можно выбрать несколько, например
+// Бензин+Газ), хранится/передаётся как строка через запятую.
+function getVehicleFuelValue() {
+  return Array.from(document.querySelectorAll('#vehicleFuel input[type="checkbox"]:checked'))
+    .map(cb => cb.value).join(', ');
+}
+function setVehicleFuelValue(value) {
+  const selected = new Set(String(value || '').split(',').map(s => s.trim()).filter(Boolean));
+  document.querySelectorAll('#vehicleFuel input[type="checkbox"]').forEach(cb => {
+    cb.checked = selected.has(cb.value);
+  });
+}
+
 function setupVehicles() {
   const modal = document.getElementById('vehicleModalOverlay');
   if (!modal) return;
@@ -5329,7 +5342,7 @@ function setupVehicles() {
         brand: document.getElementById('vehicleBrand').value,
         model: document.getElementById('vehicleModel').value,
         year: document.getElementById('vehicleYear').value,
-        fuel_type: document.getElementById('vehicleFuel').value,
+        fuel_type: getVehicleFuelValue(),
         plate_number: document.getElementById('vehiclePlate').value,
         vin: document.getElementById('vehicleVin').value,
         mileage: document.getElementById('vehicleMileage').value,
@@ -5519,7 +5532,7 @@ async function openVehicleModal(vehicle = null) {
   document.getElementById('vehicleBrand').value = vehicle ? (vehicle.brand || '') : '';
   document.getElementById('vehicleModel').value = vehicle ? (vehicle.model || '') : '';
   document.getElementById('vehicleYear').value = vehicle && vehicle.year ? vehicle.year : '';
-  document.getElementById('vehicleFuel').value = vehicle ? (vehicle.fuel_type || '') : '';
+  setVehicleFuelValue(vehicle ? (vehicle.fuel_type || '') : '');
   document.getElementById('vehiclePlate').value = vehicle ? (vehicle.plate_number || '') : '';
   document.getElementById('vehicleVin').value = vehicle ? (vehicle.vin || '') : '';
   document.getElementById('vehicleMileage').value = vehicle && vehicle.mileage != null ? vehicle.mileage : '';

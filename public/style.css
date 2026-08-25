@@ -601,6 +601,36 @@ main.main-content {
   min-width: 0;
 }
 
+/* Тип топлива авто: чекбоксы вместо select — можно выбрать несколько */
+.fuel-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.fuel-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid hsl(var(--border-color));
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+.fuel-checkbox:hover { border-color: hsl(var(--accent-purple)); }
+.fuel-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: hsl(var(--accent-purple));
+  cursor: pointer;
+}
+.fuel-checkbox:has(input:checked) {
+  border-color: hsl(var(--accent-purple));
+  background: hsl(var(--accent-purple) / 0.1);
+}
+
 /* Settings section tabs (Настройка сайта / карточек / системы) */
 .settings-tabs {
   display: flex;

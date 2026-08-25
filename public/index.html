@@ -1595,15 +1595,14 @@
               <input type="number" id="vehicleYear" class="form-control" placeholder="2021" min="1900" max="2100">
             </div>
             <div class="form-group">
-              <label for="vehicleFuel">Топливо</label>
-              <select id="vehicleFuel" class="form-control">
-                <option value="">— выберите —</option>
-                <option value="Бензин">Бензин</option>
-                <option value="Дизель">Дизель</option>
-                <option value="Газ">Газ</option>
-                <option value="Гибрид">Гибрид</option>
-                <option value="Электро">Электро</option>
-              </select>
+              <label>Топливо</label>
+              <div id="vehicleFuel" class="fuel-checkbox-group">
+                <label class="fuel-checkbox"><input type="checkbox" value="Бензин"><span>Бензин</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Дизель"><span>Дизель</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Газ"><span>Газ</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Гибрид"><span>Гибрид</span></label>
+                <label class="fuel-checkbox"><input type="checkbox" value="Электро"><span>Электро</span></label>
+              </div>
             </div>
             <div class="form-group">
               <label for="vehiclePlate">Гос. номер</label>
