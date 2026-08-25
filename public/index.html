@@ -610,6 +610,16 @@
             <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
           </div>
 
+          <!-- Superadmin-only: полная очистка каталога инструментов -->
+          <div id="clearToolsCatalogBox" class="test-box superadmin-only">
+            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка каталога инструментов</div>
+            <button type="button" id="clearToolsCatalogBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+              <i data-lucide="trash-2"></i>
+              <span>Очистить каталог</span>
+            </button>
+            <div class="test-box-description">Удалит ВСЕ инструменты из каталога, включая реальные записи (не только тестовые). Действие необратимо.</div>
+          </div>
+
           <!-- Superadmin-only demo reset (very handy when presenting the project) -->
           <div id="resetDemoBox" style="margin-top: 28px; padding-top: 20px; border-top: 1px solid hsl(var(--border-color)); display: none;">
             <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 6px;">⚠️ Опасная зона (только Superadmin)</div>

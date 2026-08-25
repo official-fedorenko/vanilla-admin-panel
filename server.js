@@ -293,6 +293,11 @@ const server = http.createServer(async (req, res) => {
     return handleTestTools(req, res, user, parsedUrl, method);
   }
 
+  // Полная очистка каталога инструментов (включая реальные записи) — только Superadmin
+  if (pathname.startsWith('/api/admin/tools-catalog/')) {
+    return handleTestTools(req, res, user, parsedUrl, method);
+  }
+
   // Superadmin-only: download a full backup of the SQLite database
   if (pathname === '/api/admin/backup' && method === 'GET') {
     return handleBackup(req, res, user, parsedUrl, method);
