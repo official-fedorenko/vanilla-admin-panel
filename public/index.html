@@ -834,9 +834,12 @@
       <form id="catalogModelForm" onsubmit="return submitCatalogModel(event)">
         <input type="hidden" id="cmId">
         <div class="modal-body">
+          <div style="font-size:12px; color:hsl(var(--text-muted)); margin-bottom:10px;">
+            <span class="required-mark">*</span> — обязательные поля
+          </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
             <div class="form-group">
-              <label for="cmCategory">Категория</label>
+              <label for="cmCategory">Категория<span class="required-mark">*</span></label>
               <select id="cmCategory" class="form-control" required><option value="">— выберите —</option></select>
             </div>
             <div class="form-group">
@@ -844,11 +847,11 @@
               <input type="text" id="cmLine" class="form-control" placeholder="Professional / XR">
             </div>
             <div class="form-group">
-              <label for="cmBrand">Бренд</label>
+              <label for="cmBrand">Бренд<span class="required-mark">*</span></label>
               <input type="text" id="cmBrand" class="form-control" placeholder="Bosch" required>
             </div>
             <div class="form-group">
-              <label for="cmModel">Модель</label>
+              <label for="cmModel">Модель<span class="required-mark">*</span></label>
               <input type="text" id="cmModel" class="form-control" placeholder="GBH 2-28 F" required>
             </div>
             <div class="form-group" style="grid-column:1/-1;">

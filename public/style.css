@@ -522,6 +522,12 @@ main.main-content {
   box-shadow: 0 8px 16px hsl(var(--accent-red) / 0.3);
 }
 
+/* Пометка обязательных полей в формах */
+.required-mark {
+  color: hsl(var(--accent-red));
+  margin-left: 2px;
+}
+
 /* Test Employees & Test Tools Boxes */
 .test-box {
   padding-top: 20px;
