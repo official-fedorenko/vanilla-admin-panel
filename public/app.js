@@ -1217,13 +1217,45 @@ async function loadRequests() {
 let requestsRenderCache = [];
 let requestsTypesCacheForRender = {};
 
+// Поля-колонки для описания заявки конкретного типа (без фото и без
+// поля-обоснования — те остаются в отдельной ячейке/кнопке).
+function requestColumnFields(def) {
+  if (!def) return [];
+  return (def.fields || []).filter(f => f.type !== 'photo' && f.type !== 'textarea');
+}
+
+// Перестраивает шапку таблицы заявок: если выбран конкретный тип — по
+// колонке на каждое его поле, иначе (все типы) — общая колонка «Описание».
+function renderRequestsHead(typeKey, types) {
+  const thead = document.getElementById('requestsTableHead');
+  if (!thead) return [];
+  const def = typeKey ? types[typeKey] : null;
+  const fields = def ? requestColumnFields(def) : [];
+  const descTh = fields.length
+    ? fields.map(f => `<th>${escapeHtml(f.label)}</th>`).join('')
+    : '<th>Описание</th>';
+  thead.innerHTML = `
+    <tr>
+      <th style="width:50px;">ID</th>
+      <th style="width:180px;">Тип</th>
+      ${descTh}
+      <th>От кого</th>
+      <th style="width:120px;">Статус</th>
+      <th style="width:200px; text-align:right;">Действия</th>
+    </tr>`;
+  return fields;
+}
+
 function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
   requestsRenderCache = list;
   requestsTypesCacheForRender = types;
+  const typeKey = document.getElementById('requestsTypeFilter')?.value ?? '';
+  const colFields = renderRequestsHead(typeKey, types);
+  const colspan = colFields.length ? colFields.length + 4 : 6;
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>';
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>`;
     return;
   }
   list.forEach(r => {
@@ -1253,10 +1285,16 @@ function renderRequests(list, types) {
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
     });
+    const descCells = colFields.length
+      ? colFields.map(f => {
+          const v = r.payload ? r.payload[f.name] : null;
+          return `<td class="mobile-hidden">${v !== '' && v != null ? escapeHtml(String(v)) : ''}</td>`;
+        }).join('')
+      : `<td class="mobile-hidden">${describeRequest(r, types)}</td>`;
     tr.innerHTML = `
       <td class="hide-mobile">${r.id}</td>
       <td class="mobile-primary">${escapeHtml(r.type_label || r.type)}</td>
-      <td class="mobile-hidden">${describeRequest(r, types)}</td>
+      ${descCells}
       <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
       <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${justBtn}${decide}</div></td>`;
