@@ -522,6 +522,146 @@ main.main-content {
   box-shadow: 0 8px 16px hsl(var(--accent-red) / 0.3);
 }
 
+/* Test Employees & Test Tools Boxes */
+.test-box {
+  padding-top: 20px;
+  border-top: 1px solid hsl(var(--border-color));
+  display: none;
+}
+
+.test-box.visible {
+  display: block;
+}
+
+#testEmployeesBox {
+  margin-top: 28px;
+}
+
+#testToolsBox {
+  margin-top: 20px;
+}
+
+#clearToolsCatalogBox {
+  margin-top: 20px;
+}
+
+.test-box-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--text-primary));
+}
+
+#testEmployeesBox .test-box-title {
+  margin-bottom: 8px;
+}
+
+#testToolsBox .test-box-title {
+  margin-bottom: 12px;
+}
+
+.test-box-buttons {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+#testEmployeesBox .test-box-buttons {
+  gap: 10px;
+}
+
+#testToolsBox .test-box-buttons {
+  gap: 8px;
+}
+
+.test-box-buttons .btn,
+.test-box-buttons .btn-secondary {
+  flex: 1;
+  min-width: 140px;
+}
+
+.test-box-description {
+  font-size: 12px;
+  color: hsl(var(--text-muted));
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+/* Mobile: buttons stack vertically */
+@media (max-width: 768px) {
+  #testEmployeesBox .test-box-buttons {
+    gap: 8px;
+  }
+
+  #testToolsBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 13px;
+    padding: 10px 16px;
+  }
+
+  .test-box-buttons span {
+    display: inline;
+  }
+}
+
+@media (max-width: 480px) {
+  #testEmployeesBox {
+    margin-top: 16px;
+  }
+
+  #testToolsBox {
+    margin-top: 16px;
+  }
+
+  #clearToolsCatalogBox {
+    margin-top: 16px;
+  }
+
+  .test-box {
+    padding-top: 16px;
+  }
+
+  #testEmployeesBox .test-box-title {
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  #testToolsBox .test-box-title {
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  #testEmployeesBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  #testToolsBox .test-box-buttons {
+    gap: 6px;
+  }
+
+  .test-box-buttons .btn,
+  .test-box-buttons .btn-secondary {
+    padding: 10px 12px;
+    font-size: 12px;
+    min-height: 44px;
+    gap: 6px;
+  }
+
+  .test-box-buttons i {
+    width: 16px;
+    height: 16px;
+  }
+
+  .test-box-description {
+    font-size: 11px;
+    margin-top: 6px;
+  }
+}
+
 /* Table / CRUD UI */
 .table-container {
   background-color: hsl(var(--bg-card));

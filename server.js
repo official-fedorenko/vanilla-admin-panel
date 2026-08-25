@@ -293,6 +293,11 @@ const server = http.createServer(async (req, res) => {
     return handleTestTools(req, res, user, parsedUrl, method);
   }
 
+  // Полная очистка каталога инструментов (включая реальные записи) — только Superadmin
+  if (pathname.startsWith('/api/admin/tools-catalog/')) {
+    return handleTestTools(req, res, user, parsedUrl, method);
+  }
+
   // Superadmin-only: download a full backup of the SQLite database
   if (pathname === '/api/admin/backup' && method === 'GET') {
     return handleBackup(req, res, user, parsedUrl, method);
@@ -442,10 +447,11 @@ if (require.main === module) {
     console.log('     2. Go to "Пользователи" (Users) and change ALL passwords');
     console.log('     3. (Optional) Disable registration in Settings');
     console.log('');
-    console.log('   To completely reset demo data:');
+    console.log('   To completely reset the database:');
     console.log('     1. Stop the server');
     console.log('     2. Delete db.sqlite');
-    console.log('     3. Restart (fresh DB + demo data will be created)');
+    console.log('     3. Restart (fresh DB with only the 3 default accounts above)');
+    console.log('        Test employees/tools can be added via Settings buttons (Superadmin)');
     console.log('');
     console.log('   Never expose this directly to the internet without a reverse proxy + HTTPS.');
     console.log('='.repeat(70));

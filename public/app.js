@@ -121,9 +121,11 @@ async function checkSession() {
       const backupBox = document.getElementById('backupBox');
       if (backupBox) backupBox.style.display = 'block';
       const testEmpBox = document.getElementById('testEmployeesBox');
-      if (testEmpBox) testEmpBox.style.display = 'block';
+      if (testEmpBox) testEmpBox.classList.add('visible');
       const testToolsBox = document.getElementById('testToolsBox');
-      if (testToolsBox) testToolsBox.style.display = 'block';
+      if (testToolsBox) testToolsBox.classList.add('visible');
+      const clearToolsBox = document.getElementById('clearToolsCatalogBox');
+      if (clearToolsBox) clearToolsBox.classList.add('visible');
     }
   } catch (err) {
     console.error('Session check error:', err);
@@ -528,6 +530,20 @@ function initApp() {
         const d = await res.json().catch(() => ({}));
         if (res.ok && d.success) { showToast(d.message || 'Удалено', 'success'); if (typeof loadTools === "function") loadTools(); }
         else showToast(d.message || 'Не удалось удалить', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+
+  // Полная очистка каталога инструментов (Superadmin, включая реальные записи)
+  const clearToolsCatalogBtn = document.getElementById('clearToolsCatalogBtn');
+  if (clearToolsCatalogBtn) {
+    clearToolsCatalogBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Удалить ВСЕ инструменты из каталога? Это действие необратимо и затронет реальные записи.', { okText: 'Очистить', danger: true })) return;
+      try {
+        const res = await fetch('/api/admin/tools-catalog/clear', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Каталог очищен', 'success'); if (typeof loadTools === "function") loadTools(); }
+        else showToast(d.message || 'Не удалось очистить каталог', 'error');
       } catch (e) { showToast('Ошибка сети', 'error'); }
     });
   }

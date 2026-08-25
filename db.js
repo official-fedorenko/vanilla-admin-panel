@@ -572,63 +572,11 @@ db.serialize(() => {
     }
   });
 
-  // Тестовые сотрудники (только на свежей БД, если таблица пуста).
-  // Литовские имена и ники; у каждого — аккаунт (account_type='employee')
-  // с паролем 1234qwer и привязанная карточка сотрудника, чтобы можно было
-  // войти в кабинет и сразу видеть свою карточку/инструмент.
-  db.get("SELECT COUNT(*) as count FROM employees", (err, row) => {
-    if (err || (row && row.count > 0)) return;
-
-    const testPass = hashPassword('1234qwer');
-    const seed = TEST_EMPLOYEES;
-
-    seed.forEach((e) => {
-      db.run(
-        "INSERT OR IGNORE INTO users (username, email, password_hash, role, account_type) VALUES (?, ?, ?, 'User', 'employee')",
-        [e.username, e.email, testPass],
-        function (uErr) {
-          if (uErr) return;
-          const userId = this.lastID || null;
-          db.run(
-            "INSERT INTO employees (first_name, last_name, position, department, phone, email, hire_date, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)",
-            [e.first, e.last, e.position, e.department, e.phone, e.email, e.hire, userId]
-          );
-        }
-      );
-    });
-    logger.info(`[db] Добавлены тестовые сотрудники: ${seed.length} (пароль у всех 1234qwer)`);
-  });
-
-  // Тестовый инструмент на складе (только на свежей БД, если tools пуста).
-  // Реальные модели Bosch/DeWalt с уникальными серийными и инв. номерами;
-  // картинки — из каталога (data/tool-catalog/images).
-  db.get("SELECT COUNT(*) as count FROM tools", (err, row) => {
-    if (err || (row && row.count > 0)) return;
-
-    const perf = '/catalog/images/rotary-hammer.svg';
-    const drill = '/catalog/images/drill-driver.svg';
-    const grind = '/catalog/images/angle-grinder.svg';
-    const CAT_PERF = 'Перфоратор';
-    const CAT_DRILL = 'Шуруповёрт';
-    const CAT_GRIND = 'Углошлифовальная машина (болгарка)';
-
-    const tools = [
-      ['Bosch GBH 2-26 DRE', CAT_PERF,  'Bosch',  'GBH 2-26 DRE', 'BSH-GBH-0001', 'INV-001', perf],
-      ['Bosch GBH 2-28 F',   CAT_PERF,  'Bosch',  'GBH 2-28 F',   'BSH-GBH-0002', 'INV-002', perf],
-      ['DeWalt D25143K',     CAT_PERF,  'DeWalt', 'D25143K',      'DW-D25-0003',  'INV-003', perf],
-      ['Bosch GSR 18V-55',   CAT_DRILL, 'Bosch',  'GSR 18V-55',   'BSH-GSR-0004', 'INV-004', drill],
-      ['DeWalt DCD791',      CAT_DRILL, 'DeWalt', 'DCD791',       'DW-DCD-0005',  'INV-005', drill],
-      ['Bosch GWS 850',      CAT_GRIND, 'Bosch',  'GWS 850',      'BSH-GWS-0006', 'INV-006', grind],
-      ['DeWalt DWE4237',     CAT_GRIND, 'DeWalt', 'DWE4237',      'DW-DWE-0007',  'INV-007', grind],
-      ['Bosch GWS 18V-10',   CAT_GRIND, 'Bosch',  'GWS 18V-10',   'BSH-GWS-0008', 'INV-008', grind]
-    ];
-    const toolStmt = db.prepare(
-      "INSERT INTO tools (name, category, brand, model, serial_number, inventory_number, status, photo_url) VALUES (?, ?, ?, ?, ?, ?, 'available', ?)"
-    );
-    tools.forEach(t => toolStmt.run(t));
-    toolStmt.finalize();
-    logger.info(`[db] Добавлен тестовый инструмент на склад: ${tools.length} шт.`);
-  });
+  // Тестовые сотрудники и тестовый инструмент больше НЕ добавляются
+  // автоматически при старте на свежей БД. Используйте кнопки
+  // «Добавить тестовых сотрудников» / «Добавить тестовые инструменты»
+  // в настройках (Superadmin) — см. src/routes/testEmployees.js
+  // и src/routes/testTools.js.
 });
 
 // === Простые helpers для персистентных сессий (надёжность) ===
