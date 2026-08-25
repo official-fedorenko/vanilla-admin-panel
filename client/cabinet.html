@@ -815,7 +815,6 @@
           <div id="myToolsList" style="display:flex; flex-direction:column; gap:12px;">
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
-          <input type="file" id="myToolPhotoInput" accept="image/*" style="display:none;">
           </div><!-- /cbody -->
         </div>
 
@@ -829,7 +828,6 @@
           <div id="myVehiclesList" style="display:flex; flex-direction:column; gap:12px;">
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
-          <input type="file" id="myVehiclePhotoInput" accept="image/*" style="display:none;">
           </div><!-- /cbody -->
         </div>
 
@@ -881,6 +879,22 @@
               <button type="button" id="requestTypeModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
             </div>
             <div style="padding:20px; overflow-y:auto; flex:1; min-height:0; display:flex; flex-direction:column; gap:10px;" id="requestTypeList"></div>
+          </div>
+        </div>
+
+        <!-- Модалка просмотра/добавления фото закреплённого инструмента/авто -->
+        <div id="itemPhotoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(480px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;" id="itemPhotoModalTitle">Фото</div>
+              <button type="button" onclick="closeItemPhotoModal()" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px; overflow-y:auto; flex:1; min-height:0;">
+              <div id="itemPhotoModalMain"></div>
+              <div id="itemPhotoModalGallery" style="margin-top:14px; display:none; gap:8px; flex-wrap:wrap;"></div>
+              <button type="button" onclick="triggerItemPhotoUpload()" style="margin-top:16px; width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;">Добавить фото</button>
+              <input type="file" id="itemPhotoModalFileInput" accept="image/*" style="display:none;">
+            </div>
           </div>
         </div>
 
@@ -1118,8 +1132,6 @@
     }
 
     // === Мой закреплённый инструмент ===
-    let myToolPhotoTargetId = null;
-
     let myToolsCache = [];
 
     // Скачать QR-код инструмента (PNG с подписью инв.№; фолбэк — SVG)
@@ -1174,16 +1186,11 @@
           const issued = t.issued_at ? new Date(t.issued_at).toLocaleDateString('ru-RU') : '';
           const photoSrc = (t.photo_url && t.photo_url.startsWith('/catalog/images/') && !t.photo_url.includes('?'))
             ? t.photo_url + '?v=2' : t.photo_url;
-          const photo = t.photo_url
+          const photoInner = t.photo_url
             ? `<img src="${photoSrc}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
             : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const photo = `<button type="button" onclick="openItemPhotoModal('tool', ${t.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
           const sub = [t.brand, t.model].filter(Boolean).join(' · ');
-          
-          let galleryHtml = '';
-          if (t.gallery_photos && t.gallery_photos.length > 0) {
-            const imgs = t.gallery_photos.map(url => `<img src="${url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`).join('');
-            galleryHtml = `<div style="margin-top:12px; display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">${imgs}</div>`;
-          }
 
           const item = document.createElement('div');
           item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
@@ -1198,11 +1205,9 @@
                 ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
               </div>
               <div style="display:flex; flex-direction:column; gap:6px;">
-                <button type="button" onclick="startMyToolPhoto(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Добавить фото</button>
                 <button type="button" onclick="saveMyToolQr(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
               </div>
             </div>
-            ${galleryHtml}
           `;
           list.appendChild(item);
         });
@@ -1222,61 +1227,7 @@
       }
     }
 
-    window.startMyToolPhoto = (toolId) => {
-      myToolPhotoTargetId = toolId;
-      document.getElementById('myToolPhotoInput').click();
-    };
-
-    (function initMyToolPhotoUpload() {
-      const input = document.getElementById('myToolPhotoInput');
-      if (!input) return;
-      input.addEventListener('change', async () => {
-        const file = input.files[0];
-        if (!file || !myToolPhotoTargetId) return;
-        
-        const currentToolId = myToolPhotoTargetId; // Capture before finally block clears it
-        
-        try {
-          // 1) загружаем файл, получаем URL
-          {
-            const prepared = await prepareUploadFile(file);
-            const upRes = await fetch('/api/media', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: [prepared], category: 'tools' })
-            });
-            if (!upRes.ok) {
-              const e = await upRes.json().catch(() => ({}));
-              showToast(e.message || 'Ошибка загрузки фото', 'error'); return;
-            }
-            const upData = await upRes.json();
-            const url = upData.urls && upData.urls[0];
-            if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
-            // 2) привязываем URL к инструменту (сервер проверит, что он закреплён за вами)
-            const linkRes = await fetch('/api/cabinet/tool-photo', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tool_id: currentToolId, photo_url: url })
-            });
-            const linkData = await linkRes.json().catch(() => ({}));
-            if (linkRes.ok) {
-              showToast('Фото инструмента сохранено', 'success');
-              loadMyTools();
-            } else {
-              showToast(linkData.message || 'Не удалось сохранить фото', 'error');
-            }
-          }
-        } catch (e) {
-          showToast('Ошибка при загрузке', 'error');
-        } finally {
-          input.value = '';
-          myToolPhotoTargetId = null;
-        }
-      });
-    })();
-
     // === Моё закреплённое авто ===
-    let myVehiclePhotoTargetId = null;
     let myVehiclesCache = [];
 
     window.saveMyVehicleQr = async (id) => {
@@ -1321,16 +1272,11 @@
         list.innerHTML = '';
         vehicles.forEach(v => {
           const issued = v.issued_at ? new Date(v.issued_at).toLocaleDateString('ru-RU') : '';
-          const photo = v.photo_url
+          const photoInner = v.photo_url
             ? `<img src="${v.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
             : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+          const photo = `<button type="button" onclick="openItemPhotoModal('vehicle', ${v.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
           const sub = [v.brand, v.model].filter(Boolean).join(' · ');
-
-          let galleryHtml = '';
-          if (v.gallery_photos && v.gallery_photos.length > 0) {
-            const imgs = v.gallery_photos.map(url => `<img src="${url}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`).join('');
-            galleryHtml = `<div style="margin-top:12px; display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">${imgs}</div>`;
-          }
 
           const item = document.createElement('div');
           item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
@@ -1345,11 +1291,9 @@
                 ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
               </div>
               <div style="display:flex; flex-direction:column; gap:6px;">
-                <button type="button" onclick="startMyVehiclePhoto(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Добавить фото</button>
                 <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
               </div>
             </div>
-            ${galleryHtml}
           `;
           list.appendChild(item);
         });
@@ -1368,19 +1312,54 @@
       }
     }
 
-    window.startMyVehiclePhoto = (vehicleId) => {
-      myVehiclePhotoTargetId = vehicleId;
-      document.getElementById('myVehiclePhotoInput').click();
+    // === Модалка просмотра/добавления фото (общая для инструмента и авто) ===
+    let itemPhotoModalCtx = null; // { kind: 'tool'|'vehicle', id }
+
+    window.openItemPhotoModal = (kind, id) => {
+      const cache = kind === 'tool' ? myToolsCache : myVehiclesCache;
+      const item = cache.find(x => x.id === id);
+      if (!item) return;
+      itemPhotoModalCtx = { kind, id };
+      document.getElementById('itemPhotoModalTitle').textContent =
+        item.name || (kind === 'tool' ? 'Инструмент' : 'Авто');
+      renderItemPhotoModalBody(item);
+      document.getElementById('itemPhotoModalOverlay').style.display = 'flex';
     };
 
-    (function initMyVehiclePhotoUpload() {
-      const input = document.getElementById('myVehiclePhotoInput');
+    window.closeItemPhotoModal = () => {
+      document.getElementById('itemPhotoModalOverlay').style.display = 'none';
+      itemPhotoModalCtx = null;
+    };
+
+    function renderItemPhotoModalBody(item) {
+      const main = document.getElementById('itemPhotoModalMain');
+      main.innerHTML = item.photo_url
+        ? `<img src="${item.photo_url}" style="width:100%; max-height:320px; object-fit:contain; border-radius:12px; background:var(--bg-input);">`
+        : `<div style="padding:40px 0; text-align:center; color:var(--text-muted); font-size:13px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:12px;">Нет фото</div>`;
+      const gallery = document.getElementById('itemPhotoModalGallery');
+      if (item.gallery_photos && item.gallery_photos.length > 0) {
+        gallery.style.display = 'flex';
+        gallery.innerHTML = item.gallery_photos.map(url =>
+          `<img src="${url}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);">`
+        ).join('');
+      } else {
+        gallery.style.display = 'none';
+        gallery.innerHTML = '';
+      }
+    }
+
+    window.triggerItemPhotoUpload = () => {
+      if (!itemPhotoModalCtx) return;
+      document.getElementById('itemPhotoModalFileInput').click();
+    };
+
+    (function initItemPhotoUpload() {
+      const input = document.getElementById('itemPhotoModalFileInput');
       if (!input) return;
       input.addEventListener('change', async () => {
         const file = input.files[0];
-        if (!file || !myVehiclePhotoTargetId) return;
-
-        const currentVehicleId = myVehiclePhotoTargetId;
+        const ctx = itemPhotoModalCtx;
+        if (!file || !ctx) return;
 
         try {
           const prepared = await prepareUploadFile(file);
@@ -1396,15 +1375,21 @@
           const upData = await upRes.json();
           const url = upData.urls && upData.urls[0];
           if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
-          const linkRes = await fetch('/api/cabinet/vehicle-photo', {
+
+          const endpoint = ctx.kind === 'tool' ? '/api/cabinet/tool-photo' : '/api/cabinet/vehicle-photo';
+          const idKey = ctx.kind === 'tool' ? 'tool_id' : 'vehicle_id';
+          const linkRes = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ vehicle_id: currentVehicleId, photo_url: url })
+            body: JSON.stringify({ [idKey]: ctx.id, photo_url: url })
           });
           const linkData = await linkRes.json().catch(() => ({}));
           if (linkRes.ok) {
-            showToast('Фото авто сохранено', 'success');
-            loadMyVehicles();
+            showToast(ctx.kind === 'tool' ? 'Фото инструмента сохранено' : 'Фото авто сохранено', 'success');
+            if (ctx.kind === 'tool') await loadMyTools(); else await loadMyVehicles();
+            const cache = ctx.kind === 'tool' ? myToolsCache : myVehiclesCache;
+            const item = cache.find(x => x.id === ctx.id);
+            if (item && itemPhotoModalCtx) renderItemPhotoModalBody(item);
           } else {
             showToast(linkData.message || 'Не удалось сохранить фото', 'error');
           }
@@ -1412,7 +1397,6 @@
           showToast('Ошибка при загрузке', 'error');
         } finally {
           input.value = '';
-          myVehiclePhotoTargetId = null;
         }
       });
     })();
