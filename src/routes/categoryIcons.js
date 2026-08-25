@@ -1,4 +1,4 @@
-const { sendJson, getJsonBody } = require('../utils');
+const { sendJson, getJsonBody, isInternalPath } = require('../utils');
 const { db } = require('../../db');
 const catalog = require('../../data/tool-catalog');
 const CATEGORY_ICONS = require('../../data/tool-catalog/categoryIcons.json');
@@ -35,13 +35,6 @@ function buildCatalogIconMap() {
 // Дефолтная иконка для категории: из карты (по имени/алиасу) либо общая.
 function defaultIconFor(categoryName, catalogMap) {
   return catalogMap[String(categoryName).toLowerCase()] || GENERIC_ICON;
-}
-
-// Разрешаем только внутренние пути (загруженные файлы, каталожные иконки,
-// стандартные аватары) — чтобы нельзя было подсунуть внешний URL.
-function isInternalPath(url) {
-  const s = String(url || '');
-  return /^\/(uploads|catalog|avatars)\//.test(s);
 }
 
 /**
