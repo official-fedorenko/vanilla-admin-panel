@@ -336,6 +336,24 @@ const MIGRATIONS = [
       // которая гарантированно уже отработала к этому моменту.
       db.run("ALTER TABLE notifications ADD COLUMN scheduled_at DATETIME", () => {});
     }
+  },
+  {
+    version: 20,
+    description: 'Add support_tickets (статус тикета поддержки: open/closed)',
+    up: () => {
+      // Тикет как отдельная сущность не хранился — только ticket_id внутри
+      // support_messages. Строка здесь создаётся лениво (INSERT OR IGNORE)
+      // при первом обращении к статусу тикета, а не при каждой вставке
+      // сообщения.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS support_tickets (
+          ticket_id TEXT PRIMARY KEY,
+          status TEXT NOT NULL DEFAULT 'open',
+          closed_at DATETIME,
+          closed_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )
+      `, () => {});
+    }
   }
 ];
 

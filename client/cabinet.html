@@ -919,6 +919,7 @@
           <div id="cabinetChatMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
             <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка сообщений...</div>
           </div>
+          <div id="cabinetChatClosedBanner" style="display:none; font-size:12px; color:var(--text-muted); background:rgba(255,255,255,0.04); border:1px solid var(--border-color); border-radius:8px; padding:8px 12px; margin-bottom:10px; text-align:center;">Обращение закрыто. Напишите сообщение, чтобы открыть заново.</div>
           <form id="cabinetChatForm" class="chat-form">
             <input type="text" id="cabinetChatMessageInput" class="chat-form-input" placeholder="Напишите сообщение..." required>
             <button type="submit" class="btn-save chat-form-submit">Отправить</button>
@@ -1701,16 +1702,9 @@
       if (logout) logout.addEventListener('click', doLogout);
     })();
 
-    // Chat logic - улучшено: используем SSE вместо polling для real-time
+    // Chat logic - real-time через SSE (/api/support/stream), с фолбэком на polling
     let activeAdminTicketId = null;
     let chatEventSource = null;
-
-    function closeChatStream() {
-      if (chatEventSource) {
-        chatEventSource.close();
-        chatEventSource = null;
-      }
-    }
 
     async function loadChatMessages(isPolling = false) {
       if (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') {
@@ -1728,6 +1722,7 @@
         if (res.ok) {
           const data = await res.json();
           renderChatMessages(data.messages, isPolling);
+          renderChatClosedBanner(data.status);
           if (!isPolling) {
             await fetch('/api/support/read', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ticketId: 'user_' + currentUserData.id}) });
           }
@@ -1735,17 +1730,16 @@
       } catch(e) {}
     }
 
-    // Fallback: простой polling вместо SSE (настоящий /api/support/stream пока не реализован)
+    function renderChatClosedBanner(status) {
+      const banner = document.getElementById('cabinetChatClosedBanner');
+      if (banner) banner.style.display = status === 'closed' ? 'block' : 'none';
+    }
+
+    // Фолбэк-опрос на случай, если SSE недоступен (сеть/прокси не пускают
+    // долгоживущие соединения). Пока SSE подключён — этот интервал не запускается.
     let chatPollingInterval = null;
-
-    function connectChatStream(ticketId = null) {
-      closeChatStream();
+    function startChatPollingFallback() {
       if (chatPollingInterval) clearInterval(chatPollingInterval);
-
-      // Сразу грузим текущие сообщения
-      loadChatMessages();
-
-      // Polling каждые 4 секунды (как в админке)
       chatPollingInterval = setInterval(() => {
         if (document.getElementById('cabinetChatMessages')) {
           loadChatMessages(true);
@@ -1753,6 +1747,41 @@
           clearInterval(chatPollingInterval);
         }
       }, 4000);
+    }
+
+    function connectChatStream(ticketId = null) {
+      closeChatStream();
+
+      // Сразу грузим текущие сообщения
+      loadChatMessages();
+
+      const isAdminRole = currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin';
+      if (isAdminRole && !ticketId) {
+        // Список тикетов (ни один конкретный не открыт) — стримить нечего,
+        // держим обычный опрос, пока админ не откроет конкретный тикет.
+        startChatPollingFallback();
+        return;
+      }
+
+      try {
+        const url = ticketId ? `/api/support/stream?ticketId=${encodeURIComponent(ticketId)}` : '/api/support/stream';
+        chatEventSource = new EventSource(url);
+        chatEventSource.onmessage = (e) => {
+          let data;
+          try { data = JSON.parse(e.data); } catch (err) { return; }
+          if (!data) return;
+          if (data.type === 'status') { renderChatClosedBanner(data.status); return; }
+          // Пришло новое сообщение — просто перезапрашиваем список (проще и
+          // надёжнее, чем вручную дублировать логику рендера админ/юзер веток).
+          if (data.id) loadChatMessages(true);
+        };
+        chatEventSource.onerror = () => {
+          if (chatEventSource) { chatEventSource.close(); chatEventSource = null; }
+          startChatPollingFallback();
+        };
+      } catch (e) {
+        startChatPollingFallback();
+      }
     }
 
     function closeChatStream() {
@@ -2280,6 +2309,10 @@
       document.getElementById('requestModalClose').onclick = closeRequestModal;
       document.getElementById('requestModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'requestModalOverlay') closeRequestModal();
+      });
+
+      document.getElementById('itemPhotoModalOverlay')?.addEventListener('click', (e) => {
+        if (e.target.id === 'itemPhotoModalOverlay') closeItemPhotoModal();
       });
       // «← Изменить тип» — вернуться к выбору типа
       document.getElementById('requestChangeTypeBtn').onclick = () => {
