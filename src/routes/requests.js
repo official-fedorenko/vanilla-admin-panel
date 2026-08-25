@@ -206,19 +206,20 @@ function listAll(req, res, user, parsedUrl) {
   });
 }
 
-// --- Сводка отпусков (админ): кто и когда в отпуске ---
-// Возвращает заявления type='vacation' со статусами approved + pending,
-// с ФИО сотрудника (если есть карточка) и разобранными датами, по возрастанию
-// даты начала. Отдаётся без пагинации — отпусков в компании немного.
+// --- Сводка отпусков/больничных (админ): кто и когда отсутствует ---
+// Возвращает заявления type IN ('vacation','sick_leave') со статусами
+// approved + pending, с ФИО сотрудника (если есть карточка) и разобранными
+// датами, по возрастанию даты начала. Отдаётся без пагинации — таких
+// заявлений в компании немного.
 function listVacations(req, res, user) {
   const sql = `
-    SELECT r.id, r.payload, r.status, r.created_at, r.reviewed_at,
+    SELECT r.id, r.type, r.payload, r.status, r.created_at, r.reviewed_at,
            u.username AS requested_by_name,
            e.first_name AS emp_first, e.last_name AS emp_last
     FROM requests r
     LEFT JOIN users u ON u.id = r.requested_by
     LEFT JOIN employees e ON e.user_id = r.requested_by
-    WHERE r.type = 'vacation' AND r.status IN ('approved', 'pending')
+    WHERE r.type IN ('vacation', 'sick_leave') AND r.status IN ('approved', 'pending')
     ORDER BY r.status DESC, r.id DESC`;
   db.all(sql, [], (err, rows) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
@@ -239,7 +240,9 @@ function listVacations(req, res, user) {
         else phase = 'current';
       }
       return {
-        id: r.id, name, start_date: start, end_date: end,
+        id: r.id, type: r.type,
+        type_label: (REQUEST_TYPES[r.type] || {}).label || r.type,
+        name, start_date: start, end_date: end,
         notes: payload.notes || '', status: r.status, phase,
         created_at: r.created_at, reviewed_at: r.reviewed_at
       };
