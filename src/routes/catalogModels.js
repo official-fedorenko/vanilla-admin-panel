@@ -5,10 +5,11 @@ const { sanitizeSpecs } = require('../catalogSchema');
 /**
  * Управление стандартным каталогом инструмента (таблица catalog_models).
  *
- *   GET    /api/catalog-models        — список всех моделей (для экрана управления)
- *   POST   /api/catalog-models        — добавить модель
+ *   GET    /api/catalog-models         — список всех моделей (для экрана управления)
+ *   POST   /api/catalog-models         — добавить модель
  *   PUT    /api/catalog-models?id=     — изменить модель
  *   DELETE /api/catalog-models?id=     — удалить модель
+ *   POST   /api/catalog-models/clear   — удалить ВСЕ модели справочника (Superadmin)
  *
  * Чтение — любой авторизованный (нужно и для форм). Изменения — только Superadmin.
  */
@@ -62,8 +63,22 @@ function extractFields(body) {
   };
 }
 
+function clearCatalogModels(req, res, user) {
+  db.run("DELETE FROM catalog_models", [], function (err) {
+    if (err) return sendJson(res, 500, { success: false, message: 'Не удалось очистить справочник' });
+    const removed = this.changes;
+    logAction(user.username, `Очистил справочник моделей каталога (удалено: ${removed})`);
+    sendJson(res, 200, { success: true, message: `Справочник моделей очищен, удалено: ${removed}` });
+  });
+}
+
 module.exports = function handleCatalogModels(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
+
+  if (parsedUrl.pathname === '/api/catalog-models/clear' && method === 'POST') {
+    if (user.role !== 'Superadmin') return sendJson(res, 403, { success: false, message: 'Только Superadmin' });
+    return clearCatalogModels(req, res, user);
+  }
 
   if (method === 'GET') {
     const { limit, offset } = parsePagination(parsedUrl);
