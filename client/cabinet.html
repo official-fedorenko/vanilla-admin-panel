@@ -2356,7 +2356,10 @@
           wrap.innerHTML = label + `<textarea id="${fid}" rows="2" class="form-input"></textarea>`;
         } else if (f.type === 'category') {
           const sourceList = f.source === 'vehicle' ? vehicleCategoriesCab : toolCategories;
-          const opts = ['<option value="">—</option>'].concat(sourceList.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`)).join('');
+          const opts = ['<option value="">Выберите категорию</option>']
+            .concat(sourceList.map(c => `<option value="${escapeHtmlC(c.name)}">${escapeHtmlC(c.name)}</option>`))
+            .concat(['<option value="Другое">Другое</option>'])
+            .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';

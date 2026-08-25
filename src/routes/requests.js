@@ -33,7 +33,7 @@ const REQUEST_TYPES = {
     ]
   },
   tool_order: {
-    label: 'Заказать инструмент',
+    label: 'Заказ снабжения',
     icon: 'shopping-cart',
     fields: [
       { name: 'name', label: 'Что заказать', type: 'text', required: true },
