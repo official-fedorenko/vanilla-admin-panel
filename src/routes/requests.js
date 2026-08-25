@@ -33,7 +33,7 @@ const REQUEST_TYPES = {
     ]
   },
   tool_order: {
-    label: 'Заказ снабжения',
+    label: 'Заказать снабжение',
     icon: 'shopping-cart',
     fields: [
       { name: 'name', label: 'Что заказать', type: 'text', required: true },
@@ -56,6 +56,15 @@ const REQUEST_TYPES = {
   vacation: {
     label: 'Заявление на отпуск',
     icon: 'palmtree',
+    fields: [
+      { name: 'start_date', label: 'С', type: 'date', required: true },
+      { name: 'end_date', label: 'По', type: 'date', required: true },
+      { name: 'notes', label: 'Комментарий', type: 'textarea' }
+    ]
+  },
+  sick_leave: {
+    label: 'Заявление на больничный',
+    icon: 'thermometer',
     fields: [
       { name: 'start_date', label: 'С', type: 'date', required: true },
       { name: 'end_date', label: 'По', type: 'date', required: true },
@@ -113,6 +122,7 @@ function buildTitle(type, payload) {
     case 'tool_order':  return (payload.name || 'Инструмент') + (payload.quantity ? ` ×${payload.quantity}` : '');
     case 'vehicle_order': return 'Авто: ' + (payload.name || '—') + (payload.start_date ? ` (${payload.start_date}${payload.end_date ? ' — ' + payload.end_date : ''})` : '');
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
+    case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
