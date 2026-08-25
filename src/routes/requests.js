@@ -174,17 +174,23 @@ function listAll(req, res, user, parsedUrl) {
   if (type && REQUEST_TYPES[type]) { where.push('r.type = ?'); params.push(type); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const sql = `
-    SELECT r.*, u.username AS requested_by_name, rv.username AS reviewed_by_name
+    SELECT r.*, u.username AS requested_by_username, rv.username AS reviewed_by_name,
+           e.first_name AS req_first, e.last_name AS req_last
     FROM requests r
     LEFT JOIN users u ON u.id = r.requested_by
     LEFT JOIN users rv ON rv.id = r.reviewed_by
+    LEFT JOIN employees e ON e.user_id = r.requested_by
     ${whereSql}
     ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.id DESC
     LIMIT ? OFFSET ?`;
   db.all(sql, [...params, limit, offset], (err, rows) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
     db.get("SELECT COUNT(*) AS c FROM requests WHERE status='pending'", [], (e2, cnt) => {
-      sendJson(res, 200, { success: true, requests: (rows || []).map(mapRow), pending: (cnt && cnt.c) || 0 });
+      const withNames = (rows || []).map(r => {
+        r.requested_by_name = [r.req_first, r.req_last].filter(Boolean).join(' ').trim() || r.requested_by_username;
+        return r;
+      });
+      sendJson(res, 200, { success: true, requests: withNames.map(mapRow), pending: (cnt && cnt.c) || 0 });
     });
   });
 }
