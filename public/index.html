@@ -650,8 +650,18 @@
             <h2>Обратная связь и поддержка</h2>
             <p>Общение с пользователями и ответы на вопросы с сайта</p>
           </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-secondary" onclick="openNotificationSettingsModal()">
+              <i data-lucide="settings"></i>
+              <span>Настройки уведомлений</span>
+            </button>
+            <button class="btn" onclick="openSendNotificationModal()">
+              <i data-lucide="bell"></i>
+              <span>Уведомление</span>
+            </button>
+          </div>
         </div>
-        
+
         <!-- Поиск по пользователям -->
         <div style="position: relative; margin-bottom: 16px; max-width: 420px;">
           <i data-lucide="search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:hsl(var(--text-muted));"></i>
@@ -700,10 +710,6 @@
             <h2>Управление пользователями</h2>
             <p>Просмотр, создание, изменение и удаление учетных записей администраторов и редакторов</p>
           </div>
-          <button class="btn btn-secondary" onclick="openSendNotificationModal()">
-            <i data-lucide="bell"></i>
-            <span>Уведомление</span>
-          </button>
           <button class="btn" id="addUserBtn">
             <i data-lucide="user-plus"></i>
             <span>Добавить</span>
@@ -998,10 +1004,31 @@
           <label for="notifMessage">Сообщение<span class="required-mark">*</span></label>
           <textarea id="notifMessage" class="form-control" rows="4" maxlength="500" placeholder="Текст уведомления…" required></textarea>
         </div>
+        <div class="form-group">
+          <label for="notifScheduledAt">Отложенная отправка (необязательно)</label>
+          <input type="datetime-local" id="notifScheduledAt" class="form-control">
+          <div style="font-size:12px; color:hsl(var(--text-muted)); margin-top:6px;">Если указать время в будущем — уведомление появится у получателя только тогда. Пусто — отправится сразу.</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" onclick="closeSendNotificationModal()">Отмена</button>
         <button type="button" class="btn" onclick="submitNotification()">Отправить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATION SETTINGS MODAL (история отправленных, удаление, статусы) -->
+  <div class="modal-overlay" id="notificationSettingsModalOverlay">
+    <div class="modal" style="max-width:640px;">
+      <div class="modal-header">
+        <h3>Настройки уведомлений</h3>
+        <button class="modal-close" onclick="closeNotificationSettingsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="notificationHistoryList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeNotificationSettingsModal()">Закрыть</button>
       </div>
     </div>
   </div>

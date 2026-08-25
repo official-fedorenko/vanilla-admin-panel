@@ -1788,14 +1788,16 @@ window.deleteBrandItem = async (id) => {
 };
 
 // === Отправка уведомлений пользователям (в личный кабинет) ===
-window.openSendNotificationModal = (userId = null) => {
+window.openSendNotificationModal = async (userId = null) => {
   const overlay = document.getElementById('sendNotificationModalOverlay');
   if (!overlay) return;
+  if (!usersList.length) { try { await loadUsers(); } catch (e) {} }
   const sel = document.getElementById('notifTargetUser');
   const names = usersList.map(u => `<option value="${u.id}">${escapeHtml(userDisplayName(u))} (${escapeHtml(u.email)})</option>`).join('');
   sel.innerHTML = '<option value="">Всем пользователям</option>' + names;
   sel.value = userId != null ? String(userId) : '';
   document.getElementById('notifMessage').value = '';
+  document.getElementById('notifScheduledAt').value = '';
   overlay.classList.add('active');
 };
 window.closeSendNotificationModal = () => {
@@ -1805,20 +1807,89 @@ window.closeSendNotificationModal = () => {
 window.submitNotification = async () => {
   const targetVal = document.getElementById('notifTargetUser').value;
   const message = document.getElementById('notifMessage').value.trim();
+  const scheduledAt = document.getElementById('notifScheduledAt').value || null;
   if (!message) { showToast('Введите текст уведомления', 'error'); return; }
   try {
     const res = await fetch('/api/admin/notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: targetVal ? parseInt(targetVal, 10) : null, message })
+      body: JSON.stringify({ user_id: targetVal ? parseInt(targetVal, 10) : null, message, scheduled_at: scheduledAt })
     });
     const d = await res.json().catch(() => ({}));
     if (res.ok && d.success) {
-      showToast('Уведомление отправлено', 'success');
+      showToast(scheduledAt ? 'Уведомление запланировано' : 'Уведомление отправлено', 'success');
       closeSendNotificationModal();
+      if (typeof loadNotificationHistory === 'function') loadNotificationHistory();
     } else {
       showToast(d.message || 'Не удалось отправить', 'error');
     }
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+// === Настройки уведомлений: история отправленных, удаление, статусы ===
+window.openNotificationSettingsModal = () => {
+  const overlay = document.getElementById('notificationSettingsModalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+  loadNotificationHistory();
+};
+window.closeNotificationSettingsModal = () => {
+  const overlay = document.getElementById('notificationSettingsModalOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+function shortWhenNotif(iso) {
+  if (!iso) return '';
+  const d = new Date(String(iso).replace(' ', 'T'));
+  if (isNaN(d)) return '';
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadNotificationHistory() {
+  const box = document.getElementById('notificationHistoryList');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:20px; color:hsl(var(--text-muted));">Загрузка...</div>';
+  try {
+    const res = await fetch('/api/admin/notifications');
+    const d = await res.json();
+    const list = (d && d.notifications) || [];
+    if (!list.length) {
+      box.innerHTML = '<div style="padding:30px; text-align:center; color:hsl(var(--text-muted));">Уведомлений пока не отправляли</div>';
+      return;
+    }
+    box.innerHTML = list.map(n => {
+      const target = n.target_name ? escapeHtml(n.target_name) : 'Всем пользователям';
+      const statusBadge = n.is_pending
+        ? `<span class="badge" style="background:hsl(var(--accent-amber) / 0.15);color:hsl(var(--accent-amber))">Запланировано на ${shortWhenNotif(n.scheduled_at)}</span>`
+        : `<span class="badge" style="background:hsl(var(--accent-green) / 0.15);color:hsl(var(--accent-green))">Отправлено</span>`;
+      const readInfo = n.total_recipients > 1
+        ? `Прочитали: ${n.read_count} из ${n.total_recipients}`
+        : (n.read_count > 0 ? 'Прочитано' : 'Не прочитано');
+      return `
+        <div style="border:1px solid hsl(var(--border-color)); border-radius:10px; padding:14px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
+            <div style="font-size:13px; color:hsl(var(--text-muted));">${target} · ${shortWhenNotif(n.created_at)}</div>
+            <button class="action-btn delete" title="Удалить" onclick="deleteNotificationHistoryItem(${n.id})"><i data-lucide="trash-2"></i></button>
+          </div>
+          <div style="font-size:14px; margin-bottom:8px;">${escapeHtml(n.message)}</div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            ${statusBadge}
+            ${!n.is_pending ? `<span style="font-size:12px; color:hsl(var(--text-muted));">${readInfo}</span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    box.innerHTML = '<div style="padding:20px; color:#ff6b6b;">Ошибка загрузки</div>';
+  }
+}
+
+window.deleteNotificationHistoryItem = async (id) => {
+  if (!await confirmDialog('Удалить это уведомление? Если оно ещё не отправлено (запланировано) — отправки не будет.', { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/admin/notifications?id=${id}`, { method: 'DELETE' });
+    if (res.ok) { showToast('Удалено', 'success'); loadNotificationHistory(); }
+    else showToast('Не удалось удалить', 'error');
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
