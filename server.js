@@ -24,6 +24,7 @@ const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
 const handleBrands = require('./src/routes/brands');
+const handleNotifications = require('./src/routes/notifications');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
@@ -252,6 +253,11 @@ const server = http.createServer(async (req, res) => {
   // Реестр брендов инструмента с иконками
   if (pathname === '/api/brands') {
     return handleBrands(req, res, user, parsedUrl, method);
+  }
+
+  // Внутренние уведомления от администрации (личный кабинет + отправка из админки)
+  if (pathname.startsWith('/api/cabinet/notifications') || pathname.startsWith('/api/admin/notifications')) {
+    return handleNotifications(req, res, user, parsedUrl, method);
   }
 
   // Стандартные (предустановленные) аватары
