@@ -169,6 +169,28 @@ function getSentHistory(req, res) {
   });
 }
 
+function getReaders(req, res, parsedUrl) {
+  const id = parseInt(parsedUrl.searchParams.get('id'), 10);
+  if (!Number.isInteger(id) || id <= 0) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  db.all(
+    `SELECT u.id AS user_id, u.username, e.first_name, e.last_name, nr.read_at
+     FROM notification_reads nr
+     JOIN users u ON u.id = nr.user_id
+     LEFT JOIN employees e ON e.user_id = u.id
+     WHERE nr.notification_id = ?
+     ORDER BY nr.read_at ASC`,
+    [id],
+    (err, rows) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      const readers = (rows || []).map(r => {
+        const fullName = [r.first_name, r.last_name].filter(Boolean).join(' ').trim();
+        return { user_id: r.user_id, name: fullName || r.username, read_at: r.read_at };
+      });
+      sendJson(res, 200, { success: true, readers });
+    }
+  );
+}
+
 function deleteNotification(req, res, user, parsedUrl) {
   const id = parseInt(parsedUrl.searchParams.get('id'), 10);
   if (!Number.isInteger(id) || id <= 0) return sendJson(res, 400, { success: false, message: 'Не указан id' });
@@ -187,6 +209,11 @@ module.exports = function handleNotifications(req, res, user, parsedUrl, method)
   if (p === '/api/cabinet/notifications' && method === 'GET') return getMyNotifications(req, res, user);
   if (p === '/api/cabinet/notifications/read' && method === 'POST') return markRead(req, res, user);
   if (p === '/api/cabinet/notifications/read-all' && method === 'POST') return markAllRead(req, res, user);
+
+  if (p === '/api/admin/notifications/reads' && method === 'GET') {
+    if (!canManage(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return getReaders(req, res, parsedUrl);
+  }
 
   if (p === '/api/admin/notifications') {
     if (!canManage(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
