@@ -179,6 +179,29 @@
     }
     .chat-fab-panel-body .chat-card .card-title { display: none !important; }
     .chat-fab-panel-body .chat-card .cbody { display: flex !important; height: 100% !important; }
+    /* Форма отправки: инпут + кнопка. min-width на инпуте не даёт ему
+       сжиматься до нуля — когда обоим не хватает места, кнопка переносится
+       на отдельную строку и растягивается на всю ширину, а не вылезает
+       вправо за пределы окна. */
+    .chat-form { display: flex; flex-wrap: wrap; gap: 10px; }
+    .chat-form-input {
+      flex: 1 1 160px; min-width: 160px;
+      background: var(--bg-input); border: 1px solid var(--border-color);
+      color: var(--text-primary); padding: 12px; border-radius: 10px;
+      outline: none; font-family: 'Inter', sans-serif;
+    }
+    .chat-form-submit { flex: 0 0 auto; width: auto; padding: 0 20px; margin: 0; }
+    /* Когда для инпута (min-width 160px) и кнопки вместе не хватает
+       ширины — переносим кнопку на отдельную строку во всю ширину,
+       вместо того чтобы она вылезала за пределы окна. */
+    @media (max-width: 480px) {
+      .chat-form-input { flex-basis: 100%; }
+      .chat-form-submit { flex-basis: 100%; }
+    }
+    @media (max-height: 420px) {
+      .chat-form-input { flex-basis: 100%; }
+      .chat-form-submit { flex-basis: 100%; }
+    }
     @media (max-width: 480px) {
       .chat-fab { right: 16px; bottom: 16px; width: 52px; height: 52px; }
       .chat-fab-panel {
@@ -861,9 +884,9 @@
           <div id="cabinetChatMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
             <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка сообщений...</div>
           </div>
-          <form id="cabinetChatForm" style="display: flex; gap: 10px;">
-            <input type="text" id="cabinetChatMessageInput" placeholder="Напишите сообщение..." required style="flex: 1; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); padding: 12px; border-radius: 10px; outline: none; font-family: 'Inter', sans-serif;">
-            <button type="submit" class="btn-save" style="width: auto; padding: 0 20px; margin: 0;">Отправить</button>
+          <form id="cabinetChatForm" class="chat-form">
+            <input type="text" id="cabinetChatMessageInput" class="chat-form-input" placeholder="Напишите сообщение..." required>
+            <button type="submit" class="btn-save chat-form-submit">Отправить</button>
           </form>
           </div><!-- /cbody -->
         </div>
