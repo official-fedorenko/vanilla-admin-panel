@@ -2346,7 +2346,7 @@ function renderUsers(filterQuery = '') {
       <td class="hide-mobile">${u.id}</td>
       <td class="mobile-primary"><strong>${escapeHtml(u.username)}</strong></td>
       <td class="mobile-hidden">${escapeHtml(u.email)}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${roleBadge}${typeBadge}</td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${roleBadge}${typeBadge}</div></td>
       <td class="mobile-hidden">${dateFormatted}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
