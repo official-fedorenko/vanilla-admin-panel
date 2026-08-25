@@ -806,11 +806,17 @@ function renderToolOrders() {
 let vacationsCache = [];
 
 const VAC_PHASE = {
-  current:  { label: 'Сейчас в отпуске', badge: 'badge-success', color: '34,197,94' },
-  upcoming: { label: 'Предстоит',        badge: 'badge-warning', color: '245,158,11' },
-  past:     { label: 'Завершён',         badge: 'badge-secondary', color: '148,163,184' },
-  unknown:  { label: '—',                badge: 'badge-secondary', color: '148,163,184' }
+  current:  { label: 'Сейчас отсутствует', badge: 'badge-success', color: '34,197,94' },
+  upcoming: { label: 'Предстоит',          badge: 'badge-warning', color: '245,158,11' },
+  past:     { label: 'Завершён',           badge: 'badge-secondary', color: '148,163,184' },
+  unknown:  { label: '—',                  badge: 'badge-secondary', color: '148,163,184' }
 };
+
+// Цвет-акцент по типу (отпуск/больничный) — используется как левая полоска
+// на полосках таймлайна и точка-индикатор у имени, чтобы отличать их даже
+// когда обе есть в одном ряду фильтра «Текущие и предстоящие».
+const VAC_TYPE_ACCENT = { vacation: '139,92,246', sick_leave: '244,63,94' };
+function vacTypeLabel(v) { return v.type === 'sick_leave' ? 'Больничный' : 'Отпуск'; }
 
 function vacDaysCount(start, end) {
   if (!start || !end) return '';
@@ -830,15 +836,15 @@ async function loadVacations() {
   const tbody = document.getElementById('vacationsTableBody');
   const cal = document.getElementById('vacationsCalendar');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
   try {
     const res = await fetch('/api/requests/vacations');
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     const data = await res.json();
     vacationsCache = data.vacations || [];
     renderVacations();
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
     if (cal) cal.innerHTML = '';
   }
 }
@@ -927,12 +933,14 @@ function renderVacations() {
   // --- Список ---
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
     return;
   }
   list.forEach(v => {
     const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
     const days = vacDaysCount(v.start_date, v.end_date);
+    const isSick = v.type === 'sick_leave';
+    const typeBadge = `<span class="badge ${isSick ? 'badge-warning' : 'badge-secondary'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
     const pending = v.status === 'pending'
       ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
       : '';
@@ -940,6 +948,7 @@ function renderVacations() {
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
     tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
+      ['Тип', typeBadge, true],
       ['С', vacFmtDate(v.start_date)],
       ['По', vacFmtDate(v.end_date)],
       ['Дней', days !== '' ? String(days) : '—'],
@@ -949,6 +958,7 @@ function renderVacations() {
     ]));
     tr.innerHTML = `
       <td class="mobile-primary"><strong>${escapeHtml(v.name)}</strong>${pending}</td>
+      <td class="mobile-hidden">${typeBadge}</td>
       <td class="mobile-hidden">${vacFmtDate(v.start_date)}</td>
       <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
       <td class="mobile-hidden">${days !== '' ? days : '—'}</td>
@@ -1024,15 +1034,18 @@ function renderVacationsCalendar(list, opts = {}) {
     // чтобы не уезжала за пределы шкалы.
     const mid = Math.min(94, Math.max(6, (left + right) / 2));
     const label = `${shortDate(v.start_date)}–${shortDate(v.end_date)}${days ? ` · ${days} дн` : ''}`;
-    const tip = `${v.name}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
+    const typeLabel = vacTypeLabel(v);
+    const typeColor = VAC_TYPE_ACCENT[v.type] || VAC_TYPE_ACCENT.vacation;
+    const tip = `${v.name} · ${typeLabel}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
+    const typeDot = `<span title="${escapeHtml(typeLabel)}" style="display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; flex-shrink:0; background:rgba(${typeColor},0.9); vertical-align:middle;"></span>`;
     return `
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-        <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
+        <div style="width:140px; flex-shrink:0; display:flex; align-items:center; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)} · ${escapeHtml(typeLabel)}">${typeDot}<span style="overflow:hidden; text-overflow:ellipsis;">${escapeHtml(v.name)}</span></div>
         <div style="position:relative; flex:1; height:38px;">
           <div style="position:absolute; top:18px; left:0; right:0; height:16px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;"></div>
           <div style="position:absolute; top:0; left:${mid}%; transform:translateX(-50%); font-size:10px; font-weight:700; color:rgba(${ph.color},1); white-space:nowrap; pointer-events:none;">${label}</div>
           <div title="${escapeHtml(tip)}"
-               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-radius:5px; ${dim}"></div>
+               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-left:3px solid rgba(${typeColor},1); border-radius:5px; ${dim}"></div>
         </div>
       </div>`;
   }).join('');
@@ -1059,11 +1072,13 @@ function renderVacationsCalendar(list, opts = {}) {
       </div>
       <div style="display:flex; gap:16px; margin-top:10px; font-size:11px; color:hsl(var(--text-muted)); flex-wrap:wrap;">
         ${pastMode
-          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершённый отпуск</span>'
+          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершено</span>'
           : `<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(245,158,11,0.85); vertical-align:middle;"></span> предстоит</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; border:1px dashed hsl(var(--text-muted)); vertical-align:middle;"></span> ожидает одобрения</span>
         <span><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>`}
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(${VAC_TYPE_ACCENT.vacation},0.9); vertical-align:middle;"></span> отпуск</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(${VAC_TYPE_ACCENT.sick_leave},0.9); vertical-align:middle;"></span> больничный</span>
       </div>
     </div>`;
 }
@@ -1173,26 +1188,6 @@ function requestJustification(r, types) {
   return { label: f.label, text: String(r.payload[f.name] ?? '').trim() };
 }
 
-// Человекочитаемое описание заявления: заголовок + поля-чипы (без фото и без
-// поля-обоснования — оно доступно отдельной кнопкой).
-function describeRequest(r, types) {
-  const def = types[r.type];
-  if (!def) return escapeHtml(r.title || '');
-  const justField = (def.fields || []).find(x => x.type === 'textarea');
-  const chips = def.fields
-    .filter(f => f.type !== 'photo' && f.type !== 'textarea'
-      && r.payload[f.name] !== '' && r.payload[f.name] != null)
-    .map(f => `<span class="req-chip"><span class="req-chip-label">${escapeHtml(f.label)}:</span>${escapeHtml(String(r.payload[f.name]))}</span>`)
-    .join('');
-  const photo = (r.payload.photo_url)
-    ? `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" alt="">`
-    : '';
-  return `<div class="req-desc">${photo}<div style="min-width:0;">
-      <div class="req-title">${escapeHtml(r.title || def.label)}</div>
-      ${chips ? `<div class="req-chips">${chips}</div>` : ''}
-    </div></div>`;
-}
-
 async function loadToolRequests() { return loadRequests(); }
 async function loadRequests() {
   const tbody = document.getElementById('requestsTableBody');
@@ -1219,70 +1214,47 @@ async function loadRequests() {
 let requestsRenderCache = [];
 let requestsTypesCacheForRender = {};
 
-// Второстепенные поля заявки — не показываются отдельной колонкой в
-// таблице, а вынесены в модалку «Больше информации» по кнопке в строке.
-const REQUEST_SECONDARY_FIELDS = new Set(['category', 'brand', 'model', 'serial_number', 'inventory_number']);
-
-// Поля-колонки для описания заявки конкретного типа (без фото, без
-// поля-обоснования и без второстепенных полей — те остаются в отдельных
-// ячейках/кнопках).
-function requestColumnFields(def) {
+// Поля-даты типа заявки (в порядке объявления) — идут в фиксированные
+// колонки таблицы «С»/«По» (первое/второе поле). У типов с одной датой
+// (например last_day у увольнения) «По» остаётся пустым.
+function requestDateFields(def) {
   if (!def) return [];
-  return (def.fields || []).filter(f => f.type !== 'photo' && f.type !== 'textarea'
-    && !REQUEST_SECONDARY_FIELDS.has(f.name));
+  return (def.fields || []).filter(f => f.type === 'date');
 }
 
-// Второстепенные поля конкретного типа заявки (для модалки «Больше информации»).
-function requestSecondaryFields(def) {
+// Все остальные поля типа (не дата, не текстовое поле-обоснование — то
+// уже своя отдельная кнопка/модалка) — показываются в модалке «Больше
+// информации», а не отдельными колонками таблицы.
+function requestExtraFields(def) {
   if (!def) return [];
-  return (def.fields || []).filter(f => REQUEST_SECONDARY_FIELDS.has(f.name));
+  return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea');
 }
 
-// Объединённый список полей-колонок по всем типам заявок, встретившимся в
-// текущем списке (порядок — по первому появлению). Так в таблице «Все
-// типы» тоже видно отдельные колонки (даты, количество и т.п.), а не одну
-// слепленную ячейку — общие для нескольких типов поля (например «С»/«По»)
-// заполняют одну и ту же колонку.
-function requestUnionColumnFields(list, types) {
-  const seen = new Map();
-  list.forEach(r => {
-    requestColumnFields(types[r.type]).forEach(f => {
-      if (!seen.has(f.name)) seen.set(f.name, f);
-    });
-  });
-  return Array.from(seen.values());
-}
-
-// Перестраивает шапку таблицы заявок: по колонке на каждое встретившееся
-// поле (даты, количество, категория и т.д.); если список пуст — общая
-// колонка «Описание».
-function renderRequestsHead(fields) {
+// Шапка таблицы заявок — фиксированный набор колонок вне зависимости от
+// типа/фильтра: ID, Тип, С, По, От кого, Статус, Действия.
+function renderRequestsHead() {
   const thead = document.getElementById('requestsTableHead');
-  if (!thead) return [];
-  const descTh = fields.length
-    ? fields.map(f => `<th>${escapeHtml(f.label)}</th>`).join('')
-    : '<th>Описание</th>';
+  if (!thead) return;
   thead.innerHTML = `
     <tr>
       <th style="width:50px;">ID</th>
-      <th style="width:180px;">Тип</th>
-      ${descTh}
+      <th style="width:160px;">Тип</th>
+      <th style="width:110px;">С</th>
+      <th style="width:110px;">По</th>
       <th>От кого</th>
       <th style="width:120px;">Статус</th>
       <th style="width:200px; text-align:right;">Действия</th>
     </tr>`;
-  return fields;
 }
 
 function renderRequests(list, types) {
   const tbody = document.getElementById('requestsTableBody');
   requestsRenderCache = list;
   requestsTypesCacheForRender = types;
-  const colFields = renderRequestsHead(requestUnionColumnFields(list, types));
-  const colspan = colFields.length ? colFields.length + 4 : 6;
+  renderRequestsHead();
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${colspan}" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Заявлений нет</td></tr>`;
     return;
   }
   list.forEach(r => {
@@ -1291,10 +1263,10 @@ function renderRequests(list, types) {
     const justBtn = just.text
       ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
       : `<button class="req-action req-action--red" disabled title="Обоснование не указано">Обоснование</button>`;
-    const hasSecondary = requestSecondaryFields(types[r.type])
+    const hasExtra = requestExtraFields(types[r.type])
       .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
-    const moreBtn = hasSecondary
-      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Больше информации</button>`
+    const moreBtn = hasExtra
+      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Подробнее</button>`
       : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
@@ -1311,17 +1283,11 @@ function renderRequests(list, types) {
         ['От кого', r.requested_by_name || '—'],
         ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true]
       ];
-      const mainFields = requestColumnFields(def)
-        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
-      if (mainFields.length) {
+      const descFields = requestDateFields(def).concat(requestExtraFields(def))
+        .filter(f => f.type !== 'photo' && r.payload[f.name] !== '' && r.payload[f.name] != null);
+      if (descFields.length) {
         rows.push(['Описание', null, 'section']);
-        mainFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
-      }
-      const secFields = requestSecondaryFields(def)
-        .filter(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
-      if (secFields.length) {
-        rows.push(['Дополнительно', null, 'section']);
-        secFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+        descFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
       }
       if (r.payload.photo_url) {
         rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
@@ -1335,16 +1301,14 @@ function renderRequests(list, types) {
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
     });
-    const descCells = colFields.length
-      ? colFields.map(f => {
-          const v = r.payload ? r.payload[f.name] : null;
-          return `<td class="mobile-hidden">${v !== '' && v != null ? escapeHtml(String(v)) : ''}</td>`;
-        }).join('')
-      : `<td class="mobile-hidden">${describeRequest(r, types)}</td>`;
+    const dateFields = requestDateFields(types[r.type]);
+    const fromDate = dateFields[0] ? (r.payload[dateFields[0].name] || '') : '';
+    const toDate = dateFields[1] ? (r.payload[dateFields[1].name] || '') : '';
     tr.innerHTML = `
       <td class="hide-mobile">${r.id}</td>
       <td class="mobile-primary">${escapeHtml(r.type_label || r.type)}</td>
-      ${descCells}
+      <td class="mobile-hidden">${escapeHtml(fromDate)}</td>
+      <td class="mobile-hidden">${escapeHtml(toDate)}</td>
       <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
       <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${moreBtn}${justBtn}${decide}</div></td>`;
@@ -1357,7 +1321,12 @@ window.openRequestMoreInfo = function (id) {
   const r = requestsRenderCache.find(x => x.id === id);
   if (!r) return;
   const def = requestsTypesCacheForRender[r.type];
-  const rows = requestSecondaryFields(def).map(f => [f.label, r.payload[f.name]]);
+  const rows = requestExtraFields(def)
+    .filter(f => f.type !== 'photo')
+    .map(f => [f.label, r.payload[f.name]]);
+  if (r.payload.photo_url) {
+    rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
+  }
   showRowDetail('Больше информации', rows);
 };
 window.openJustification = function (id) {

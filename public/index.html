@@ -56,9 +56,9 @@
           </a>
         </li>
         <li class="nav-item" data-section="vacations">
-          <a href="#vacations" title="Отпуска">
+          <a href="#vacations" title="Отпуска/Больничные">
             <i data-lucide="palmtree"></i>
-            <span>Отпуска</span>
+            <span>Отпуска/Больничные</span>
           </a>
         </li>
         <li class="nav-item" data-section="toolorders">
@@ -314,13 +314,13 @@
       <section id="section-vacations" class="app-section">
         <div class="page-header">
           <div class="page-title">
-            <h2>Отпуска</h2>
-            <p>Сводка: кто и когда в отпуске. По умолчанию — текущие и предстоящие; прошедшие доступны в архиве с выбором года.</p>
+            <h2>Отпуска/Больничные</h2>
+            <p>Сводка: кто и когда в отпуске или на больничном. По умолчанию — текущие и предстоящие; прошедшие доступны в архиве с выбором года.</p>
           </div>
           <div class="page-header-actions">
             <select id="vacationsPhaseFilter" class="form-control" style="width:200px;">
               <option value="">Текущие и предстоящие</option>
-              <option value="current">Сейчас в отпуске</option>
+              <option value="current">Сейчас отсутствует</option>
               <option value="upcoming">Предстоящие</option>
               <option value="past">Прошедшие (архив)</option>
             </select>
@@ -339,6 +339,7 @@
               <thead>
                 <tr>
                   <th>Сотрудник</th>
+                  <th style="width:120px;">Тип</th>
                   <th style="width:130px;">С</th>
                   <th style="width:130px;">По</th>
                   <th style="width:90px;">Дней</th>
