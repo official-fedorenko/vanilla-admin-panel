@@ -105,17 +105,29 @@
     }
     .notif-dropdown {
       position: absolute; top: calc(100% + 8px); right: 0;
-      width: 320px; max-width: calc(100vw - 24px); max-height: 400px; overflow-y: auto;
+      width: 320px; max-width: calc(100vw - 24px);
+      max-height: min(400px, calc(100vh - 100px)); overflow-y: auto;
       background: rgba(20, 20, 28, 0.97);
       -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
       border: 1px solid var(--border-color);
       border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.5);
       z-index: 1050;
     }
+    /* max-width (не max-height) — это про узкий экран в портретной
+       ориентации, где триггер-колокольчик не прижат к правому краю. */
     @media (max-width: 640px) {
       .notif-dropdown {
         position: fixed; top: 62px; right: 10px; left: 10px;
         width: auto; max-width: none;
+        max-height: calc(100vh - 76px);
+      }
+    }
+    /* Низкий вьюпорт (повёрнутый телефон) — не завязываемся на ширину:
+       окну просто мало места по высоте, растягиваем почти на весь экран. */
+    @media (max-height: 420px) {
+      .notif-dropdown {
+        position: fixed; top: 8px; right: 10px; left: 10px; bottom: 8px;
+        width: auto; max-width: none; max-height: none; height: auto;
       }
     }
     .notif-item {
@@ -141,7 +153,7 @@
     .chat-fab .nav-badge { top: -2px; right: -2px; }
     .chat-fab-panel {
       position: fixed; right: 24px; bottom: 92px; z-index: 1040;
-      width: min(380px, calc(100vw - 32px)); height: min(560px, calc(100vh - 140px));
+      width: min(400px, calc(100vw - 24px)); height: min(600px, calc(100vh - 100px));
       background: rgba(20, 20, 28, 0.97);
       -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
       border: 1px solid var(--border-color);
@@ -169,7 +181,20 @@
     .chat-fab-panel-body .chat-card .cbody { display: flex !important; height: 100% !important; }
     @media (max-width: 480px) {
       .chat-fab { right: 16px; bottom: 16px; width: 52px; height: 52px; }
-      .chat-fab-panel { right: 16px; bottom: 80px; }
+      .chat-fab-panel {
+        right: 12px; left: 12px; bottom: 76px;
+        width: auto; height: min(600px, calc(100vh - 96px));
+      }
+    }
+    /* Низкий вьюпорт (повёрнутый телефон) — та же логика, что у уведомлений:
+       окну не хватает высоты, а не ширины, поэтому растягиваем на весь экран
+       и подвигаем кнопку-пузырь, чтобы не перекрывала панель. */
+    @media (max-height: 420px) {
+      .chat-fab { width: 44px; height: 44px; right: 10px; bottom: 10px; }
+      .chat-fab-panel {
+        right: 10px; left: 10px; bottom: 62px; top: 8px;
+        width: auto; height: auto;
+      }
     }
 
     /* Модальное меню профиля (мобильные) */
