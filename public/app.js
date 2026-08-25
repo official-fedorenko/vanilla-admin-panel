@@ -830,15 +830,15 @@ async function loadVacations() {
   const tbody = document.getElementById('vacationsTableBody');
   const cal = document.getElementById('vacationsCalendar');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
   try {
     const res = await fetch('/api/requests/vacations');
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     const data = await res.json();
     vacationsCache = data.vacations || [];
     renderVacations();
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
     if (cal) cal.innerHTML = '';
   }
 }
@@ -927,12 +927,14 @@ function renderVacations() {
   // --- Список ---
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
     return;
   }
   list.forEach(v => {
     const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
     const days = vacDaysCount(v.start_date, v.end_date);
+    const isSick = v.type === 'sick_leave';
+    const typeBadge = `<span class="badge ${isSick ? 'badge-warning' : 'badge-secondary'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
     const pending = v.status === 'pending'
       ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
       : '';
@@ -940,6 +942,7 @@ function renderVacations() {
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
     tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
+      ['Тип', typeBadge, true],
       ['С', vacFmtDate(v.start_date)],
       ['По', vacFmtDate(v.end_date)],
       ['Дней', days !== '' ? String(days) : '—'],
@@ -949,6 +952,7 @@ function renderVacations() {
     ]));
     tr.innerHTML = `
       <td class="mobile-primary"><strong>${escapeHtml(v.name)}</strong>${pending}</td>
+      <td class="mobile-hidden">${typeBadge}</td>
       <td class="mobile-hidden">${vacFmtDate(v.start_date)}</td>
       <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
       <td class="mobile-hidden">${days !== '' ? days : '—'}</td>
@@ -1024,7 +1028,8 @@ function renderVacationsCalendar(list, opts = {}) {
     // чтобы не уезжала за пределы шкалы.
     const mid = Math.min(94, Math.max(6, (left + right) / 2));
     const label = `${shortDate(v.start_date)}–${shortDate(v.end_date)}${days ? ` · ${days} дн` : ''}`;
-    const tip = `${v.name}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
+    const typeLabel = v.type === 'sick_leave' ? 'Больничный' : 'Отпуск';
+    const tip = `${v.name} · ${typeLabel}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
     return `
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
         <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
@@ -1251,7 +1256,7 @@ function renderRequests(list, types) {
     const hasExtra = requestExtraFields(types[r.type])
       .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
     const moreBtn = hasExtra
-      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Больше информации</button>`
+      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Подробнее</button>`
       : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
