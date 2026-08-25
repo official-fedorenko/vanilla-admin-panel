@@ -20,10 +20,13 @@ process.env.DB_PATH = dbPath;
 process.env.TRUST_PROXY = 'true';
 
 const server = require('../server');
-const { dbReady } = require('../db');
+const { db, dbReady } = require('../db');
 const { totp } = require('../src/totp');
 
 let baseUrl;
+// id инструмента, который тесты публичной карточки создают для себя сами:
+// автосид демо-инструмента отключён, поэтому на свежей БД tools пустая.
+let publicToolId;
 
 before(async () => {
   // Schema creation + default-user/article seeding in db.js is async — wait
@@ -35,6 +38,18 @@ before(async () => {
   });
   const { port } = server.address();
   baseUrl = `http://127.0.0.1:${port}`;
+
+  // Инструмент для тестов публичной карточки (/api/public/tool).
+  publicToolId = await new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO tools (name, category, brand, model, serial_number,
+                          inventory_number, status, purchase_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'available', '2024-01-15', ?)`,
+      ['Тестовый перфоратор', 'Перфоратор', 'Bosch', 'GBH 2-28',
+       'TEST-SN-0001', 'INV-TEST-0001', 'Служебная заметка (не для публичной карточки)'],
+      function (err) { err ? reject(err) : resolve(this.lastID); }
+    );
+  });
 });
 
 after(async () => {
@@ -81,11 +96,11 @@ test('public settings endpoint returns key/value pairs without auth', async () =
 });
 
 test('public tool card endpoint returns identification fields without auth and hides service data', async () => {
-  const { status, json } = await api('/api/public/tool?id=1');
+  const { status, json } = await api(`/api/public/tool?id=${publicToolId}`);
   assert.strictEqual(status, 200);
   assert.strictEqual(json.success, true);
   assert.ok(json.tool);
-  assert.strictEqual(json.tool.id, 1);
+  assert.strictEqual(json.tool.id, publicToolId);
   assert.ok(json.tool.name);
   // Служебные данные не должны утекать в публичную карточку.
   assert.strictEqual(json.tool.notes, undefined);
@@ -284,7 +299,7 @@ test('public tool card respects GLOBAL visibility settings and enable switch', a
   const cookie = login.cookie;
 
   // По умолчанию карточка включена и показывает все поля.
-  const def = await api('/api/public/tool?id=1');
+  const def = await api(`/api/public/tool?id=${publicToolId}`);
   assert.strictEqual(def.status, 200);
   assert.ok(def.json.tool.serial_number);
 
@@ -301,7 +316,7 @@ test('public tool card respects GLOBAL visibility settings and enable switch', a
   assert.strictEqual(saved.status, 200);
 
   // Публичная карточка больше не отдаёт скрытые поля, но имя/бренд на месте.
-  const pub = await api('/api/public/tool?id=1');
+  const pub = await api(`/api/public/tool?id=${publicToolId}`);
   assert.strictEqual(pub.status, 200);
   assert.ok(pub.json.tool.name);
   assert.ok(pub.json.tool.brand);
@@ -314,7 +329,7 @@ test('public tool card respects GLOBAL visibility settings and enable switch', a
     method: 'POST', cookie, body: { public_card_enabled: 'false' }
   });
   assert.strictEqual(off.status, 200);
-  const pubOff = await api('/api/public/tool?id=1');
+  const pubOff = await api(`/api/public/tool?id=${publicToolId}`);
   assert.strictEqual(pubOff.status, 404);
 });
 
