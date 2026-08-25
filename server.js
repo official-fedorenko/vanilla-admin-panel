@@ -216,7 +216,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Управление стандартным каталогом инструмента (Superadmin для изменений)
-  if (pathname === '/api/catalog-models') {
+  if (pathname === '/api/catalog-models' || pathname === '/api/catalog-models/clear') {
     return handleCatalogModels(req, res, user, parsedUrl, method);
   }
 

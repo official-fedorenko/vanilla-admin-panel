@@ -126,6 +126,8 @@ async function checkSession() {
       if (testToolsBox) testToolsBox.classList.add('visible');
       const clearToolsBox = document.getElementById('clearToolsCatalogBox');
       if (clearToolsBox) clearToolsBox.classList.add('visible');
+      const clearCatalogModelsBox = document.getElementById('clearCatalogModelsBox');
+      if (clearCatalogModelsBox) clearCatalogModelsBox.classList.add('visible');
     }
   } catch (err) {
     console.error('Session check error:', err);
@@ -538,12 +540,26 @@ function initApp() {
   const clearToolsCatalogBtn = document.getElementById('clearToolsCatalogBtn');
   if (clearToolsCatalogBtn) {
     clearToolsCatalogBtn.addEventListener('click', async () => {
-      if (!await confirmDialog('Удалить ВСЕ инструменты из каталога? Это действие необратимо и затронет реальные записи.', { okText: 'Очистить', danger: true })) return;
+      if (!await confirmDialog('Удалить ВСЕ инструменты со склада (раздел «Инструмент»)? Это действие необратимо и затронет реальные записи.', { okText: 'Очистить', danger: true })) return;
       try {
         const res = await fetch('/api/admin/tools-catalog/clear', { method: 'POST' });
         const d = await res.json().catch(() => ({}));
-        if (res.ok && d.success) { showToast(d.message || 'Каталог очищен', 'success'); if (typeof loadTools === "function") loadTools(); }
-        else showToast(d.message || 'Не удалось очистить каталог', 'error');
+        if (res.ok && d.success) { showToast(d.message || 'Склад очищен', 'success'); if (typeof loadTools === "function") loadTools(); }
+        else showToast(d.message || 'Не удалось очистить склад', 'error');
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    });
+  }
+
+  // Очистка справочника моделей каталога (Superadmin, раздел «Каталог»)
+  const clearCatalogModelsBtn = document.getElementById('clearCatalogModelsBtn');
+  if (clearCatalogModelsBtn) {
+    clearCatalogModelsBtn.addEventListener('click', async () => {
+      if (!await confirmDialog('Удалить ВСЕ модели из справочника «Каталог»? Автозаполнение формы инструмента перестанет работать. Действие необратимо.', { okText: 'Очистить', danger: true })) return;
+      try {
+        const res = await fetch('/api/catalog-models/clear', { method: 'POST' });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) { showToast(d.message || 'Справочник очищен', 'success'); if (typeof loadCatalogModels === "function") loadCatalogModels(); }
+        else showToast(d.message || 'Не удалось очистить справочник', 'error');
       } catch (e) { showToast('Ошибка сети', 'error'); }
     });
   }

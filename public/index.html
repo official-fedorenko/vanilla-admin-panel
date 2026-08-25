@@ -610,14 +610,24 @@
             <div class="test-box-description">Демо-набор из 8 инструментов (Bosch, DeWalt) на складе. Реальные записи не затрагиваются.</div>
           </div>
 
-          <!-- Superadmin-only: полная очистка каталога инструментов -->
+          <!-- Superadmin-only: полная очистка склада (раздел «Инструмент») -->
           <div id="clearToolsCatalogBox" class="test-box superadmin-only">
-            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка каталога инструментов</div>
+            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка склада (раздел «Инструмент»)</div>
             <button type="button" id="clearToolsCatalogBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
               <i data-lucide="trash-2"></i>
-              <span>Очистить каталог</span>
+              <span>Очистить склад</span>
             </button>
-            <div class="test-box-description">Удалит ВСЕ инструменты из каталога, включая реальные записи (не только тестовые). Действие необратимо.</div>
+            <div class="test-box-description">Удалит ВСЕ инструменты со склада (раздел «Инструмент»), включая реальные записи (не только тестовые). Не путать со справочником моделей ниже. Действие необратимо.</div>
+          </div>
+
+          <!-- Superadmin-only: очистка справочника моделей (раздел «Каталог») -->
+          <div id="clearCatalogModelsBox" class="test-box superadmin-only">
+            <div style="color: #ff6b6b; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️ Очистка справочника моделей (раздел «Каталог»)</div>
+            <button type="button" id="clearCatalogModelsBtn" class="btn btn-danger" style="background: #3a1f1f; border: 1px solid #ff6b6b; color: #ff6b6b;">
+              <i data-lucide="trash-2"></i>
+              <span>Очистить справочник моделей</span>
+            </button>
+            <div class="test-box-description">Удалит ВСЕ стандартные модели (Bosch/DeWalt и т.д.) из справочника «Каталог». После этого пропадёт быстрое автозаполнение формы при добавлении инструмента. Действие необратимо.</div>
           </div>
 
           <!-- Superadmin-only demo reset (very handy when presenting the project) -->
