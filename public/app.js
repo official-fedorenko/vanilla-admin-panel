@@ -806,11 +806,17 @@ function renderToolOrders() {
 let vacationsCache = [];
 
 const VAC_PHASE = {
-  current:  { label: 'Сейчас в отпуске', badge: 'badge-success', color: '34,197,94' },
-  upcoming: { label: 'Предстоит',        badge: 'badge-warning', color: '245,158,11' },
-  past:     { label: 'Завершён',         badge: 'badge-secondary', color: '148,163,184' },
-  unknown:  { label: '—',                badge: 'badge-secondary', color: '148,163,184' }
+  current:  { label: 'Сейчас отсутствует', badge: 'badge-success', color: '34,197,94' },
+  upcoming: { label: 'Предстоит',          badge: 'badge-warning', color: '245,158,11' },
+  past:     { label: 'Завершён',           badge: 'badge-secondary', color: '148,163,184' },
+  unknown:  { label: '—',                  badge: 'badge-secondary', color: '148,163,184' }
 };
+
+// Цвет-акцент по типу (отпуск/больничный) — используется как левая полоска
+// на полосках таймлайна и точка-индикатор у имени, чтобы отличать их даже
+// когда обе есть в одном ряду фильтра «Текущие и предстоящие».
+const VAC_TYPE_ACCENT = { vacation: '139,92,246', sick_leave: '244,63,94' };
+function vacTypeLabel(v) { return v.type === 'sick_leave' ? 'Больничный' : 'Отпуск'; }
 
 function vacDaysCount(start, end) {
   if (!start || !end) return '';
@@ -1028,16 +1034,18 @@ function renderVacationsCalendar(list, opts = {}) {
     // чтобы не уезжала за пределы шкалы.
     const mid = Math.min(94, Math.max(6, (left + right) / 2));
     const label = `${shortDate(v.start_date)}–${shortDate(v.end_date)}${days ? ` · ${days} дн` : ''}`;
-    const typeLabel = v.type === 'sick_leave' ? 'Больничный' : 'Отпуск';
+    const typeLabel = vacTypeLabel(v);
+    const typeColor = VAC_TYPE_ACCENT[v.type] || VAC_TYPE_ACCENT.vacation;
     const tip = `${v.name} · ${typeLabel}: ${vacFmtDate(v.start_date)} — ${vacFmtDate(v.end_date)}${v.notes ? ' · ' + v.notes : ''}`;
+    const typeDot = `<span title="${escapeHtml(typeLabel)}" style="display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; flex-shrink:0; background:rgba(${typeColor},0.9); vertical-align:middle;"></span>`;
     return `
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-        <div style="width:140px; flex-shrink:0; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)}">${escapeHtml(v.name)}</div>
+        <div style="width:140px; flex-shrink:0; display:flex; align-items:center; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(v.name)} · ${escapeHtml(typeLabel)}">${typeDot}<span style="overflow:hidden; text-overflow:ellipsis;">${escapeHtml(v.name)}</span></div>
         <div style="position:relative; flex:1; height:38px;">
           <div style="position:absolute; top:18px; left:0; right:0; height:16px; background:hsl(var(--bg-secondary, var(--card-bg))); border-radius:6px;"></div>
           <div style="position:absolute; top:0; left:${mid}%; transform:translateX(-50%); font-size:10px; font-weight:700; color:rgba(${ph.color},1); white-space:nowrap; pointer-events:none;">${label}</div>
           <div title="${escapeHtml(tip)}"
-               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-radius:5px; ${dim}"></div>
+               style="position:absolute; top:18px; height:16px; left:${left}%; width:${width}%; background:rgba(${ph.color},0.9); border-left:3px solid rgba(${typeColor},1); border-radius:5px; ${dim}"></div>
         </div>
       </div>`;
   }).join('');
@@ -1064,11 +1072,13 @@ function renderVacationsCalendar(list, opts = {}) {
       </div>
       <div style="display:flex; gap:16px; margin-top:10px; font-size:11px; color:hsl(var(--text-muted)); flex-wrap:wrap;">
         ${pastMode
-          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершённый отпуск</span>'
+          ? '<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(148,163,184,0.85); vertical-align:middle;"></span> завершено</span>'
           : `<span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(34,197,94,0.85); vertical-align:middle;"></span> сейчас</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(245,158,11,0.85); vertical-align:middle;"></span> предстоит</span>
         <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; border:1px dashed hsl(var(--text-muted)); vertical-align:middle;"></span> ожидает одобрения</span>
         <span><span style="display:inline-block; width:2px; height:12px; background:hsl(var(--accent-red, 0 84% 60%)); vertical-align:middle;"></span> сегодня</span>`}
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(${VAC_TYPE_ACCENT.vacation},0.9); vertical-align:middle;"></span> отпуск</span>
+        <span><span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:rgba(${VAC_TYPE_ACCENT.sick_leave},0.9); vertical-align:middle;"></span> больничный</span>
       </div>
     </div>`;
 }
