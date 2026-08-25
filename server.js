@@ -23,6 +23,7 @@ const handleTools = require('./src/routes/tools');
 const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
+const handleBrands = require('./src/routes/brands');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
@@ -246,6 +247,11 @@ const server = http.createServer(async (req, res) => {
   // Иконки категорий инструментов (просмотр / переопределение)
   if (pathname === '/api/category-icons') {
     return handleCategoryIcons(req, res, user, parsedUrl, method);
+  }
+
+  // Реестр брендов инструмента с иконками
+  if (pathname === '/api/brands') {
+    return handleBrands(req, res, user, parsedUrl, method);
   }
 
   // Стандартные (предустановленные) аватары

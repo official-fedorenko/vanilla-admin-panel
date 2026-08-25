@@ -15,6 +15,27 @@ const db = new sqlite3.Database(dbPath);
 let resolveDbReady;
 const dbReady = new Promise((resolve) => { resolveDbReady = resolve; });
 
+// Предустановленный набор известных брендов инструмента с сгенерированными
+// плейсхолдер-иконками (монограмма на градиенте, БЕЗ реальных логотипов).
+// Иконки лежат в data/tool-catalog/images/brand-*.svg, отдаются тем же
+// маршрутом, что и иконки категорий (/catalog/images/*.svg).
+const PRESET_BRANDS = [
+  { name: 'Bosch', icon_url: '/catalog/images/brand-bosch.svg' },
+  { name: 'DeWalt', icon_url: '/catalog/images/brand-dewalt.svg' },
+  { name: 'Makita', icon_url: '/catalog/images/brand-makita.svg' },
+  { name: 'Metabo', icon_url: '/catalog/images/brand-metabo.svg' },
+  { name: 'Hilti', icon_url: '/catalog/images/brand-hilti.svg' },
+  { name: 'Milwaukee', icon_url: '/catalog/images/brand-milwaukee.svg' },
+  { name: 'Ryobi', icon_url: '/catalog/images/brand-ryobi.svg' },
+  { name: 'AEG', icon_url: '/catalog/images/brand-aeg.svg' },
+  { name: 'Skil', icon_url: '/catalog/images/brand-skil.svg' },
+  { name: 'Interskol', icon_url: '/catalog/images/brand-interskol.svg' },
+  { name: 'Einhell', icon_url: '/catalog/images/brand-einhell.svg' },
+  { name: 'Sturm', icon_url: '/catalog/images/brand-sturm.svg' },
+  { name: 'Зубр', icon_url: '/catalog/images/brand-zubr.svg' },
+  { name: 'Bort', icon_url: '/catalog/images/brand-bort.svg' }
+];
+
 // === Простая система миграций (для надёжности) ===
 const MIGRATIONS = [
   {
@@ -232,6 +253,37 @@ const MIGRATIONS = [
       // Узкоспециальные характеристики модели каталога, зависящие от категории
       // (энергия удара, Ø бурения…). Общие поля остаются колонками; здесь — JSON.
       db.run("ALTER TABLE catalog_models ADD COLUMN specs TEXT", () => {});
+    }
+  },
+  {
+    version: 16,
+    description: 'Create brands table (справочник брендов инструмента с иконками) + seed стандартных брендов',
+    up: () => {
+      // Реестр брендов: id (не name), т.к. бренды свободно добавляются/
+      // переименовываются/удаляются пользователем — это первоклассная
+      // сущность, а не override поверх фиксированного списка (как
+      // category_icons). brand на tools/catalog_models остаётся обычной
+      // строкой без FK — удаление бренда из реестра не ломает старые записи.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS brands (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          icon_url TEXT,
+          is_preset INTEGER NOT NULL DEFAULT 0,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {
+        try {
+          const stmt = db.prepare(`INSERT OR IGNORE INTO brands (name, icon_url, is_preset) VALUES (?, ?, 1)`);
+          PRESET_BRANDS.forEach(b => stmt.run([b.name, b.icon_url]));
+          stmt.finalize();
+          logger.info('[db] brands засеян стандартным набором');
+        } catch (e) {
+          logger.error('[db] Не удалось засеять brands:', e.message);
+        }
+      });
     }
   }
 ];

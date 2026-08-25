@@ -1660,6 +1660,132 @@ window.resetCategoryIcon = async (categoryEnc) => {
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };
 
+// === Модалка управления брендами (Superadmin) ===
+window.openBrandsModal = () => {
+  const overlay = document.getElementById('brandsModalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('active');
+  document.getElementById('newBrandName').value = '';
+  newBrandsModalIconUrl = null;
+  document.getElementById('newBrandIconPreview').style.display = 'none';
+  document.getElementById('newBrandIconLabel').textContent = 'Иконка';
+  loadBrandsGrid();
+};
+window.closeBrandsModal = () => {
+  const overlay = document.getElementById('brandsModalOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+let newBrandsModalIconUrl = null;
+window.pickNewBrandIcon = () => {
+  if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+  window.openMediaPicker((url) => {
+    newBrandsModalIconUrl = url;
+    const prev = document.getElementById('newBrandIconPreview');
+    prev.src = iconVer(url);
+    prev.style.display = 'inline-block';
+    document.getElementById('newBrandIconLabel').textContent = '';
+  }, 'tools');
+};
+
+window.submitNewBrand = async () => {
+  const nameInput = document.getElementById('newBrandName');
+  const name = nameInput.value.trim();
+  if (!name) { showToast('Введите название бренда', 'error'); return; }
+  try {
+    const res = await fetch('/api/brands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, icon_url: newBrandsModalIconUrl })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      nameInput.value = '';
+      newBrandsModalIconUrl = null;
+      document.getElementById('newBrandIconPreview').style.display = 'none';
+      document.getElementById('newBrandIconLabel').textContent = 'Иконка';
+      await loadBrands();
+      loadBrandsGrid();
+      showToast('Бренд добавлен', 'success');
+    } else {
+      showToast(d.message || 'Не удалось добавить бренд', 'error');
+    }
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+async function loadBrandsGrid() {
+  const grid = document.getElementById('brandsGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="grid-column:1/-1; color:hsl(var(--text-muted)); font-size:13px;">Загрузка...</div>';
+  await loadBrands();
+  const isSuper = (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'Superadmin');
+  grid.innerHTML = '';
+  brandsCache.forEach(b => {
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid hsl(var(--border-color)); border-radius:12px; padding:14px; display:flex; flex-direction:column; align-items:center; gap:8px; background:rgba(255,255,255,0.01);';
+    const iconImg = b.icon_url
+      ? `<img src="${iconVer(b.icon_url)}" style="width:56px; height:56px; object-fit:contain; border-radius:10px;">`
+      : `<div style="width:56px;height:56px;display:flex;align-items:center;justify-content:center;color:hsl(var(--text-muted));font-size:11px;">нет</div>`;
+    const badge = b.is_preset
+      ? `<span style="font-size:10px; color:hsl(var(--text-muted));">стандартный</span>`
+      : `<span style="font-size:10px; color:hsl(var(--accent-cyan));">свой</span>`;
+    const controls = isSuper ? `
+      <div style="display:flex; gap:6px; margin-top:4px;">
+        <button onclick="changeBrandIcon(${b.id})" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--accent-amber));padding:3px 8px;font-size:11px;border-radius:6px;cursor:pointer;">Иконка</button>
+        <button onclick="renameBrandItem(${b.id}, '${encodeURIComponent(b.name)}')" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--text-secondary));padding:3px 8px;font-size:11px;border-radius:6px;cursor:pointer;">Имя</button>
+        <button onclick="deleteBrandItem(${b.id})" style="background:none;border:1px solid hsl(var(--border-color));color:hsl(var(--accent-red));padding:3px 8px;font-size:11px;border-radius:6px;cursor:pointer;">Удалить</button>
+      </div>` : '';
+    card.innerHTML = `
+      ${iconImg}
+      <div style="font-size:12px; color:hsl(var(--text-primary)); text-align:center;">${escapeHtml(b.name)}</div>
+      ${badge}
+      ${controls}
+    `;
+    grid.appendChild(card);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+window.changeBrandIcon = (id) => {
+  if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+  window.openMediaPicker(async (url) => {
+    try {
+      const res = await fetch(`/api/brands?id=${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ icon_url: url })
+      });
+      if (res.ok) { showToast('Иконка обновлена', 'success'); loadBrandsGrid(); }
+      else showToast('Ошибка сохранения', 'error');
+    } catch (e) { showToast('Ошибка сети', 'error'); }
+  }, 'tools');
+};
+
+window.renameBrandItem = async (id, nameEnc) => {
+  const current = decodeURIComponent(nameEnc);
+  const name = prompt('Новое название бренда:', current);
+  if (name == null || !name.trim() || name.trim() === current) return;
+  try {
+    const res = await fetch(`/api/brands?id=${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) { showToast('Бренд переименован', 'success'); loadBrandsGrid(); }
+    else showToast(d.message || 'Ошибка сохранения', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+window.deleteBrandItem = async (id) => {
+  if (!await confirmDialog('Удалить этот бренд из реестра? Уже сохранённые записи с этим брендом не пострадают, но потеряют иконку.', { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/brands?id=${id}`, { method: 'DELETE' });
+    if (res.ok) { showToast('Бренд удалён', 'success'); loadBrandsGrid(); }
+    else showToast('Ошибка удаления', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
 async function loadMedia(filter = '') {
   const grid = document.getElementById('mediaGrid');
   const categorySelect = document.getElementById('mediaCategorySelect');
@@ -3059,6 +3185,141 @@ async function loadCategoryIconMap() {
   } catch (e) { /* иконки не критичны */ }
 }
 
+// === Бренды инструмента: реестр с иконками (пикер в формах инструмента/модели) ===
+let brandsCache = [];
+async function loadBrands() {
+  try {
+    const res = await fetch('/api/brands');
+    if (!res.ok) return;
+    const data = await res.json();
+    brandsCache = data.brands || [];
+  } catch (e) { /* бренды не критичны */ }
+}
+function findBrandByName(name) {
+  if (!name) return null;
+  const n = String(name).trim().toLowerCase();
+  return brandsCache.find(b => b.name.toLowerCase() === n) || null;
+}
+
+// Синхронизирует видимый триггер (иконка+текст) со скрытым инпутом бренда.
+// prefix: 'cm' (каталог моделей) или 'tool' (инструмент).
+window.setBrandDisplay = (prefix, name) => {
+  const hidden = document.getElementById(prefix + 'Brand');
+  const iconEl = document.getElementById(prefix + 'BrandIcon');
+  const textEl = document.getElementById(prefix + 'BrandText');
+  if (!hidden || !iconEl || !textEl) return;
+  hidden.value = name || '';
+  if (!name) {
+    iconEl.style.display = 'none';
+    textEl.textContent = 'Выбрать бренд…';
+    textEl.classList.add('brand-picker-placeholder');
+    return;
+  }
+  const brand = findBrandByName(name);
+  textEl.textContent = name;
+  textEl.classList.remove('brand-picker-placeholder');
+  if (brand && brand.icon_url) {
+    iconEl.src = iconVer(brand.icon_url);
+    iconEl.style.display = '';
+  } else {
+    iconEl.style.display = 'none';
+  }
+};
+
+// Открывает выпадающий список брендов (иконка+имя, фильтр по вводу) рядом
+// с элементом-триггером. onSelect(name) вызывается при выборе/добавлении.
+window.openBrandPicker = async (ev, currentValue, onSelect) => {
+  document.querySelectorAll('.brand-picker-dropdown').forEach(el => el.remove());
+  if (Object.keys(brandsCache).length === 0 || brandsCache.length === 0) await loadBrands();
+
+  const trigger = ev.currentTarget;
+  const rect = trigger.getBoundingClientRect();
+  const dropdown = document.createElement('div');
+  dropdown.className = 'brand-picker-dropdown';
+  dropdown.style.left = Math.round(rect.left) + 'px';
+  dropdown.style.top = Math.round(rect.bottom + 4) + 'px';
+  dropdown.innerHTML = `
+    <div class="brand-picker-search">
+      <input type="text" class="form-control" id="brandPickerSearch" placeholder="Поиск бренда…" style="padding:8px 10px;">
+    </div>
+    <div class="brand-picker-list" id="brandPickerList"></div>
+    <div class="brand-picker-add">
+      <input type="text" class="form-control" id="brandPickerNewName" placeholder="Свой бренд…" style="padding:8px 10px;">
+      <button type="button" class="btn btn-secondary" id="brandPickerNewIconBtn" style="padding:8px 10px;"><i data-lucide="image-plus"></i></button>
+      <button type="button" class="btn" id="brandPickerNewAddBtn" style="padding:8px 10px;"><i data-lucide="plus"></i></button>
+    </div>
+  `;
+  document.body.appendChild(dropdown);
+  if (window.lucide) lucide.createIcons();
+
+  let newIconUrl = null;
+
+  function renderList(query = '') {
+    const list = dropdown.querySelector('#brandPickerList');
+    const q = query.trim().toLowerCase();
+    const items = q ? brandsCache.filter(b => b.name.toLowerCase().includes(q)) : brandsCache;
+    if (!items.length) {
+      list.innerHTML = '<div style="padding:10px;color:hsl(var(--text-muted));font-size:13px;">Ничего не найдено</div>';
+      return;
+    }
+    list.innerHTML = items.map(b => `
+      <div class="brand-picker-item" data-name="${escapeHtml(b.name)}">
+        ${b.icon_url ? `<img src="${iconVer(b.icon_url)}">` : '<i data-lucide="wrench" style="width:18px;height:18px;color:hsl(var(--text-muted));"></i>'}
+        <span>${escapeHtml(b.name)}</span>
+      </div>
+    `).join('');
+    if (window.lucide) lucide.createIcons();
+    list.querySelectorAll('.brand-picker-item').forEach(item => {
+      item.addEventListener('click', () => {
+        onSelect(item.getAttribute('data-name'));
+        closeDropdown();
+      });
+    });
+  }
+
+  function closeDropdown() {
+    document.removeEventListener('mousedown', onOutsideClick, true);
+    dropdown.remove();
+  }
+  function onOutsideClick(e) {
+    if (!dropdown.contains(e.target) && e.target !== trigger && !trigger.contains(e.target)) closeDropdown();
+  }
+  setTimeout(() => document.addEventListener('mousedown', onOutsideClick, true), 0);
+
+  dropdown.querySelector('#brandPickerSearch').addEventListener('input', (e) => renderList(e.target.value));
+  dropdown.querySelector('#brandPickerNewIconBtn').addEventListener('click', () => {
+    if (!window.openMediaPicker) { showToast('Пикер недоступен', 'error'); return; }
+    window.openMediaPicker((url) => {
+      newIconUrl = url;
+      const btn = dropdown.querySelector('#brandPickerNewIconBtn');
+      btn.innerHTML = `<img src="${iconVer(url)}" style="width:16px;height:16px;object-fit:contain;">`;
+    }, 'tools');
+  });
+  dropdown.querySelector('#brandPickerNewAddBtn').addEventListener('click', async () => {
+    const nameInput = dropdown.querySelector('#brandPickerNewName');
+    const name = nameInput.value.trim();
+    if (!name) { showToast('Введите название бренда', 'error'); return; }
+    try {
+      const res = await fetch('/api/brands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, icon_url: newIconUrl })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.success) {
+        await loadBrands();
+        onSelect(name);
+        closeDropdown();
+        showToast('Бренд добавлен', 'success');
+      } else {
+        showToast(d.message || 'Не удалось добавить бренд', 'error');
+      }
+    } catch (e) { showToast('Ошибка сети', 'error'); }
+  });
+
+  renderList();
+};
+
 async function loadTools() {
   try {
     // Иконки категорий грузим параллельно (один раз кэшируем результат).
@@ -3275,7 +3536,7 @@ window.pickCatalogModel = (idx) => {
   const m = catalogFlat[idx];
   if (!m) return;
   document.getElementById('toolName').value = m.name;
-  document.getElementById('toolBrand').value = m.brand;
+  setBrandDisplay('tool', m.brand);
   document.getElementById('toolModel').value = m.model;
   populateCategorySelect(m.category);
   setToolPhotoPreview(m.image);
@@ -3313,9 +3574,11 @@ async function loadCatalogModels() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка…</td></tr>';
   try {
+    const iconsPromise = Object.keys(categoryIconMap).length ? Promise.resolve() : loadCategoryIconMap();
     const [mRes, cRes] = await Promise.all([
       fetch('/api/catalog-models'),
-      fetch('/api/crud/tool-categories')
+      fetch('/api/crud/tool-categories'),
+      iconsPromise
     ]);
     if (!mRes.ok) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     catalogModelsCache = (await mRes.json()).models || [];
@@ -3388,7 +3651,12 @@ function renderCatalogModelsTable() {
     return;
   }
   list.forEach(m => {
-    const img = m.image_url ? `<img src="${iconVer(m.image_url)}" style="width:34px;height:28px;object-fit:contain;flex-shrink:0;vertical-align:middle;margin-right:8px;">` : '';
+    const catIcon = m.category ? categoryIconMap[m.category] : null;
+    const img = m.image_url
+      ? `<img src="${iconVer(m.image_url)}" style="width:34px;height:28px;object-fit:contain;flex-shrink:0;vertical-align:middle;margin-right:8px;">`
+      : (catIcon
+        ? `<img src="${catIcon}" style="width:34px;height:28px;object-fit:contain;flex-shrink:0;vertical-align:middle;margin-right:8px;" title="${escapeHtml(m.category)}">`
+        : `<div style="width:34px;height:28px;border-radius:6px;background:hsl(var(--bg-main));border:1px solid hsl(var(--border-color));display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;vertical-align:middle;margin-right:8px;"><i data-lucide="wrench" style="width:14px;height:14px;color:hsl(var(--text-muted));"></i></div>`);
     // В режиме «Все» показываем категорию подписью под моделью.
     const catLine = !catalogSelectedCat ? `<div style="font-size:11px;color:hsl(var(--text-muted));margin-top:2px;">${escapeHtml(m.category)}</div>` : '';
     const tr = document.createElement('tr');
@@ -3476,7 +3744,7 @@ function collectCatalogModelFields(category) {
 }
 
 window.openCatalogModelModal = async (model = null) => {
-  await Promise.all([loadToolCategories(), ensureCatalogSchema()]);
+  await Promise.all([loadToolCategories(), ensureCatalogSchema(), loadBrands()]);
   const sel = document.getElementById('cmCategory');
   const names = (toolCategories || []).map(c => c.name);
   const cur = model ? model.category : '';
@@ -3488,7 +3756,7 @@ window.openCatalogModelModal = async (model = null) => {
   document.getElementById('cmId').value = model ? model.id : '';
   sel.value = cur;
   document.getElementById('cmLine').value = model ? (model.line || '') : '';
-  document.getElementById('cmBrand').value = model ? model.brand : '';
+  setBrandDisplay('cm', model ? model.brand : '');
   document.getElementById('cmModel').value = model ? model.model : '';
   document.getElementById('cmName').value = model ? (model.name || '') : '';
   // Значения характеристик: колонки модели + её specs.
@@ -3932,13 +4200,14 @@ function setupTools() {
   });
 }
 
-function openToolModal(tool = null) {
+async function openToolModal(tool = null) {
+  if (!brandsCache.length) await loadBrands();
   const modal = document.getElementById('toolModalOverlay');
   document.getElementById('toolModalTitle').textContent = tool ? 'Редактировать инструмент' : 'Добавить инструмент';
   document.getElementById('toolId').value = tool ? tool.id : '';
   document.getElementById('toolName').value = tool ? tool.name : '';
   populateCategorySelect(tool ? (tool.category || '') : '');
-  document.getElementById('toolBrand').value = tool ? (tool.brand || '') : '';
+  setBrandDisplay('tool', tool ? (tool.brand || '') : '');
   document.getElementById('toolModel').value = tool ? (tool.model || '') : '';
   document.getElementById('toolSerial').value = tool ? (tool.serial_number || '') : '';
   document.getElementById('toolInventory').value = tool ? (tool.inventory_number || '') : genInventoryNumber();

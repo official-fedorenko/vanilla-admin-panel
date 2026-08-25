@@ -345,6 +345,7 @@
           <div class="page-header-actions">
             <input type="text" id="catalogModelsSearch" class="form-control" placeholder="Поиск по бренду/модели…" style="width:220px;">
             <button class="btn btn-secondary" onclick="openCategoriesManager()"><i data-lucide="tags"></i> Категории</button>
+            <button class="btn btn-secondary" onclick="openBrandsModal()"><i data-lucide="award"></i> Бренды</button>
             <button class="btn" onclick="openCatalogModelModal()"><i data-lucide="plus"></i> Добавить модель</button>
           </div>
         </div>
@@ -847,8 +848,12 @@
               <input type="text" id="cmLine" class="form-control" placeholder="Professional / XR">
             </div>
             <div class="form-group">
-              <label for="cmBrand">Бренд<span class="required-mark">*</span></label>
-              <input type="text" id="cmBrand" class="form-control" placeholder="Bosch" required>
+              <label>Бренд<span class="required-mark">*</span></label>
+              <div id="cmBrandDisplay" class="form-control brand-picker-trigger" onclick="openBrandPicker(event, document.getElementById('cmBrand').value, (name) => setBrandDisplay('cm', name))">
+                <img id="cmBrandIcon" src="" style="display:none;">
+                <span id="cmBrandText" class="brand-picker-placeholder">Выбрать бренд…</span>
+              </div>
+              <input type="hidden" id="cmBrand" required>
             </div>
             <div class="form-group">
               <label for="cmModel">Модель<span class="required-mark">*</span></label>
@@ -943,6 +948,30 @@
       <div class="modal-body">
         <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Стандартные иконки инструментов по категориям. Их можно заменить на файл из медиатеки.</p>
         <div id="categoryIconsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BRANDS MODAL -->
+  <div class="modal-overlay" id="brandsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Бренды</h3>
+        <button class="modal-close" id="closeBrandsModalBtn" onclick="closeBrandsModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px;">Реестр брендов инструмента с иконками — используется при выборе бренда в форме инструмента/модели каталога.</p>
+        <div style="display:flex; gap:8px; margin-bottom:16px;">
+          <input type="text" id="newBrandName" class="form-control" placeholder="Название нового бренда" style="flex:1;">
+          <button type="button" class="btn btn-secondary" onclick="pickNewBrandIcon()">
+            <img id="newBrandIconPreview" src="" style="width:18px;height:18px;object-fit:contain;display:none;vertical-align:middle;margin-right:4px;">
+            <span id="newBrandIconLabel">Иконка</span>
+          </button>
+          <button type="button" class="btn" onclick="submitNewBrand()">
+            <i data-lucide="plus"></i><span>Добавить</span>
+          </button>
+        </div>
+        <div id="brandsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;"></div>
       </div>
     </div>
   </div>
@@ -1137,8 +1166,12 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="toolBrand">Бренд</label>
-              <input type="text" id="toolBrand" class="form-control" placeholder="Bosch">
+              <label>Бренд</label>
+              <div id="toolBrandDisplay" class="form-control brand-picker-trigger" onclick="openBrandPicker(event, document.getElementById('toolBrand').value, (name) => setBrandDisplay('tool', name))">
+                <img id="toolBrandIcon" src="" style="display:none;">
+                <span id="toolBrandText" class="brand-picker-placeholder">Выбрать бренд…</span>
+              </div>
+              <input type="hidden" id="toolBrand">
             </div>
             <div class="form-group">
               <label for="toolModel">Модель</label>

@@ -73,6 +73,13 @@ function logAction(user, action) {
   });
 }
 
+// Разрешаем только внутренние пути (загруженные файлы, каталожные иконки,
+// стандартные аватары) — чтобы нельзя было подсунуть внешний URL.
+function isInternalPath(url) {
+  const s = String(url || '');
+  return /^\/(uploads|catalog|avatars)\//.test(s);
+}
+
 /**
  * Base64 file upload handler.
  * UPLOADS_DIR is passed in so the route doesn't need to know project layout.
@@ -133,5 +140,6 @@ module.exports = {
   sendJson,
   logAction,
   handleBase64Upload,
-  parsePagination
+  parsePagination,
+  isInternalPath
 };
