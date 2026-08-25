@@ -2361,6 +2361,11 @@
             .concat(['<option value="Другое">Другое</option>'])
             .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
+        } else if (f.type === 'select') {
+          const opts = ['<option value="">Выберите</option>']
+            .concat((f.options || []).map(o => `<option value="${escapeHtmlC(o)}">${escapeHtmlC(o)}</option>`))
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
           wrap.innerHTML = label + `<div style="display:flex; align-items:center; gap:12px;">
