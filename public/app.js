@@ -1217,11 +1217,23 @@ async function loadRequests() {
 let requestsRenderCache = [];
 let requestsTypesCacheForRender = {};
 
-// Поля-колонки для описания заявки конкретного типа (без фото и без
-// поля-обоснования — те остаются в отдельной ячейке/кнопке).
+// Второстепенные поля заявки — не показываются отдельной колонкой в
+// таблице, а вынесены в модалку «Больше информации» по кнопке в строке.
+const REQUEST_SECONDARY_FIELDS = new Set(['category', 'brand', 'model', 'serial_number', 'inventory_number']);
+
+// Поля-колонки для описания заявки конкретного типа (без фото, без
+// поля-обоснования и без второстепенных полей — те остаются в отдельных
+// ячейках/кнопках).
 function requestColumnFields(def) {
   if (!def) return [];
-  return (def.fields || []).filter(f => f.type !== 'photo' && f.type !== 'textarea');
+  return (def.fields || []).filter(f => f.type !== 'photo' && f.type !== 'textarea'
+    && !REQUEST_SECONDARY_FIELDS.has(f.name));
+}
+
+// Второстепенные поля конкретного типа заявки (для модалки «Больше информации»).
+function requestSecondaryFields(def) {
+  if (!def) return [];
+  return (def.fields || []).filter(f => REQUEST_SECONDARY_FIELDS.has(f.name));
 }
 
 // Объединённый список полей-колонок по всем типам заявок, встретившимся в
@@ -1277,6 +1289,11 @@ function renderRequests(list, types) {
     const justBtn = just.text
       ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
       : `<button class="req-action req-action--red" disabled title="Обоснование не указано">Обоснование</button>`;
+    const hasSecondary = requestSecondaryFields(types[r.type])
+      .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
+    const moreBtn = hasSecondary
+      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Больше информации</button>`
+      : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
          <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
@@ -1310,12 +1327,19 @@ function renderRequests(list, types) {
       ${descCells}
       <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
-      <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${justBtn}${decide}</div></td>`;
+      <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${moreBtn}${justBtn}${decide}</div></td>`;
     tbody.appendChild(tr);
   });
 }
 
 // Модалка обоснования заявки
+window.openRequestMoreInfo = function (id) {
+  const r = requestsRenderCache.find(x => x.id === id);
+  if (!r) return;
+  const def = requestsTypesCacheForRender[r.type];
+  const rows = requestSecondaryFields(def).map(f => [f.label, r.payload[f.name]]);
+  showRowDetail('Больше информации', rows);
+};
 window.openJustification = function (id) {
   const r = requestsRenderCache.find(x => x.id === id);
   if (!r) return;
