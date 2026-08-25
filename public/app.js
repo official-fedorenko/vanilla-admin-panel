@@ -1251,7 +1251,7 @@ function renderRequests(list, types) {
     const hasExtra = requestExtraFields(types[r.type])
       .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
     const moreBtn = hasExtra
-      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Больше информации</button>`
+      ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Подробнее</button>`
       : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
