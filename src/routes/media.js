@@ -126,16 +126,22 @@ module.exports = async function handleMedia(req, res, user, parsedUrl, method, {
       if (files.length === 0) return sendJson(res, 400, { message: 'Файлы не найдены' });
 
       const stmt = db.prepare("INSERT INTO media (filename, file_path, file_size, mime_type, category, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)");
+      let writeError = null;
       db.serialize(() => {
         files.forEach(f => {
-          stmt.run(f.filename, f.fileUrl, f.fileSize, f.mimeType, category, user.id);
+          stmt.run(f.filename, f.fileUrl, f.fileSize, f.mimeType, category, user.id,
+            (e) => { if (e && !writeError) writeError = e; });
         });
-        stmt.finalize();
+        // Как и в settings: ответ уходит только после finalize(), иначе клиент
+        // успевал перезапросить медиатеку до того, как записи появились в БД.
+        stmt.finalize((e) => {
+          if (writeError || e) return sendJson(res, 500, { message: 'Ошибка сохранения' });
 
-        sendJson(res, 201, {
-          success: true,
-          count: files.length,
-          urls: files.map(f => f.fileUrl)
+          sendJson(res, 201, {
+            success: true,
+            count: files.length,
+            urls: files.map(f => f.fileUrl)
+          });
         });
       });
     } catch (err) {

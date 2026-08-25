@@ -13,15 +13,21 @@ module.exports = async function handleSettings(req, res, user, parsedUrl, method
     try {
       const settings = await getJsonBody(req);
       const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+      let writeError = null;
       db.serialize(() => {
         for (const [key, value] of Object.entries(settings)) {
-          stmt.run(key, value);
+          stmt.run(key, value, (err) => { if (err && !writeError) writeError = err; });
         }
-        stmt.finalize();
-        if (typeof reloadSettingsCache === 'function') {
-          reloadSettingsCache();
-        }
-        sendJson(res, 200, { success: true });
+        // Отвечаем только из колбэка finalize(): stmt.run() асинхронный, и без
+        // этого 200 уходил клиенту раньше, чем настройки реально попадали в БД
+        // (следующий же GET мог вернуть старые значения).
+        stmt.finalize((err) => {
+          if (writeError || err) return sendJson(res, 500, { message: 'Ошибка сохранения' });
+          if (typeof reloadSettingsCache === 'function') {
+            reloadSettingsCache();
+          }
+          sendJson(res, 200, { success: true });
+        });
       });
     } catch (e) {
       sendJson(res, 500, { message: 'Ошибка сохранения' });
