@@ -1006,6 +1006,7 @@ db.serialize(() => {
   stmt.run("vehicle_inspection_soon_days", "30", "За сколько дней до окончания ТО показывать напоминание");
   stmt.run("vehicle_insurance_soon_days", "30", "За сколько дней до окончания страховки показывать напоминание");
   stmt.run("apartment_rent_soon_days", "30", "За сколько дней до окончания аренды показывать напоминание");
+  stmt.run("construction_site_deadline_soon_days", "30", "За сколько дней до дедлайна объекта показывать напоминание");
   stmt.finalize();
 
   // Заполняем тестовые статьи

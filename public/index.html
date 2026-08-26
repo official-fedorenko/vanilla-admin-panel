@@ -66,6 +66,7 @@
         <li class="nav-item" data-section="constructionsites">
           <a href="#constructionsites" title="Строительные объекты">
             <i data-lucide="hard-hat"></i>
+            <span id="constructionSitesExpiryBadge" class="nav-badge" style="display:none;">0</span>
             <span>Строительные объекты</span>
           </a>
         </li>
@@ -346,6 +347,7 @@
           </div>
           <div class="page-header-actions">
             <button class="btn btn-secondary" onclick="exportCSV('construction-sites')">Экспорт CSV</button>
+            <button class="btn btn-secondary" id="openConstructionSiteSettingsBtn"><i data-lucide="settings"></i> Настройки</button>
             <button class="btn" id="addConstructionSiteBtn">
               <i data-lucide="plus"></i>
               <span>Добавить объект</span>
@@ -2172,6 +2174,27 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="cancelReturnConstructionSiteModalBtn">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONSTRUCTION SITE SETTINGS (порог напоминания о дедлайне) MODAL DIALOG -->
+  <div class="modal-overlay" id="constructionSiteSettingsModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Настройки строительных объектов</h3>
+        <button class="modal-close" id="closeConstructionSiteSettingsBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="constructionSiteDeadlineSoonDaysInput">Уведомлять о дедлайне объекта за ** дней</label>
+          <input type="number" id="constructionSiteDeadlineSoonDaysInput" class="form-control" min="0" placeholder="30">
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">0 — выключить напоминание.</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelConstructionSiteSettingsBtn">Отмена</button>
+        <button type="button" class="btn" id="saveConstructionSiteSettingsBtn">Сохранить</button>
       </div>
     </div>
   </div>
