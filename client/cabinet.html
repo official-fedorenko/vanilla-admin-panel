@@ -2308,6 +2308,7 @@
     }
 
     function renderTwoFactorUI() {
+      const card = document.getElementById('twoFactorCard');
       const statusBox = document.getElementById('twoFactorStatusBox');
       const enableStep = document.getElementById('twoFactorEnableStep');
       const setupStep = document.getElementById('twoFactorSetupStep');
@@ -2315,16 +2316,21 @@
 
       setupStep.style.display = 'none';
 
+      // Если 2FA отключена админом на уровне сайта и у пользователя она сама
+      // не включена — секцию прячем целиком, а не показываем сообщение.
+      // Если у пользователя она уже была включена (напр. до отключения
+      // настройки), секцию оставляем видимой, чтобы он мог её выключить.
+      if (!twoFactorSiteEnabled && !twoFactorEnabled) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = '';
+
       if (twoFactorEnabled) {
         statusBox.textContent = 'Включена — при входе будет запрашиваться код из приложения-аутентификатора.';
         statusBox.style.color = 'var(--green)';
         enableStep.style.display = 'none';
         disableStep.style.display = 'block';
-      } else if (!twoFactorSiteEnabled) {
-        statusBox.textContent = 'Двухфакторная аутентификация отключена администратором.';
-        statusBox.style.color = 'var(--text-secondary)';
-        enableStep.style.display = 'none';
-        disableStep.style.display = 'none';
       } else {
         statusBox.textContent = 'Отключена.';
         statusBox.style.color = 'var(--text-secondary)';
