@@ -6793,7 +6793,7 @@ function renderConstructionSites(filterQuery = '') {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Объекты не найдены</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Объекты не найдены</td></tr>`;
     return;
   }
 
@@ -6823,6 +6823,7 @@ function renderConstructionSites(filterQuery = '') {
       </td>
       <td class="mobile-hidden">${escapeHtml(s.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(s.customer || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(s.foreman_name || '—')}</td>
       <td>${statusBadge}</td>
       <td class="mobile-hidden">${crewHtml}</td>
       <td class="no-label" style="text-align: right;">
@@ -6840,7 +6841,7 @@ function renderConstructionSites(filterQuery = '') {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function openConstructionSiteModal(site = null) {
+async function openConstructionSiteModal(site = null) {
   document.getElementById('constructionSiteModalTitle').textContent = site ? 'Изменить объект' : 'Добавить объект';
   document.getElementById('constructionSiteId').value = site ? site.id : '';
   document.getElementById('constructionSiteName').value = site ? site.name : '';
@@ -6852,7 +6853,24 @@ function openConstructionSiteModal(site = null) {
   document.getElementById('constructionSiteBudget').value = site ? (site.budget ?? '') : '';
   document.getElementById('constructionSiteNotes').value = site ? (site.notes || '') : '';
   populateConstructionSiteCategorySelect(site ? (site.category || '') : '');
+  await populateConstructionSiteForemanSelect(site ? site.foreman_id : null);
   document.getElementById('constructionSiteModalOverlay').classList.add('active');
+}
+
+async function populateConstructionSiteForemanSelect(selectedId) {
+  const select = document.getElementById('constructionSiteForeman');
+  if (!select) return;
+  select.innerHTML = '<option value="">Загрузка...</option>';
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired');
+    select.innerHTML = '<option value="">— не назначен —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+    select.value = selectedId || '';
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
 }
 
 window.editConstructionSite = (id) => {
@@ -7026,6 +7044,7 @@ async function openConstructionSiteDetail(id) {
     ['Адрес', site.address || '—'],
     ['Тип', site.category || '—'],
     ['Заказчик', site.customer || '—'],
+    ['Бригадир', site.foreman_name || '—'],
     ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
     ['Дата начала', site.start_date || '—'],
     ['Дата окончания', site.end_date || '—'],
@@ -7075,6 +7094,7 @@ function setupConstructionSites() {
         category: document.getElementById('constructionSiteCategory').value,
         address: document.getElementById('constructionSiteAddress').value,
         customer: document.getElementById('constructionSiteCustomer').value,
+        foreman_id: document.getElementById('constructionSiteForeman').value,
         status: document.getElementById('constructionSiteStatus').value,
         start_date: document.getElementById('constructionSiteStartDate').value,
         end_date: document.getElementById('constructionSiteEndDate').value,
