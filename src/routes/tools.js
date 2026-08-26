@@ -111,16 +111,20 @@ function extractToolFields(body) {
 async function handleCrud(req, res, user, parsedUrl, method) {
   if (method === 'GET') {
     const { limit, offset } = parsePagination(parsedUrl);
-    // Текущий держатель = открытое закрепление (returned_at IS NULL)
+    // Инструмент можно закрепить за несколькими сотрудниками одновременно —
+    // агрегируем все активные (returned_at IS NULL) закрепления в один список
+    // «occupants» ('assignment_id|employee_id|issued_at|Фамилия Имя', разделитель ';;').
     const sql = `
       SELECT t.*,
-        a.employee_id AS current_employee_id,
-        a.issued_at   AS current_issued_at,
-        CASE WHEN e.id IS NOT NULL
-             THEN e.last_name || ' ' || e.first_name END AS current_holder
+        GROUP_CONCAT(
+          a.id || '|' || a.employee_id || '|' || a.issued_at || '|' ||
+          replace(replace(e.last_name || ' ' || e.first_name, '|', ''), ';;', ''),
+          ';;'
+        ) AS occupants
       FROM tools t
       LEFT JOIN tool_assignments a ON a.tool_id = t.id AND a.returned_at IS NULL
       LEFT JOIN employees e ON e.id = a.employee_id
+      GROUP BY t.id
       ORDER BY t.name COLLATE NOCASE
       LIMIT ? OFFSET ?`;
     db.all(sql, [limit, offset], (err, rows) => {
@@ -215,7 +219,22 @@ async function handleCrud(req, res, user, parsedUrl, method) {
   return sendJson(res, 405, { success: false, message: 'Метод не поддерживается' });
 }
 
+// Статус инструмента пересчитывается по числу оставшихся активных закреплений:
+// есть хоть одно — 'assigned', ни одного — 'available' ('written_off' не трогаем).
+function recomputeToolStatus(toolId, cb) {
+  db.get(
+    "SELECT COUNT(*) AS c FROM tool_assignments WHERE tool_id = ? AND returned_at IS NULL",
+    [toolId],
+    (err, row) => {
+      const newStatus = row && row.c > 0 ? 'assigned' : 'available';
+      db.run("UPDATE tools SET status = ? WHERE id = ? AND status != 'written_off'", [newStatus, toolId], () => cb && cb());
+    }
+  );
+}
+
 // ---- Выдать инструмент (/api/tools/issue) ----
+// Инструмент можно выдать нескольким сотрудникам одновременно — блокируем
+// только повторную выдачу одному и тому же сотруднику.
 async function handleIssue(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
@@ -232,97 +251,115 @@ async function handleIssue(req, res, user) {
       if (tool.status === 'written_off') {
         return sendJson(res, 400, { success: false, message: 'Инструмент списан — выдать нельзя' });
       }
-      // Проверяем, что инструмент не на руках (нет открытого закрепления)
-      db.get("SELECT id FROM tool_assignments WHERE tool_id = ? AND returned_at IS NULL", [toolId], (err2, open) => {
-        if (open) return sendJson(res, 409, { success: false, message: 'Инструмент уже выдан — сначала верните его' });
+      db.get(
+        "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
+        [toolId, employeeId],
+        (err2, already) => {
+          if (already) return sendJson(res, 409, { success: false, message: 'Этому сотруднику инструмент уже выдан' });
 
-        db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (err3, emp) => {
-          if (err3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+          db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (err3, emp) => {
+            if (err3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
 
-          db.run(
-            "INSERT INTO tool_assignments (tool_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
-            [toolId, employeeId, user.username, notes],
-            function (err4) {
-              if (err4) return sendJson(res, 500, { success: false, message: 'Ошибка выдачи' });
-              db.run("UPDATE tools SET status = 'assigned' WHERE id = ?", [toolId]);
-              logAction(user.username, `Выдан инструмент «${tool.name}» → ${emp.last_name} ${emp.first_name}`);
-              sendJson(res, 201, { success: true, id: this.lastID });
-            }
-          );
-        });
-      });
+            db.run(
+              "INSERT INTO tool_assignments (tool_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
+              [toolId, employeeId, user.username, notes],
+              function (err4) {
+                if (err4) return sendJson(res, 500, { success: false, message: 'Ошибка выдачи' });
+                const insertedId = this.lastID;
+                recomputeToolStatus(toolId, () => {
+                  logAction(user.username, `Выдан инструмент «${tool.name}» → ${emp.last_name} ${emp.first_name}`);
+                  sendJson(res, 201, { success: true, id: insertedId });
+                });
+              }
+            );
+          });
+        }
+      );
     });
   } catch (e) {
     sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
   }
 }
 
-// ---- Вернуть инструмент (/api/tools/return) ----
+// ---- Вернуть инструмент от конкретного сотрудника (/api/tools/return) ----
 async function handleReturn(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
     const body = await getJsonBody(req);
     const toolId = parseInt(body.tool_id, 10);
-    if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан инструмент' });
+    const employeeId = parseInt(body.employee_id, 10);
+    if (!toolId || !employeeId) return sendJson(res, 400, { success: false, message: 'Нужно указать инструмент и сотрудника' });
 
-    db.get("SELECT id FROM tool_assignments WHERE tool_id = ? AND returned_at IS NULL", [toolId], (err, open) => {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      if (!open) return sendJson(res, 400, { success: false, message: 'Инструмент и так на складе' });
+    db.get(
+      "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
+      [toolId, employeeId],
+      (err, open) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!open) return sendJson(res, 400, { success: false, message: 'У этого сотрудника нет данного инструмента' });
 
-      db.run("UPDATE tool_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], function (err2) {
-        if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка возврата' });
-        db.run("UPDATE tools SET status = 'available' WHERE id = ?", [toolId]);
-        logAction(user.username, `Возвращён инструмент id=${toolId}`);
-        sendJson(res, 200, { success: true });
-      });
-    });
+        db.run("UPDATE tool_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], function (err2) {
+          if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка возврата' });
+          recomputeToolStatus(toolId, () => {
+            logAction(user.username, `Возвращён инструмент id=${toolId} от сотрудника id=${employeeId}`);
+            sendJson(res, 200, { success: true });
+          });
+        });
+      }
+    );
   } catch (e) {
     sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
   }
 }
 
-// ---- Передать инструмент другому сотруднику (/api/tools/transfer) ----
-// Атомарно: закрывает текущее закрепление и открывает новое, минуя склад.
+// ---- Заменить одного держателя другим (/api/tools/transfer) ----
+// from_employee_id — у кого забираем, employee_id — кому выдаём взамен.
 async function handleTransfer(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
     const body = await getJsonBody(req);
     const toolId = parseInt(body.tool_id, 10);
+    const fromEmployeeId = parseInt(body.from_employee_id, 10);
     const employeeId = parseInt(body.employee_id, 10);
-    if (!toolId || !employeeId) {
-      return sendJson(res, 400, { success: false, message: 'Нужно указать инструмент и сотрудника' });
+    if (!toolId || !fromEmployeeId || !employeeId) {
+      return sendJson(res, 400, { success: false, message: 'Нужно указать инструмент, текущего и нового сотрудника' });
+    }
+    if (fromEmployeeId === employeeId) {
+      return sendJson(res, 400, { success: false, message: 'Нельзя передать инструмент тому же сотруднику' });
     }
     const notes = (body.notes || '').toString().trim().slice(0, 300) || null;
 
     db.get("SELECT id, name FROM tools WHERE id = ?", [toolId], (err, tool) => {
       if (err || !tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
 
-      db.get("SELECT id, employee_id FROM tool_assignments WHERE tool_id = ? AND returned_at IS NULL", [toolId], (e2, open) => {
-        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-        if (!open) return sendJson(res, 400, { success: false, message: 'Инструмент на складе — используйте выдачу' });
-        if (open.employee_id === employeeId) {
-          return sendJson(res, 400, { success: false, message: 'Инструмент уже закреплён за этим сотрудником' });
-        }
+      db.get(
+        "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
+        [toolId, fromEmployeeId],
+        (e2, open) => {
+          if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          if (!open) return sendJson(res, 400, { success: false, message: 'У этого сотрудника нет данного инструмента' });
 
-        db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (e3, emp) => {
-          if (e3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+          db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (e3, emp) => {
+            if (e3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
 
-          // Закрываем текущее закрепление и сразу открываем новое
-          db.run("UPDATE tool_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], (e4) => {
-            if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
-            db.run(
-              "INSERT INTO tool_assignments (tool_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
-              [toolId, employeeId, user.username, notes],
-              function (e5) {
-                if (e5) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
-                db.run("UPDATE tools SET status = 'assigned' WHERE id = ?", [toolId]);
-                logAction(user.username, `Передан инструмент «${tool.name}» → ${emp.last_name} ${emp.first_name}`);
-                sendJson(res, 200, { success: true, id: this.lastID });
-              }
-            );
+            // Закрываем текущее закрепление и сразу открываем новое
+            db.run("UPDATE tool_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], (e4) => {
+              if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
+              db.run(
+                "INSERT INTO tool_assignments (tool_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
+                [toolId, employeeId, user.username, notes],
+                function (e5) {
+                  if (e5) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
+                  const insertedId = this.lastID;
+                  recomputeToolStatus(toolId, () => {
+                    logAction(user.username, `Передан инструмент «${tool.name}» → ${emp.last_name} ${emp.first_name}`);
+                    sendJson(res, 200, { success: true, id: insertedId });
+                  });
+                }
+              );
+            });
           });
-        });
-      });
+        }
+      );
     });
   } catch (e) {
     sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
@@ -483,12 +520,16 @@ function handleDetails(req, res, user, parsedUrl) {
 
   const toolSql = `
     SELECT t.*,
-      a.issued_at AS current_issued_at,
-      CASE WHEN e.id IS NOT NULL THEN e.last_name || ' ' || e.first_name END AS current_holder
+      GROUP_CONCAT(
+        a.id || '|' || a.employee_id || '|' || a.issued_at || '|' ||
+        replace(replace(e.last_name || ' ' || e.first_name, '|', ''), ';;', ''),
+        ';;'
+      ) AS occupants
     FROM tools t
     LEFT JOIN tool_assignments a ON a.tool_id = t.id AND a.returned_at IS NULL
     LEFT JOIN employees e ON e.id = a.employee_id
-    WHERE t.id = ?`;
+    WHERE t.id = ?
+    GROUP BY t.id`;
 
   db.get(toolSql, [toolId], (err, tool) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });

@@ -3598,6 +3598,17 @@ async function loadTools() {
   }
 }
 
+// Разбирает агрегированное поле "occupants" ('assignmentId:employeeId:issuedAt:Имя', разделитель ';;')
+// в массив { assignmentId, employeeId, issuedAt, name }. Инструмент может быть
+// выдан нескольким сотрудникам одновременно, поэтому это всегда массив.
+function parseToolOccupants(t) {
+  if (!t.occupants) return [];
+  return t.occupants.split(';;').map(entry => {
+    const [assignmentId, employeeId, issuedAt, ...nameParts] = entry.split('|');
+    return { assignmentId: Number(assignmentId), employeeId: Number(employeeId), issuedAt, name: nameParts.join('|') };
+  }).filter(o => o.employeeId);
+}
+
 function renderTools(filterQuery = '') {
   const tbody = document.getElementById('toolsTableBody');
   if (!tbody) return;
@@ -3605,7 +3616,8 @@ function renderTools(filterQuery = '') {
 
   const q = filterQuery.toLowerCase();
   const filtered = toolsList.filter(t => {
-    const hay = `${t.name} ${t.category || ''} ${t.brand || ''} ${t.model || ''} ${t.serial_number || ''} ${t.inventory_number || ''} ${t.current_holder || ''}`.toLowerCase();
+    const occupantNames = parseToolOccupants(t).map(o => o.name).join(' ');
+    const hay = `${t.name} ${t.category || ''} ${t.brand || ''} ${t.model || ''} ${t.serial_number || ''} ${t.inventory_number || ''} ${occupantNames}`.toLowerCase();
     return hay.includes(q);
   });
 
@@ -3617,16 +3629,17 @@ function renderTools(filterQuery = '') {
   filtered.forEach(t => {
     const st = TOOL_STATUS[t.status] || TOOL_STATUS.available;
     const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
-    const holder = t.current_holder
-      ? `<strong>${escapeHtml(t.current_holder)}</strong>`
+    const occupants = parseToolOccupants(t);
+    const holder = occupants.length
+      ? `<strong>${escapeHtml(occupants.map(o => o.name).join(', '))}</strong>`
       : `<span style="color: hsl(var(--text-muted));">—</span>`;
 
-    // Кнопка выдать/вернуть в зависимости от того, на руках ли инструмент
-    const isHeld = !!t.current_employee_id;
     const canWriteOff = t.status === 'written_off';
-    const issueReturnBtn = isHeld
-      ? `<button class="action-btn" title="Вернуть / передать" onclick="openReturnModal(${t.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
-      : (canWriteOff ? '' : `<button class="action-btn" title="Выдать" onclick="openIssueModal(${t.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
+    const manageBtn = occupants.length
+      ? `<button class="action-btn" title="Держатели: вернуть / передать" onclick="openReturnModal(${t.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : '';
+    const issueBtn = canWriteOff ? '' : `<button class="action-btn" title="Выдать" onclick="openIssueModal(${t.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`;
+    const issueReturnBtn = manageBtn + issueBtn;
 
     const catIcon = t.category ? categoryIconMap[t.category] : null;
     const thumb = t.photo_url
@@ -4417,48 +4430,6 @@ function setupTools() {
   document.getElementById('closeReturnModalBtn').addEventListener('click', closeReturnModal);
   document.getElementById('cancelReturnModalBtn').addEventListener('click', closeReturnModal);
   returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
-
-  // «На склад» — обычный возврат
-  document.getElementById('returnToStockBtn').addEventListener('click', async () => {
-    await doReturnToStock(Number(returnModal.dataset.toolId));
-    closeReturnModal();
-  });
-
-  // «Передать другому» — показываем шаг выбора сотрудника
-  document.getElementById('goTransferBtn').addEventListener('click', () => {
-    document.getElementById('returnStep1').style.display = 'none';
-    document.getElementById('returnStep2').style.display = '';
-    document.getElementById('confirmTransferBtn').style.display = '';
-    renderTransferList('');
-    document.getElementById('transferSearch').focus();
-  });
-
-  const transferSearch = document.getElementById('transferSearch');
-  transferSearch.addEventListener('input', (e) => renderTransferList(e.target.value));
-  transferSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
-
-  document.getElementById('confirmTransferBtn').addEventListener('click', async () => {
-    const toolId = Number(returnModal.dataset.toolId);
-    const empId = document.getElementById('transferEmployeeId').value;
-    if (!empId) return showToast('Выберите сотрудника', 'error');
-    try {
-      const res = await fetch('/api/tools/transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tool_id: toolId, employee_id: Number(empId) })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        showToast('Инструмент передан', 'success');
-        closeReturnModal();
-        await loadTools();
-      } else {
-        showToast(data.message || 'Не удалось передать', 'error');
-      }
-    } catch (err) {
-      showToast('Ошибка сети', 'error');
-    }
-  });
 }
 
 async function openToolModal(tool = null) {
@@ -4597,8 +4568,9 @@ window.openIssueModal = async (toolId) => {
   try {
     const res = await fetch('/api/crud/employees');
     const employees = res.ok ? await res.json() : [];
-    // Уволенных не показываем — им инструмент не выдают
-    issueEmployeesList = employees.filter(e => e.status !== 'fired');
+    const occupantIds = new Set(parseToolOccupants(tool).map(o => o.employeeId));
+    // Уволенных и тех, у кого этот инструмент уже на руках, не показываем.
+    issueEmployeesList = employees.filter(e => e.status !== 'fired' && !occupantIds.has(e.id));
     renderIssueEmployeeList('');
     document.getElementById('issueEmployeeSearch').focus();
   } catch (err) {
@@ -4606,71 +4578,111 @@ window.openIssueModal = async (toolId) => {
   }
 };
 
-// === Возврат / передача инструмента ===
-let transferEmployeesList = [];
-
-function renderTransferList(filter = '') {
-  renderEmpList(
-    document.getElementById('transferEmployeeList'),
-    transferEmployeesList, filter,
-    document.getElementById('transferEmployeeId').value,
-    'selectTransferEmployee'
-  );
-}
-
-window.selectTransferEmployee = (id) => {
-  document.getElementById('transferEmployeeId').value = id;
-  renderTransferList(document.getElementById('transferSearch').value);
+// === Возврат / передача инструмента (несколько держателей одновременно) ===
+window.openReturnModal = (toolId) => {
+  const tool = toolsList.find(t => t.id === toolId);
+  if (!tool) return;
+  const modal = document.getElementById('returnModalOverlay');
+  modal.dataset.toolId = toolId;
+  document.getElementById('returnToolInfo').innerHTML = buildToolCard(tool);
+  renderToolOccupantsList(toolId);
+  modal.classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 };
 
-async function doReturnToStock(toolId) {
+function renderToolOccupantsList(toolId) {
+  const tool = toolsList.find(t => t.id === toolId);
+  const container = document.getElementById('returnToolOccupants');
+  if (!tool || !container) return;
+  const occupants = parseToolOccupants(tool);
+  if (!occupants.length) {
+    container.innerHTML = '<div style="color:hsl(var(--text-muted)); font-size:13px;">Сейчас ни у кого нет этого инструмента.</div>';
+    return;
+  }
+  container.innerHTML = occupants.map(o => `
+    <div style="display:flex; flex-direction:column; gap:8px; padding:12px 0; border-bottom:1px solid hsl(var(--border-color));">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div>
+          <strong>${escapeHtml(o.name)}</strong>
+          <div style="font-size:12px; color:hsl(var(--text-muted));">Выдан: ${escapeHtml(o.issuedAt || '—')}</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" onclick="doReturnToStock(${toolId}, ${o.employeeId})">Вернуть</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleToolTransferRow(${o.employeeId})">Передать</button>
+        </div>
+      </div>
+      <div id="toolTransferRow_${o.employeeId}" style="display:none; gap:8px;">
+        <select id="toolTransferSelect_${o.employeeId}" class="form-control" style="flex:1;">
+          <option value="">Загрузка...</option>
+        </select>
+        <button type="button" class="btn" onclick="doToolTransfer(${toolId}, ${o.employeeId})">Подтвердить</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.toggleToolTransferRow = async (fromEmployeeId) => {
+  const row = document.getElementById(`toolTransferRow_${fromEmployeeId}`);
+  if (!row) return;
+  const willShow = row.style.display === 'none';
+  row.style.display = willShow ? 'flex' : 'none';
+  if (!willShow) return;
+
+  const modal = document.getElementById('returnModalOverlay');
+  const tool = toolsList.find(t => t.id === Number(modal.dataset.toolId));
+  const occupantIds = new Set(parseToolOccupants(tool).map(o => o.employeeId));
+  const select = document.getElementById(`toolTransferSelect_${fromEmployeeId}`);
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired' && !occupantIds.has(e.id));
+    select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
+};
+
+window.doToolTransfer = async (toolId, fromEmployeeId) => {
+  const select = document.getElementById(`toolTransferSelect_${fromEmployeeId}`);
+  const employeeId = select ? select.value : '';
+  if (!employeeId) return showToast('Выберите сотрудника', 'error');
+  try {
+    const res = await fetch('/api/tools/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool_id: toolId, from_employee_id: fromEmployeeId, employee_id: Number(employeeId) })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Инструмент передан', 'success');
+      await loadTools();
+      renderToolOccupantsList(toolId);
+    } else {
+      showToast(data.message || 'Не удалось передать', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+window.doReturnToStock = async (toolId, employeeId) => {
   try {
     const res = await fetch('/api/tools/return', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool_id: toolId })
+      body: JSON.stringify({ tool_id: toolId, employee_id: employeeId })
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       showToast('Инструмент возвращён на склад', 'success');
       await loadTools();
+      renderToolOccupantsList(toolId);
     } else {
       showToast(data.message || 'Не удалось вернуть', 'error');
     }
   } catch (err) {
     showToast('Ошибка сети', 'error');
-  }
-}
-
-window.openReturnModal = async (toolId) => {
-  const tool = toolsList.find(t => t.id === toolId);
-  if (!tool) return;
-  const modal = document.getElementById('returnModalOverlay');
-  modal.dataset.toolId = toolId;
-
-  document.getElementById('returnToolInfo').innerHTML = buildToolCard(tool);
-  document.getElementById('returnHolder').innerHTML = tool.current_holder
-    ? `Сейчас на руках у: <strong style="color:hsl(var(--text-primary))">${escapeHtml(tool.current_holder)}</strong>`
-    : '';
-
-  // Сброс к шагу 1
-  document.getElementById('returnStep1').style.display = 'flex';
-  document.getElementById('returnStep2').style.display = 'none';
-  document.getElementById('confirmTransferBtn').style.display = 'none';
-  document.getElementById('transferEmployeeId').value = '';
-  document.getElementById('transferSearch').value = '';
-  document.getElementById('transferEmployeeList').innerHTML = '';
-
-  modal.classList.add('active');
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-
-  // Заранее подгружаем сотрудников (кроме уволенных и текущего держателя)
-  try {
-    const res = await fetch('/api/crud/employees');
-    const employees = res.ok ? await res.json() : [];
-    transferEmployeesList = employees.filter(e => e.status !== 'fired' && e.id !== tool.current_employee_id);
-  } catch (err) {
-    transferEmployeesList = [];
   }
 };
 
@@ -4720,13 +4732,18 @@ function renderToolDetail(data) {
   const catIcon = tool.category && categoryIconMap[tool.category]
     ? `<img src="${categoryIconMap[tool.category]}" style="width:18px;height:18px;border-radius:4px;vertical-align:middle;margin-right:6px;">` : '';
 
+  const toolOccupants = parseToolOccupants(tool);
+  const holdersValue = toolOccupants.length
+    ? `<strong>${escapeHtml(toolOccupants.map(o => o.name).join(', '))}</strong>`
+    : '<span style="color:hsl(var(--text-muted))">на складе</span>';
+
   const info = [
     ['Категория', `${catIcon}${escapeHtml(tool.category || '—')}`],
     ['Бренд / модель', escapeHtml([tool.brand, tool.model].filter(Boolean).join(' · ') || '—')],
     ['Серийный №', escapeHtml(tool.serial_number || '—')],
     ['Инвентарный №', escapeHtml(tool.inventory_number || '—')],
     ['Дата покупки', tool.purchase_date ? escapeHtml(tool.purchase_date) : '—'],
-    ['Сейчас у', tool.current_holder ? `<strong>${escapeHtml(tool.current_holder)}</strong>` : '<span style="color:hsl(var(--text-muted))">на складе</span>']
+    ['Закреплён за', holdersValue]
   ].map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid hsl(var(--border-color));"><span style="color:hsl(var(--text-muted));font-size:13px;">${k}</span><span style="font-size:13px;text-align:right;">${v}</span></div>`).join('');
 
   const statTiles = [
@@ -4803,8 +4820,8 @@ function renderToolDetail(data) {
   // Кнопки действий (закрывают карточку и открывают нужную модалку)
   const btns = [];
   if (tool.status !== 'written_off') {
-    if (stats.is_out) btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('return', ${tool.id})"><i data-lucide="corner-down-left"></i><span>Вернуть / передать</span></button>`);
-    else btns.push(`<button class="btn" onclick="toolDetailAction('issue', ${tool.id})"><i data-lucide="hand-helping"></i><span>Выдать</span></button>`);
+    if (stats.is_out) btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('return', ${tool.id})"><i data-lucide="corner-down-left"></i><span>Держатели: вернуть / передать</span></button>`);
+    btns.push(`<button class="btn" onclick="toolDetailAction('issue', ${tool.id})"><i data-lucide="hand-helping"></i><span>Выдать</span></button>`);
   }
   btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('edit', ${tool.id})"><i data-lucide="edit-3"></i><span>Редактировать</span></button>`);
   btns.push(`<button class="btn btn-secondary" onclick="printToolQr(${tool.id})"><i data-lucide="printer"></i><span>Печать QR</span></button>`);

@@ -1598,40 +1598,15 @@
   <div class="modal-overlay" id="returnModalOverlay">
     <div class="modal">
       <div class="modal-header">
-        <h3>Вернуть или передать инструмент</h3>
+        <h3>Держатели инструмента</h3>
         <button class="modal-close" id="closeReturnModalBtn">&times;</button>
       </div>
       <div class="modal-body">
         <div id="returnToolInfo" class="issue-tool-card"></div>
-        <div id="returnHolder" style="font-size:13px; color:hsl(var(--text-secondary)); margin-bottom:18px;"></div>
-
-        <!-- Шаг 1: выбор действия -->
-        <div id="returnStep1" style="display:flex; gap:12px;">
-          <button type="button" class="btn btn-secondary" id="returnToStockBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
-            <i data-lucide="warehouse"></i>
-            <span>На склад</span>
-          </button>
-          <button type="button" class="btn btn-secondary" id="goTransferBtn" style="flex:1; flex-direction:column; gap:8px; padding:18px;">
-            <i data-lucide="user-check"></i>
-            <span>Передать другому</span>
-          </button>
-        </div>
-
-        <!-- Шаг 2: выбор сотрудника для передачи -->
-        <div id="returnStep2" style="display:none;">
-          <div class="form-group">
-            <label for="transferSearch">Кому передать</label>
-            <input type="text" id="transferSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom:8px;">
-            <div class="emp-picker">
-              <div class="emp-picker-list" id="transferEmployeeList"></div>
-            </div>
-          </div>
-          <input type="hidden" id="transferEmployeeId">
-        </div>
+        <div id="returnToolOccupants"></div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="cancelReturnModalBtn">Отмена</button>
-        <button type="button" class="btn" id="confirmTransferBtn" style="display:none;">Передать</button>
+        <button type="button" class="btn btn-secondary" id="cancelReturnModalBtn">Закрыть</button>
       </div>
     </div>
   </div>
