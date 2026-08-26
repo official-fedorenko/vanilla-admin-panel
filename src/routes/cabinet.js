@@ -157,6 +157,22 @@ function getMyApartment(req, res, user) {
   });
 }
 
+// Строительные объекты, на которые сейчас направлен сотрудник, привязанный
+// к текущему аккаунту (можно работать на нескольких объектах одновременно).
+function getMyConstructionSites(req, res, user) {
+  const sql = `
+    SELECT s.id, s.name, s.category, s.address, s.customer, s.status, a.issued_at
+    FROM employees e
+    JOIN construction_site_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
+    JOIN construction_sites s ON s.id = a.site_id
+    WHERE e.user_id = ?
+    ORDER BY a.issued_at DESC`;
+  db.all(sql, [user.id], (err, sites) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    sendJson(res, 200, { success: true, sites: sites || [] });
+  });
+}
+
 // Сотрудник добавляет фото в галерею ТОЛЬКО у авто, которое сейчас на нём.
 async function setVehiclePhoto(req, res, user) {
   try {
@@ -270,6 +286,7 @@ module.exports = async function handleCabinet(req, res, user, parsedUrl, method)
   if (pathname === '/api/cabinet/tool-photo' && method === 'POST') return setToolPhoto(req, res, user);
   if (pathname === '/api/cabinet/my-vehicles' && method === 'GET') return getMyVehicles(req, res, user);
   if (pathname === '/api/cabinet/my-apartment' && method === 'GET') return getMyApartment(req, res, user);
+  if (pathname === '/api/cabinet/my-construction-sites' && method === 'GET') return getMyConstructionSites(req, res, user);
   if (pathname === '/api/cabinet/vehicle-photo' && method === 'POST') return setVehiclePhoto(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });

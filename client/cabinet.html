@@ -825,7 +825,7 @@
         <!-- Моё закреплённое авто (только для сотрудников) -->
         <div class="card mobile-collapse" id="myVehiclesCard" style="display: none;">
           <div class="card-title collapse-toggle">
-            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg> Закреплённое за мной авто</span>
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg> Закреплённый за мной автомобиль</span>
             <span class="collapse-chev">▾</span>
           </div>
           <div class="cbody">
@@ -843,6 +843,19 @@
           </div>
           <div class="cbody">
           <div id="myApartmentList" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+          </div>
+          </div><!-- /cbody -->
+        </div>
+
+        <!-- Мой объект (строительный объект, на котором сейчас работаю, только для сотрудников) -->
+        <div class="card mobile-collapse" id="myConstructionSiteCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l9 4.5v11L12 22l-9-4.5v-11L12 2zM9 22V12M15 22V12M3 6.5l9 4.5 9-4.5"/></svg> Мой объект</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+          <div id="myConstructionSiteList" style="display:flex; flex-direction:column; gap:12px;">
             <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
           </div><!-- /cbody -->
@@ -1090,6 +1103,8 @@
           loadMyVehicles();
           document.getElementById('myApartmentCard').style.display = '';
           loadMyApartment();
+          document.getElementById('myConstructionSiteCard').style.display = '';
+          loadMyConstructionSites();
           const msgLink = document.getElementById('messagesNavLink');
           if (msgLink) msgLink.style.display = '';
           updateMessagesBadge();
@@ -1296,6 +1311,45 @@
             ${addressLine ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(addressLine)}</div>` : ''}
             ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
             ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Заселён: ${issued}</div>` : ''}
+          `;
+          list.appendChild(item);
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не удалось загрузить.</div>';
+      }
+    }
+
+    const MY_CONSTRUCTION_SITE_STATUS = {
+      planning:  'Планируется',
+      active:    'В работе',
+      paused:    'Приостановлен',
+      completed: 'Завершён'
+    };
+
+    async function loadMyConstructionSites() {
+      const list = document.getElementById('myConstructionSiteList');
+      try {
+        const res = await fetch('/api/cabinet/my-construction-sites');
+        const data = res.ok ? await res.json() : { sites: [] };
+        const sites = data.sites || [];
+        if (!sites.length) {
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Сейчас не направлен ни на один объект.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        sites.forEach(s => {
+          const issued = s.issued_at ? new Date(s.issued_at).toLocaleDateString('ru-RU') : '';
+          const statusLabel = MY_CONSTRUCTION_SITE_STATUS[s.status] || s.status;
+          const details = [s.category, s.customer ? `Заказчик: ${s.customer}` : ''].filter(Boolean).join(' · ');
+
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.innerHTML = `
+            <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(s.name)}</div>
+            ${s.address ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(s.address)}</div>` : ''}
+            ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Статус: ${escapeHtml(statusLabel)}</div>
+            ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Направлен: ${issued}</div>` : ''}
           `;
           list.appendChild(item);
         });

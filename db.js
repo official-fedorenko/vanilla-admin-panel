@@ -446,6 +446,13 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE employees ADD COLUMN own_housing INTEGER NOT NULL DEFAULT 0", () => {});
     }
+  },
+  {
+    version: 26,
+    description: 'Construction sites: добавить поле "Бригадир" (foreman_id)',
+    up: () => {
+      db.run("ALTER TABLE construction_sites ADD COLUMN foreman_id INTEGER REFERENCES employees(id) ON DELETE SET NULL", () => {});
+    }
   }
 ];
 
@@ -870,6 +877,7 @@ db.serialize(() => {
       category TEXT,
       address TEXT,
       customer TEXT,
+      foreman_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'planning',
       start_date DATE,
       end_date DATE,

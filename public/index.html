@@ -43,6 +43,12 @@
             <span>Каталог</span>
           </a>
         </li>
+        <li class="nav-item" data-section="vacations">
+          <a href="#vacations" title="Отпуски и больничные">
+            <i data-lucide="palmtree"></i>
+            <span>Отпуски и больничные</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="vehicles">
           <a href="#vehicles" title="Автопарк">
             <i data-lucide="car"></i>
@@ -68,12 +74,6 @@
             <i data-lucide="clipboard-list"></i>
             <span id="requestsBadge" class="nav-badge" style="display:none;">0</span>
             <span>Заявления</span>
-          </a>
-        </li>
-        <li class="nav-item" data-section="vacations">
-          <a href="#vacations" title="Отпуска/Больничные">
-            <i data-lucide="palmtree"></i>
-            <span>Отпуска/Больничные</span>
           </a>
         </li>
         <li class="nav-item" data-section="toolorders">
@@ -367,6 +367,7 @@
                   <th>Название / адрес</th>
                   <th>Тип</th>
                   <th>Заказчик</th>
+                  <th>Бригадир</th>
                   <th style="width: 120px;">Статус</th>
                   <th>Бригада</th>
                   <th style="width: 150px; text-align: right;">Действия</th>
@@ -424,7 +425,7 @@
       <section id="section-vacations" class="app-section">
         <div class="page-header">
           <div class="page-title">
-            <h2>Отпуска/Больничные</h2>
+            <h2>Отпуски и больничные</h2>
             <p>Сводка: кто и когда в отпуске или на больничном. По умолчанию — текущие и предстоящие; прошедшие доступны в архиве с выбором года.</p>
           </div>
           <div class="page-header-actions">
@@ -2108,6 +2109,12 @@
           <div class="form-group">
             <label for="constructionSiteCustomer">Заказчик</label>
             <input type="text" id="constructionSiteCustomer" class="form-control" placeholder="ООО «Компания»">
+          </div>
+          <div class="form-group">
+            <label for="constructionSiteForeman">Бригадир</label>
+            <select id="constructionSiteForeman" class="form-control">
+              <option value="">— не назначен —</option>
+            </select>
           </div>
           <div class="form-group">
             <label for="constructionSiteNotes">Заметки</label>

@@ -48,6 +48,9 @@ function extractSiteFields(body) {
   const budget = parseFloat(body.budget);
   const validBudget = Number.isFinite(budget) && budget >= 0 ? budget : null;
 
+  const foremanId = parseInt(body.foreman_id, 10);
+  const validForemanId = Number.isInteger(foremanId) && foremanId > 0 ? foremanId : null;
+
   const rawPhotoRaw = (body.photo_url == null ? '' : String(body.photo_url)).trim();
   const rawPhoto = rawPhotoRaw.split('?')[0].split('#')[0];
   const isUpload = /^\/uploads\/[A-Za-z0-9._-]+$/.test(rawPhoto);
@@ -59,6 +62,7 @@ function extractSiteFields(body) {
       category: str(body.category),
       address: str(body.address, 400),
       customer: str(body.customer, 200),
+      foreman_id: validForemanId,
       status,
       start_date: startDate,
       end_date: endDate,
@@ -78,12 +82,14 @@ async function handleCrud(req, res, user, parsedUrl, method) {
     // «crew» ('assignment_id|employee_id|issued_at|Фамилия Имя', разделитель ';;').
     const sql = `
       SELECT s.*,
+        CASE WHEN fe.id IS NOT NULL THEN fe.last_name || ' ' || fe.first_name END AS foreman_name,
         GROUP_CONCAT(
           a.id || '|' || a.employee_id || '|' || a.issued_at || '|' ||
           replace(replace(e.last_name || ' ' || e.first_name, '|', ''), ';;', ''),
           ';;'
         ) AS crew
       FROM construction_sites s
+      LEFT JOIN employees fe ON fe.id = s.foreman_id
       LEFT JOIN construction_site_assignments a ON a.site_id = s.id AND a.returned_at IS NULL
       LEFT JOIN employees e ON e.id = a.employee_id
       GROUP BY s.id
@@ -110,9 +116,9 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `INSERT INTO construction_sites (name, category, address, customer, status, start_date, end_date, budget, photo_url, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [values.name, values.category, values.address, values.customer, values.status,
+        `INSERT INTO construction_sites (name, category, address, customer, foreman_id, status, start_date, end_date, budget, photo_url, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [values.name, values.category, values.address, values.customer, values.foreman_id, values.status,
          values.start_date, values.end_date, values.budget, values.photo_url, values.notes],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания объекта' });
@@ -135,9 +141,9 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `UPDATE construction_sites SET name = ?, category = ?, address = ?, customer = ?, status = ?,
+        `UPDATE construction_sites SET name = ?, category = ?, address = ?, customer = ?, foreman_id = ?, status = ?,
            start_date = ?, end_date = ?, budget = ?, photo_url = ?, notes = ? WHERE id = ?`,
-        [values.name, values.category, values.address, values.customer, values.status,
+        [values.name, values.category, values.address, values.customer, values.foreman_id, values.status,
          values.start_date, values.end_date, values.budget, values.photo_url, values.notes, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
