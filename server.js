@@ -192,7 +192,7 @@ const server = http.createServer(async (req, res) => {
       pathname === '/api/cabinet/my-card' ||
       pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
       pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo' ||
-      pathname === '/api/cabinet/my-apartment') {
+      pathname === '/api/cabinet/my-apartment' || pathname === '/api/cabinet/my-construction-sites') {
     return handleCabinet(req, res, user, parsedUrl, method);
   }
 
