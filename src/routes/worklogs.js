@@ -5,8 +5,9 @@ const { db } = require('../../db');
  * Учёт рабочего времени.
  *
  *  Пользователь (свои записи):
- *    POST   /api/worklogs           — добавить запись { work_date, hours, note }
+ *    POST   /api/worklogs           — добавить запись { work_date, hours, note, site_id }
  *    GET    /api/worklogs/mine       — свои записи + итог
+ *    PUT    /api/worklogs?id=        — изменить заметку/объект своей записи { note, site_id }
  *    DELETE /api/worklogs?id=        — удалить свою запись
  *
  *  Админ (по всем):
@@ -37,17 +38,25 @@ function parseDate(raw) {
   return s;
 }
 
+// site_id: положительное число (ссылка на объект) или null.
+function parseSiteId(raw) {
+  if (raw == null || raw === '') return null;
+  const id = parseInt(raw, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 async function addOwn(req, res, user) {
   try {
     const body = await getJsonBody(req);
     const workDate = parseDate(body.work_date);
     const hours = parseHours(body.hours);
     const note = (body.note == null ? '' : String(body.note)).trim().slice(0, 300) || null;
+    const siteId = parseSiteId(body.site_id);
     if (!workDate) return sendJson(res, 400, { success: false, message: 'Некорректная дата' });
     if (hours == null) return sendJson(res, 400, { success: false, message: 'Часы: число от 0 до 24' });
 
-    db.run("INSERT INTO work_logs (user_id, work_date, hours, note) VALUES (?, ?, ?, ?)",
-      [user.id, workDate, hours, note], function (err) {
+    db.run("INSERT INTO work_logs (user_id, work_date, hours, note, site_id) VALUES (?, ?, ?, ?, ?)",
+      [user.id, workDate, hours, note, siteId], function (err) {
         if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
         logAction(user.username, `Внёс ${hours} ч за ${workDate}`);
         sendJson(res, 201, { success: true, id: this.lastID });
@@ -58,12 +67,38 @@ async function addOwn(req, res, user) {
 }
 
 function listMine(req, res, user) {
-  db.all("SELECT id, work_date, hours, note, created_at FROM work_logs WHERE user_id = ? ORDER BY work_date DESC, id DESC LIMIT 500",
+  db.all(
+    `SELECT w.id, w.work_date, w.hours, w.note, w.site_id, s.name AS site_name, w.created_at
+     FROM work_logs w
+     LEFT JOIN construction_sites s ON s.id = w.site_id
+     WHERE w.user_id = ? ORDER BY w.work_date DESC, w.id DESC LIMIT 500`,
     [user.id], (err, rows) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       const total = (rows || []).reduce((s, r) => s + (r.hours || 0), 0);
       sendJson(res, 200, { success: true, entries: rows || [], total });
     });
+}
+
+// Редактирование своей записи: только заметка и объект (дата/часы неизменны).
+async function editOwn(req, res, user, parsedUrl) {
+  const id = parseInt(parsedUrl.searchParams.get('id'), 10);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  try {
+    const body = await getJsonBody(req);
+    const note = (body.note == null ? '' : String(body.note)).trim().slice(0, 300) || null;
+    const siteId = parseSiteId(body.site_id);
+    const sql = isAdmin(user)
+      ? "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ?"
+      : "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ? AND user_id = ?";
+    const params = isAdmin(user) ? [note, siteId, id] : [note, siteId, id, user.id];
+    db.run(sql, params, function (err) {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+      if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
+      sendJson(res, 200, { success: true });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
 }
 
 async function deleteOwn(req, res, user, parsedUrl) {
@@ -129,6 +164,7 @@ module.exports = async function handleWorklogs(req, res, user, parsedUrl, method
 
   if (p === '/api/worklogs' && method === 'POST') return addOwn(req, res, user);
   if (p === '/api/worklogs/mine' && method === 'GET') return listMine(req, res, user);
+  if (p === '/api/worklogs' && method === 'PUT') return editOwn(req, res, user, parsedUrl);
   if (p === '/api/worklogs' && method === 'DELETE') return deleteOwn(req, res, user, parsedUrl);
   if (p === '/api/worklogs/all' && method === 'GET') return listAll(req, res, user, parsedUrl);
   if (p === '/api/worklogs/summary' && method === 'GET') return summary(req, res, user);
