@@ -2899,10 +2899,11 @@ window.deleteUser = async (id) => {
 // =====================================================================
 
 const EMPLOYEE_STATUS = {
-  active:   { label: 'Работает',   badge: 'badge-success' },
-  vacation: { label: 'В отпуске',  badge: 'badge-warning' },
-  inactive: { label: 'Неактивен',  badge: 'badge-warning' },
-  fired:    { label: 'Уволен',     badge: 'badge-danger' }
+  active:      { label: 'Работает',       badge: 'badge-success' },
+  vacation:    { label: 'В отпуске',      badge: 'badge-warning' },
+  sick_leave:  { label: 'На больничном',  badge: 'badge-danger' },
+  inactive:    { label: 'Неактивен',      badge: 'badge-warning' },
+  fired:       { label: 'Уволен',         badge: 'badge-danger' }
 };
 
 async function loadEmployees() {

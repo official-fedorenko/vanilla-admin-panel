@@ -458,6 +458,13 @@ const server = http.createServer(async (req, res) => {
 // required from a test file, require.main !== module, so tests can bind
 // their own ephemeral port via server.listen(0) instead.
 if (require.main === module) {
+  // Держим статус сотрудника ('в отпуске'/'на больничном') в синхроне с
+  // одобренными заявлениями — не только по событию (одобрение/правка), но и
+  // на случай, если период просто наступил/закончился без каких-либо
+  // действий администратора в этот день.
+  handleRequests.syncEmployeeLeaveStatuses();
+  setInterval(() => handleRequests.syncEmployeeLeaveStatuses(), 60 * 60 * 1000).unref();
+
   server.listen(PORT, () => {
     console.log(`Админка успешно запущена на http://localhost:${PORT}`);
     console.log('='.repeat(70));
