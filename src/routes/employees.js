@@ -12,7 +12,7 @@ const { db, hashPassword } = require('../../db');
  * закреплённый инструмент, учёт времени, отпуска и документы.
  */
 
-const ALLOWED_STATUSES = ['active', 'vacation', 'inactive', 'fired'];
+const ALLOWED_STATUSES = ['active', 'vacation', 'sick_leave', 'inactive', 'fired'];
 
 function parseId(parsedUrl) {
   const id = parseInt(parsedUrl.searchParams.get('id'), 10);

@@ -206,6 +206,64 @@ function listAll(req, res, user, parsedUrl) {
   });
 }
 
+// --- Автосинхронизация статуса сотрудника с одобренными отпусками/больничными ---
+// Смотрит на все одобренные заявления type IN ('vacation','sick_leave'),
+// у которых сегодняшняя дата попадает в [start_date, end_date], и выставляет
+// статус сотрудника 'vacation'/'sick_leave'. Сотрудников без такого периода,
+// но всё ещё числящихся 'vacation'/'sick_leave', возвращает в 'active'.
+// Ручные статусы 'inactive'/'fired' никогда не трогаются.
+function syncEmployeeLeaveStatuses(cb) {
+  const sql = `
+    SELECT r.payload, r.type, r.requested_by
+    FROM requests r
+    WHERE r.type IN ('vacation', 'sick_leave') AND r.status = 'approved'`;
+  db.all(sql, [], (err, rows) => {
+    if (err) return cb && cb(err);
+    const today = new Date().toISOString().slice(0, 10);
+    const activeEntries = [];
+    (rows || []).forEach(r => {
+      let payload = {};
+      try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
+      const start = payload.start_date, end = payload.end_date;
+      if (!start || !end || today < start || today > end) return;
+      activeEntries.push({ type: r.type, employeeId: payload.employee_id || null, requestedBy: r.requested_by });
+    });
+
+    const applyWith = (activeByEmployee) => {
+      db.all("SELECT id, status FROM employees WHERE status IN ('active', 'vacation', 'sick_leave')", [], (e2, emps) => {
+        if (e2) return cb && cb(e2);
+        const updates = (emps || [])
+          .map(e => ({ id: e.id, from: e.status, to: activeByEmployee[e.id] || 'active' }))
+          .filter(u => u.to !== u.from);
+        if (!updates.length) return cb && cb(null, { changed: 0 });
+        let done = 0, dbErr = null;
+        updates.forEach(u => {
+          db.run("UPDATE employees SET status = ? WHERE id = ?", [u.to, u.id], (uErr) => {
+            if (uErr) dbErr = uErr;
+            if (++done === updates.length) cb && cb(dbErr, { changed: updates.length });
+          });
+        });
+      });
+    };
+
+    const activeByEmployee = {};
+    const needLookup = [...new Set(activeEntries.filter(e => !e.employeeId && e.requestedBy).map(e => e.requestedBy))];
+    activeEntries.forEach(e => { if (e.employeeId && !activeByEmployee[e.employeeId]) activeByEmployee[e.employeeId] = e.type; });
+    if (!needLookup.length) return applyWith(activeByEmployee);
+
+    const placeholders = needLookup.map(() => '?').join(',');
+    db.all(`SELECT id, user_id FROM employees WHERE user_id IN (${placeholders})`, needLookup, (e3, empRows) => {
+      const byUser = {};
+      (empRows || []).forEach(e => { byUser[e.user_id] = e.id; });
+      activeEntries.forEach(e => {
+        const empId = e.employeeId || byUser[e.requestedBy];
+        if (empId && !activeByEmployee[empId]) activeByEmployee[empId] = e.type;
+      });
+      applyWith(activeByEmployee);
+    });
+  });
+}
+
 // --- Сводка отпусков/больничных (админ): кто и когда отсутствует ---
 // Возвращает заявления type IN ('vacation','sick_leave') со статусами
 // approved + pending, с ФИО сотрудника (если есть карточка) и разобранными
@@ -288,6 +346,7 @@ async function createVacationForEmployee(req, res, user) {
         function (insErr) {
           if (insErr) return sendJson(res, 500, { success: false, message: 'Не удалось создать отпуск' });
           logAction(user.username, `Оформил отпуск сотруднику ${empName}: ${start} — ${end} (id=${this.lastID})`);
+          syncEmployeeLeaveStatuses();
           sendJson(res, 201, { success: true, id: this.lastID });
         }
       );
@@ -328,6 +387,7 @@ async function editVacation(req, res, user) {
         (uErr) => {
           if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
           logAction(user.username, `Изменил ${row.type === 'sick_leave' ? 'больничный' : 'отпуск'} (id=${id}): ${start} — ${end}`);
+          if (row.status === 'approved') syncEmployeeLeaveStatuses();
           sendJson(res, 200, { success: true });
         }
       );
@@ -500,6 +560,7 @@ function approve(req, res, user, parsedUrl) {
         (uErr) => {
           if (uErr) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
           logAction(user.username, `Одобрил заявление id=${id} (${row.type})`);
+          if (row.type === 'vacation' || row.type === 'sick_leave') syncEmployeeLeaveStatuses();
           sendJson(res, 200, { success: true, result_ref: resultRef });
         }
       );
@@ -578,3 +639,4 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
 };
 
 module.exports.REQUEST_TYPES = REQUEST_TYPES;
+module.exports.syncEmployeeLeaveStatuses = syncEmployeeLeaveStatuses;
