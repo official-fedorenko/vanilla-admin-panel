@@ -2541,7 +2541,7 @@ async function loadSettings() {
   // «Настройка сайта», из CARD_GROUPS — в «Настройка карточек» (вкладки
   // раздела «Настройки»).
   const SITE_GROUPS = {
-    'Общие': ['site_name', 'maintenance_mode', 'allow_registration'],
+    'Общие': ['site_name', 'maintenance_mode', 'allow_registration', 'two_factor_enabled'],
     'Главная страница': ['hero_title', 'site_description'],
     'О блоге': ['about_title', 'about_subtitle', 'about_card1_title', 'about_card1_text', 'about_card2_title', 'about_card2_text'],
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
@@ -2557,6 +2557,7 @@ async function loadSettings() {
   // Понятные подписи (не зависят от description в БД, который может теряться
   // при сохранении из-за INSERT OR REPLACE).
   const LABELS = {
+    two_factor_enabled: 'Разрешить двухфакторную аутентификацию (2FA)',
     public_card_enabled: 'Публичная карточка доступна всем (по QR)',
     public_card_show_photo: 'Показывать фото',
     public_card_show_brand: 'Показывать бренд',
@@ -2588,7 +2589,7 @@ async function loadSettings() {
 
   // Определяем тип контрола по ключу
   function getFieldType(key) {
-    if (['maintenance_mode', 'allow_registration'].includes(key) || PUBLIC_CARD_KEYS.includes(key)) return 'boolean';
+    if (['maintenance_mode', 'allow_registration', 'two_factor_enabled'].includes(key) || PUBLIC_CARD_KEYS.includes(key)) return 'boolean';
     if (['site_description', 'about_subtitle', 'about_card1_text', 'about_card2_text', 'contact_subtitle'].includes(key)) return 'textarea';
     if (key === 'contact_email') return 'email';
     if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days', 'apartment_rent_soon_days'].includes(key)) return 'number';
@@ -2608,11 +2609,23 @@ async function loadSettings() {
 
     Object.entries(GROUPS).forEach(([groupTitle, keys]) => {
       const container = groupTitle in CARD_GROUPS ? cardsContainer : siteContainer;
+      // Группы с чекбоксами (настройка публичных карточек) оформляем отдельной
+      // рамкой — иначе плоский список чекбоксов визуально сливается с фоном.
+      const isCardGroup = groupTitle in CARD_GROUPS;
+      let groupBox = container;
+      if (isCardGroup) {
+        groupBox = document.createElement('div');
+        groupBox.style.cssText = 'border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-sm); padding: 4px 16px 16px; margin: 18px 0; background: hsl(var(--bg-main) / 0.4);';
+        container.appendChild(groupBox);
+      }
+
       // Заголовок группы
       const groupHeader = document.createElement('div');
-      groupHeader.style.cssText = 'margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;';
+      groupHeader.style.cssText = isCardGroup
+        ? 'margin: 14px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;'
+        : 'margin: 18px 0 8px; font-size: 13px; font-weight: 600; color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 0.5px;';
       groupHeader.textContent = groupTitle;
-      container.appendChild(groupHeader);
+      groupBox.appendChild(groupHeader);
 
       keys.forEach(key => {
         const set = settingsMap[key];
@@ -2626,6 +2639,9 @@ async function loadSettings() {
 
         if (fieldType === 'boolean') {
           const checked = set.value === 'true' ? 'checked' : '';
+          if (isCardGroup) {
+            div.style.cssText = 'border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-sm); padding: 10px 14px; margin-bottom: 8px; background: hsl(var(--bg-card));';
+          }
           div.innerHTML = `
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
               <input type="checkbox" name="${escapeHtml(key)}" ${checked} style="width:18px; height:18px; accent-color: var(--accent-purple);">
@@ -2650,7 +2666,7 @@ async function loadSettings() {
           `;
         }
 
-        container.appendChild(div);
+        groupBox.appendChild(div);
       });
     });
   } catch (err) {

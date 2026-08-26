@@ -2240,13 +2240,23 @@
 
     // === Двухфакторная аутентификация ===
     let twoFactorEnabled = false;
+    let twoFactorSiteEnabled = true; // общий переключатель из Настроек (админ)
 
     async function loadTwoFactorStatus() {
       try {
-        const res = await fetch('/api/cabinet/2fa/status');
-        if (!res.ok) return;
-        const data = await res.json();
-        twoFactorEnabled = !!data.enabled;
+        const [statusRes, settingsRes] = await Promise.all([
+          fetch('/api/cabinet/2fa/status'),
+          fetch('/api/settings')
+        ]);
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          twoFactorEnabled = !!data.enabled;
+        }
+        if (settingsRes.ok) {
+          const rows = await settingsRes.json();
+          const row = (rows || []).find(r => r.key === 'two_factor_enabled');
+          twoFactorSiteEnabled = !row || row.value !== 'false';
+        }
         renderTwoFactorUI();
       } catch (e) { /* оставляем текущий вид */ }
     }
@@ -2264,6 +2274,11 @@
         statusBox.style.color = 'var(--green)';
         enableStep.style.display = 'none';
         disableStep.style.display = 'block';
+      } else if (!twoFactorSiteEnabled) {
+        statusBox.textContent = 'Двухфакторная аутентификация отключена администратором.';
+        statusBox.style.color = 'var(--text-secondary)';
+        enableStep.style.display = 'none';
+        disableStep.style.display = 'none';
       } else {
         statusBox.textContent = 'Отключена.';
         statusBox.style.color = 'var(--text-secondary)';

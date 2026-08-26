@@ -27,6 +27,15 @@ module.exports = async function handleTwoFactor(req, res, user, parsedUrl, metho
   // пользователь не подтвердит код из приложения-аутентификатора.
   if (currentPath === '/api/cabinet/2fa/setup') {
     try {
+      const siteEnabled = await new Promise((resolve) => {
+        db.get("SELECT value FROM settings WHERE key = 'two_factor_enabled'", [], (err, row) => {
+          resolve(!row || row.value !== 'false');
+        });
+      });
+      if (!siteEnabled) {
+        return sendJson(res, 403, { success: false, message: 'Двухфакторная аутентификация отключена администратором' });
+      }
+
       const { currentPassword } = await getJsonBody(req);
       const dbUser = await getUserById(user.id);
       if (!dbUser) return sendJson(res, 404, { success: false, message: 'Пользователь не найден' });
