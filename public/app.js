@@ -768,8 +768,10 @@ function renderToolOrders() {
   const tbody = document.getElementById('toolOrdersTableBody');
   const filter = document.getElementById('toolOrdersReceiptFilter')?.value || '';
   let list = toolOrdersCache;
-  if (filter === 'awaiting') list = list.filter(o => !o.received);
-  else if (filter === 'received') list = list.filter(o => o.received);
+  // По умолчанию (и при пустом фильтре) показываем только ожидающие
+  // получения — уже полученные заказы видны только когда явно выбран
+  // фильтр «Получены», чтобы не засорять список тем, что уже закрыто.
+  list = filter === 'received' ? list.filter(o => o.received) : list.filter(o => !o.received);
 
   tbody.innerHTML = '';
   if (!list.length) {
@@ -5907,8 +5909,9 @@ function renderVehicleOrders() {
   const tbody = document.getElementById('vehicleOrdersTableBody');
   const filter = document.getElementById('vehicleOrdersReceiptFilter')?.value || '';
   let list = vehicleOrdersCache;
-  if (filter === 'awaiting') list = list.filter(o => !o.received);
-  else if (filter === 'received') list = list.filter(o => o.received);
+  // Как и в «Заказах инструмента»: полученные заказы скрыты по умолчанию,
+  // видны только при явном фильтре «Получены».
+  list = filter === 'received' ? list.filter(o => o.received) : list.filter(o => !o.received);
 
   tbody.innerHTML = '';
   if (!list.length) {
