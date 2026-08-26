@@ -682,6 +682,7 @@ function initApp() {
   setupEmployees();
   setupTools();
   setupVehicles();
+  setupApartments();
 }
 
 // Load data specifically for selected route
@@ -694,6 +695,8 @@ function loadSectionData(hash) {
     loadTools();
   } else if (hash === 'vehicles') {
     loadVehicles();
+  } else if (hash === 'apartments') {
+    loadApartments();
   } else if (hash === 'vehicleorders') {
     loadVehicleOrders();
   } else if (hash === 'catalog') {
@@ -6104,6 +6107,382 @@ function renderVehicleOrders() {
 
 // Клик вне модалки закрывает её (фон .modal-overlay) — унифицированный
 // фикс для окон, у которых раньше не было этого обработчика вообще.
+// =====================================================================
+//  APARTMENTS (Недвижимость) — CRUD + закрепление за сотрудниками
+// =====================================================================
+
+let apartmentsList = [];
+let apartmentCategories = [];
+
+const APARTMENT_STATUS = {
+  available:   { label: 'Свободна',    badge: 'badge-success' },
+  occupied:    { label: 'Заселена',    badge: 'badge-warning' },
+  repair:      { label: 'В ремонте',   badge: 'badge-warning' },
+  written_off: { label: 'Списана',     badge: 'badge-danger' }
+};
+
+async function loadApartments() {
+  try {
+    const res = await fetch('/api/crud/apartments');
+    if (res.ok) {
+      apartmentsList = await res.json();
+      renderApartments();
+    } else if (res.status === 401) {
+      showToast('Сессия истекла, войдите заново', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка загрузки недвижимости', 'error');
+  }
+}
+
+async function loadApartmentCategories() {
+  try {
+    const res = await fetch('/api/crud/apartment-categories');
+    if (res.ok) apartmentCategories = await res.json();
+  } catch (e) { /* тихо */ }
+}
+
+function populateApartmentCategorySelect(selectedValue = '') {
+  const select = document.getElementById('apartmentCategory');
+  if (!select) return;
+  const names = apartmentCategories.map(c => c.name);
+  let html = '<option value="">— выберите —</option>';
+  names.forEach(n => { html += `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`; });
+  if (selectedValue && !names.includes(selectedValue)) {
+    html += `<option value="${escapeHtml(selectedValue)}">${escapeHtml(selectedValue)} (своя)</option>`;
+  }
+  select.innerHTML = html;
+  select.value = selectedValue || '';
+}
+
+function renderApartments(filterQuery = '') {
+  const tbody = document.getElementById('apartmentsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const q = filterQuery.toLowerCase();
+  const filtered = apartmentsList.filter(a => {
+    const hay = `${a.name} ${a.category || ''} ${a.address || ''} ${a.current_holder || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Квартиры не найдены</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(a => {
+    const st = APARTMENT_STATUS[a.status] || APARTMENT_STATUS.available;
+    const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const holder = a.current_holder
+      ? `<strong>${escapeHtml(a.current_holder)}</strong>`
+      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+    const roomsArea = [a.rooms ? `${a.rooms} комн.` : '', a.area ? `${a.area} м²` : ''].filter(Boolean).join(' / ') || '—';
+
+    const isHeld = !!a.current_employee_id;
+    const canWriteOff = a.status === 'written_off';
+    const issueReturnBtn = isHeld
+      ? `<button class="action-btn" title="Выселить / передать" onclick="openReturnApartmentModal(${a.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : (canWriteOff ? '' : `<button class="action-btn" title="Заселить" onclick="openIssueApartmentModal(${a.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => openApartmentDetail(a.id));
+    tr.innerHTML = `
+      <td class="hide-mobile">${a.id}</td>
+      <td class="mobile-primary">
+        <div style="cursor:pointer;" onclick="openApartmentDetail(${a.id})" title="Открыть карточку">
+          <strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(a.name)}</strong>
+          ${a.address ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(a.address)}</div>` : ''}
+        </div>
+      </td>
+      <td class="mobile-hidden">${escapeHtml(a.category || '—')}</td>
+      <td class="mobile-hidden">${roomsArea}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${holder}</td>
+      <td class="no-label" style="text-align: right;">
+        <div class="action-btns" style="justify-content: flex-end;">
+          ${issueReturnBtn}
+          <button class="action-btn edit" title="Изменить" onclick="editApartment(${a.id})"><i data-lucide="edit-3"></i></button>
+          <button class="action-btn delete" title="Удалить" onclick="deleteApartment(${a.id})"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function openApartmentModal(apartment = null) {
+  document.getElementById('apartmentModalTitle').textContent = apartment ? 'Изменить квартиру' : 'Добавить квартиру';
+  document.getElementById('apartmentId').value = apartment ? apartment.id : '';
+  document.getElementById('apartmentName').value = apartment ? apartment.name : '';
+  document.getElementById('apartmentAddress').value = apartment ? (apartment.address || '') : '';
+  document.getElementById('apartmentRooms').value = apartment ? (apartment.rooms ?? '') : '';
+  document.getElementById('apartmentArea').value = apartment ? (apartment.area ?? '') : '';
+  document.getElementById('apartmentStatus').value = apartment ? apartment.status : 'available';
+  document.getElementById('apartmentRentUntil').value = apartment ? (apartment.rent_until || '') : '';
+  document.getElementById('apartmentNotes').value = apartment ? (apartment.notes || '') : '';
+  populateApartmentCategorySelect(apartment ? (apartment.category || '') : '');
+  document.getElementById('apartmentModalOverlay').classList.add('active');
+}
+
+window.editApartment = (id) => {
+  const apartment = apartmentsList.find(a => a.id === id);
+  if (apartment) openApartmentModal(apartment);
+};
+
+window.deleteApartment = async (id) => {
+  if (!await confirmDialog('Удалить эту квартиру? Действие необратимо.', { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/apartments?id=${id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Квартира удалена', 'success');
+      await loadApartments();
+    } else {
+      showToast(data.message || 'Не удалось удалить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+function buildApartmentCard(apartment) {
+  const roomsArea = [apartment.rooms ? `${apartment.rooms} комн.` : '', apartment.area ? `${apartment.area} м²` : ''].filter(Boolean).join(' / ');
+  return `
+    <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:16px;">
+      <strong>${escapeHtml(apartment.name)}</strong>
+      ${apartment.address ? `<span style="font-size:13px;color:hsl(var(--text-secondary));">${escapeHtml(apartment.address)}</span>` : ''}
+      ${roomsArea ? `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(roomsArea)}</span>` : ''}
+    </div>
+  `;
+}
+
+window.openIssueApartmentModal = async (id) => {
+  const apartment = apartmentsList.find(a => a.id === id);
+  if (!apartment) return;
+  document.getElementById('issueApartmentId').value = id;
+  document.getElementById('issueApartmentNotes').value = '';
+  document.getElementById('issueApartmentInfo').innerHTML = buildApartmentCard(apartment);
+
+  const select = document.getElementById('issueApartmentEmployeeSelect');
+  select.innerHTML = '<option value="">Загрузка...</option>';
+  document.getElementById('issueApartmentModalOverlay').classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired');
+    select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
+};
+
+window.openReturnApartmentModal = (id) => {
+  const apartment = apartmentsList.find(a => a.id === id);
+  if (!apartment) return;
+  const modal = document.getElementById('returnApartmentModalOverlay');
+  modal.dataset.apartmentId = id;
+  document.getElementById('returnApartmentInfo').innerHTML = buildApartmentCard(apartment);
+  document.getElementById('returnApartmentHolder').textContent = apartment.current_holder ? `Сейчас заселён: ${apartment.current_holder}` : '';
+  document.getElementById('returnApartmentStep1').style.display = 'flex';
+  document.getElementById('returnApartmentStep2').style.display = 'none';
+  document.getElementById('confirmApartmentTransferBtn').style.display = 'none';
+  modal.classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+};
+
+async function doReturnApartmentFree(apartmentId) {
+  try {
+    const res = await fetch('/api/apartments/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apartment_id: apartmentId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Квартира освобождена', 'success');
+      await loadApartments();
+    } else {
+      showToast(data.message || 'Не удалось выселить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+}
+
+async function openApartmentDetail(id) {
+  const apartment = apartmentsList.find(a => a.id === id);
+  if (!apartment) return;
+  const st = APARTMENT_STATUS[apartment.status] || APARTMENT_STATUS.available;
+  const rows = [
+    ['Адрес', apartment.address || '—'],
+    ['Тип', apartment.category || '—'],
+    ['Комнат', apartment.rooms ?? '—'],
+    ['Площадь', apartment.area ? `${apartment.area} м²` : '—'],
+    ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
+    ['Аренда/договор до', apartment.rent_until || '—'],
+    ['Кто заселён', apartment.current_holder || '—'],
+    ['Заметки', apartment.notes || '—']
+  ];
+  try {
+    const res = await fetch(`/api/apartments/history?apartment_id=${id}`);
+    const history = res.ok ? await res.json() : [];
+    if (history.length) {
+      rows.push(['История заселений', null, 'section']);
+      history.forEach(h => {
+        const period = h.returned_at ? `${h.issued_at} — ${h.returned_at}` : `${h.issued_at} — по наст. время`;
+        rows.push([h.employee_name, `${period}${h.notes ? ' · ' + escapeHtml(h.notes) : ''}`, true]);
+      });
+    }
+  } catch (e) { /* без истории, не критично */ }
+  showRowDetail(apartment.name, rows);
+}
+
+function setupApartments() {
+  const modal = document.getElementById('apartmentModalOverlay');
+  if (!modal) return;
+
+  const addBtn = document.getElementById('addApartmentBtn');
+  const cancelBtn = document.getElementById('cancelApartmentModalBtn');
+  const closeBtn = document.getElementById('closeApartmentModalBtn');
+  const form = document.getElementById('apartmentForm');
+  const search = document.getElementById('apartmentsSearch');
+
+  const closeModal = () => modal.classList.remove('active');
+  if (addBtn) addBtn.addEventListener('click', () => openApartmentModal());
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  if (search) search.addEventListener('input', (e) => renderApartments(e.target.value));
+
+  loadApartmentCategories();
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('apartmentId').value;
+      const payload = {
+        name: document.getElementById('apartmentName').value,
+        category: document.getElementById('apartmentCategory').value,
+        address: document.getElementById('apartmentAddress').value,
+        rooms: document.getElementById('apartmentRooms').value,
+        area: document.getElementById('apartmentArea').value,
+        status: document.getElementById('apartmentStatus').value,
+        rent_until: document.getElementById('apartmentRentUntil').value,
+        notes: document.getElementById('apartmentNotes').value
+      };
+      const url = id ? `/api/crud/apartments?id=${id}` : '/api/crud/apartments';
+      try {
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(id ? 'Квартира обновлена' : 'Квартира добавлена', 'success');
+          closeModal();
+          await loadApartments();
+        } else {
+          showToast(data.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  // --- Issue modal ---
+  const issueModal = document.getElementById('issueApartmentModalOverlay');
+  const closeIssueModal = () => issueModal.classList.remove('active');
+  document.getElementById('closeIssueApartmentModalBtn').addEventListener('click', closeIssueModal);
+  document.getElementById('cancelIssueApartmentModalBtn').addEventListener('click', closeIssueModal);
+  issueModal.addEventListener('click', (e) => { if (e.target === issueModal) closeIssueModal(); });
+
+  document.getElementById('issueApartmentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apartmentId = document.getElementById('issueApartmentId').value;
+    const employeeId = document.getElementById('issueApartmentEmployeeSelect').value;
+    const notes = document.getElementById('issueApartmentNotes').value;
+    if (!employeeId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/apartments/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apartment_id: Number(apartmentId), employee_id: Number(employeeId), notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Квартира заселена', 'success');
+        closeIssueModal();
+        await loadApartments();
+      } else {
+        showToast(data.message || 'Не удалось заселить', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+
+  // --- Return / transfer modal ---
+  const returnModal = document.getElementById('returnApartmentModalOverlay');
+  const closeReturnModal = () => returnModal.classList.remove('active');
+  document.getElementById('closeReturnApartmentModalBtn').addEventListener('click', closeReturnModal);
+  document.getElementById('cancelReturnApartmentModalBtn').addEventListener('click', closeReturnModal);
+  returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
+
+  document.getElementById('returnApartmentFreeBtn').addEventListener('click', async () => {
+    await doReturnApartmentFree(Number(returnModal.dataset.apartmentId));
+    closeReturnModal();
+  });
+
+  document.getElementById('goApartmentTransferBtn').addEventListener('click', async () => {
+    document.getElementById('returnApartmentStep1').style.display = 'none';
+    document.getElementById('returnApartmentStep2').style.display = '';
+    document.getElementById('confirmApartmentTransferBtn').style.display = '';
+    const select = document.getElementById('apartmentTransferEmployeeSelect');
+    select.innerHTML = '<option value="">Загрузка...</option>';
+    try {
+      const res = await fetch('/api/crud/employees');
+      const employees = res.ok ? await res.json() : [];
+      const currentEmpId = apartmentsList.find(a => a.id === Number(returnModal.dataset.apartmentId))?.current_employee_id;
+      const active = employees.filter(e => e.status !== 'fired' && e.id !== currentEmpId);
+      select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+        active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+    } catch (err) {
+      select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+    }
+  });
+
+  document.getElementById('confirmApartmentTransferBtn').addEventListener('click', async () => {
+    const apartmentId = Number(returnModal.dataset.apartmentId);
+    const empId = document.getElementById('apartmentTransferEmployeeSelect').value;
+    if (!empId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/apartments/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apartment_id: apartmentId, employee_id: Number(empId) })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Квартира передана', 'success');
+        closeReturnModal();
+        await loadApartments();
+      } else {
+        showToast(data.message || 'Не удалось передать', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+}
+
 (function wireClickOutsideForOverlays() {
   const map = {
     workTimeModalOverlay: () => window.closeWorkTimeModal && window.closeWorkTimeModal(),

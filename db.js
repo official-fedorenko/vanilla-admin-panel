@@ -767,6 +767,50 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // 5d. Квартиры (жильё компании) + история закреплений за сотрудниками —
+  // та же модель «выдача-возврат», что у инструмента и автопарка.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS apartments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT,
+      address TEXT,
+      rooms INTEGER,
+      area REAL,
+      status TEXT NOT NULL DEFAULT 'available',
+      rent_until DATE,
+      photo_url TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS apartment_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      apartment_id INTEGER NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      returned_at DATETIME,
+      issued_by TEXT,
+      notes TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS apartment_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `, () => {
+    const defaults = ['Студия', '1-комнатная', '2-комнатная', '3-комнатная', 'Дом'];
+    const catStmt = db.prepare("INSERT OR IGNORE INTO apartment_categories (name, is_default) VALUES (?, 1)");
+    defaults.forEach(name => catStmt.run(name));
+    catStmt.finalize();
+  });
+
   // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
   // администраторы видят данные по всем. Одна строка — одна запись за день.
   db.run(`
