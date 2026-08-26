@@ -1195,6 +1195,25 @@
       }
     }
 
+    // Ограничивает список ровно maxRows строками по высоте, дальше — прокрутка.
+    // На мобильных карточка при загрузке может быть свёрнута
+    // (mobile-collapse без класса .expanded, cbody display:none) — тогда
+    // offsetHeight всех строк равен 0, и наивный расчёт схлопнул бы список
+    // до пары пикселей. Поэтому при скрытом контейнере просто не трогаем
+    // высоту — пересчёт происходит повторно при разворачивании карточки.
+    function capListToRows(box, maxRows, gap) {
+      if (!box) return;
+      const rows = box.children;
+      if (rows.length <= maxRows) { box.style.maxHeight = 'none'; return; }
+      if (box.offsetParent === null) return;
+      let h = 0;
+      for (let i = 0; i < maxRows; i++) h += rows[i].offsetHeight;
+      h += gap * (maxRows - 1);
+      box.style.maxHeight = h + 'px';
+      box.style.overflowY = 'auto';
+      box.style.paddingRight = box.style.paddingRight || '4px';
+    }
+
     // Бирка (chip) для карточек закреплённого имущества/данных профиля.
     // variant: '' (нейтральная) | 'cyan' | 'green' | 'amber' | 'red'
     function assetChip(label, value, variant) {
@@ -1349,17 +1368,7 @@
           `;
           list.appendChild(item);
         });
-        // Ровно 5 инструментов в высоту, дальше — прокрутка
-        if (list.children.length > 5) {
-          let h = 0;
-          for (let i = 0; i < 5; i++) h += list.children[i].offsetHeight;
-          h += 12 * 4; // 4 промежутка gap между 5 карточками
-          list.style.maxHeight = h + 'px';
-          list.style.overflowY = 'auto';
-          list.style.paddingRight = '4px';
-        } else {
-          list.style.maxHeight = 'none';
-        }
+        capListToRows(list, 5, 12);
       } catch (e) {
         list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить инструмент.</div>';
       }
@@ -1534,16 +1543,7 @@
           `;
           list.appendChild(item);
         });
-        if (list.children.length > 5) {
-          let h = 0;
-          for (let i = 0; i < 5; i++) h += list.children[i].offsetHeight;
-          h += 12 * 4;
-          list.style.maxHeight = h + 'px';
-          list.style.overflowY = 'auto';
-          list.style.paddingRight = '4px';
-        } else {
-          list.style.maxHeight = 'none';
-        }
+        capListToRows(list, 5, 12);
       } catch (e) {
         list.innerHTML = '<div style="color: var(--red); font-size: 13px;">Не удалось загрузить авто.</div>';
       }
@@ -3149,16 +3149,7 @@
         box.querySelectorAll('[data-receive-id]').forEach(btn => {
           btn.addEventListener('click', () => markReceived(btn.getAttribute('data-receive-id'), btn));
         });
-        // Ровно 5 строк в высоту, дальше — прокрутка
-        const rows = box.children;
-        if (rows.length > 5) {
-          let h = 0;
-          for (let i = 0; i < 5; i++) h += rows[i].offsetHeight;
-          h += 8 * 4; // 4 промежутка gap между 5 строками
-          box.style.maxHeight = h + 'px';
-        } else {
-          box.style.maxHeight = 'none';
-        }
+        capListToRows(box, 5, 8);
       } catch (e) {
         box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
       }
@@ -3263,11 +3254,26 @@
 
       // Сворачивание карточек кабинета на мобильных. Клик по кнопкам/ссылкам
       // внутри заголовка (например «+ Новое», «Назад») не должен сворачивать.
+      // Списки, у которых высота ограничена на 5 строк (см. capListToRows) —
+      // при первой загрузке страницы их карточка на мобильных ещё свёрнута,
+      // поэтому высоту нужно пересчитать заново в момент разворачивания.
+      const CAPPED_LISTS_BY_CARD = {
+        requestsCard: [['myRequestsList', 5, 8]],
+        myToolsCard: [['myToolsList', 5, 12]],
+        myVehiclesCard: [['myVehiclesList', 5, 12]]
+      };
       document.querySelectorAll('.collapse-toggle').forEach(el => {
         el.addEventListener('click', (e) => {
           if (e.target.closest('button, a, input, select')) return;
           const card = el.closest('.mobile-collapse');
-          if (card) card.classList.toggle('expanded');
+          if (!card) return;
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded') && CAPPED_LISTS_BY_CARD[card.id]) {
+            requestAnimationFrame(() => {
+              CAPPED_LISTS_BY_CARD[card.id].forEach(([id, maxRows, gap]) =>
+                capListToRows(document.getElementById(id), maxRows, gap));
+            });
+          }
         });
       });
 
