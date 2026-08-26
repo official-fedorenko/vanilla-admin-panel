@@ -440,7 +440,7 @@ function initApp() {
     const settings = {};
 
     // Собираем обычные input и textarea
-    container.querySelectorAll('input[type="text"], input[type="email"], textarea').forEach(el => {
+    container.querySelectorAll('input[type="text"], input[type="email"], input[type="number"], textarea').forEach(el => {
       settings[el.name] = el.value;
     });
 
@@ -2453,7 +2453,8 @@ async function loadSettings() {
   };
   const CARD_GROUPS = {
     'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
-    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes']
+    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes'],
+    'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days']
   };
   const GROUPS = { ...SITE_GROUPS, ...CARD_GROUPS };
 
@@ -2481,7 +2482,9 @@ async function loadSettings() {
     public_vehicle_card_show_category: 'Показывать тип',
     public_vehicle_card_show_mileage: 'Показывать пробег',
     public_vehicle_card_show_purchase_date: 'Показывать дату покупки',
-    public_vehicle_card_show_notes: 'Показывать заметки'
+    public_vehicle_card_show_notes: 'Показывать заметки',
+    vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
+    vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)'
   };
 
   const PUBLIC_CARD_KEYS = [...GROUPS['Публичная карточка инструмента (по QR)'], ...GROUPS['Публичная карточка авто (по QR)']];
@@ -2491,6 +2494,7 @@ async function loadSettings() {
     if (['maintenance_mode', 'allow_registration'].includes(key) || PUBLIC_CARD_KEYS.includes(key)) return 'boolean';
     if (['site_description', 'about_subtitle', 'about_card1_text', 'about_card2_text', 'contact_subtitle'].includes(key)) return 'textarea';
     if (key === 'contact_email') return 'email';
+    if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'].includes(key)) return 'number';
     return 'text';
   }
 
@@ -2535,6 +2539,11 @@ async function loadSettings() {
           div.innerHTML = `
             <label>${labelText}</label>
             <textarea name="${escapeHtml(key)}" class="form-control" rows="3" style="resize: vertical; min-height: 70px;">${escapeHtml(set.value || '')}</textarea>
+          `;
+        } else if (fieldType === 'number') {
+          div.innerHTML = `
+            <label>${labelText}</label>
+            <input type="number" min="0" name="${escapeHtml(key)}" value="${escapeHtml(set.value || '0')}" class="form-control">
           `;
         } else {
           const inputType = fieldType === 'email' ? 'email' : 'text';
@@ -4918,6 +4927,7 @@ const VEHICLE_PLACEHOLDER_ICON = '<i data-lucide="car" style="width:16px;height:
 
 async function loadVehicles() {
   try {
+    await loadVehicleExpirySettings();
     const res = await fetch('/api/crud/vehicles');
     if (res.ok) {
       vehiclesList = await res.json();
@@ -4931,34 +4941,44 @@ async function loadVehicles() {
   }
 }
 
-const VEHICLE_EXPIRY_SOON_DAYS = 30;
+// Пороги напоминаний (в днях), настраиваются в «Настройки» → «Напоминания об автопарке».
+// 0 означает «выключено» для этого типа напоминания.
+let vehicleInspectionSoonDays = 30;
+let vehicleInsuranceSoonDays = 30;
+
+async function loadVehicleExpirySettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const rows = await res.json();
+    const map = {};
+    (rows || []).forEach(r => { map[r.key] = r.value; });
+    if (map.vehicle_inspection_soon_days !== undefined) vehicleInspectionSoonDays = parseInt(map.vehicle_inspection_soon_days, 10) || 0;
+    if (map.vehicle_insurance_soon_days !== undefined) vehicleInsuranceSoonDays = parseInt(map.vehicle_insurance_soon_days, 10) || 0;
+  } catch (e) { /* используем значения по умолчанию */ }
+}
 
 // Возвращает { insurance: 'overdue'|'soon'|null, inspection: 'overdue'|'soon'|null }
 function vehicleExpiryStatus(v) {
-  const check = (dateStr) => {
-    if (!dateStr) return null;
+  const check = (dateStr, soonDays) => {
+    if (!dateStr || !soonDays) return null;
     const d = new Date(dateStr);
     if (isNaN(d)) return null;
     const days = Math.ceil((d - new Date(new Date().toDateString())) / 86400000);
     if (days < 0) return 'overdue';
-    if (days <= VEHICLE_EXPIRY_SOON_DAYS) return 'soon';
+    if (days <= soonDays) return 'soon';
     return null;
   };
-  return { insurance: check(v.insurance_until), inspection: check(v.inspection_until) };
+  return {
+    insurance: check(v.insurance_until, vehicleInsuranceSoonDays),
+    inspection: check(v.inspection_until, vehicleInspectionSoonDays)
+  };
 }
 
-function vehicleExpiryBadgesHtml(v) {
-  const st = vehicleExpiryStatus(v);
-  const parts = [];
-  const mk = (label, level) => {
-    if (!level) return '';
-    const cls = level === 'overdue' ? 'badge-danger' : 'badge-warning';
-    const title = level === 'overdue' ? `Просрочен(о): ${label}` : `Скоро истекает: ${label}`;
-    return `<span class="badge ${cls}" title="${title}" style="margin-left:4px;">${label}</span>`;
-  };
-  parts.push(mk('ТО', st.inspection));
-  parts.push(mk('Страховка', st.insurance));
-  return parts.join('');
+function vehicleExpiryBadge(label, level) {
+  if (!level) return '';
+  const title = level === 'overdue' ? `Просрочен(о): ${label}` : `Скоро истекает: ${label}`;
+  return `<span class="badge badge-danger" title="${title}">${label}</span>`;
 }
 
 function updateVehiclesExpiryBadge() {
@@ -4974,6 +4994,7 @@ function updateVehiclesExpiryBadge() {
 
 async function initVehiclesExpiryBadge() {
   try {
+    await loadVehicleExpirySettings();
     const res = await fetch('/api/crud/vehicles');
     if (!res.ok) return;
     vehiclesList = await res.json();
@@ -4993,13 +5014,17 @@ function renderVehicles(filterQuery = '') {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Авто не найдено</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Авто не найдено</td></tr>`;
     return;
   }
 
   filtered.forEach(v => {
     const st = VEHICLE_STATUS[v.status] || VEHICLE_STATUS.available;
     const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const expiry = vehicleExpiryStatus(v);
+    const insuranceBadge = vehicleExpiryBadge('Страховка', expiry.insurance);
+    const inspectionBadge = vehicleExpiryBadge('ТО', expiry.inspection);
+    const brandModel = [v.brand, v.model].filter(Boolean).map(escapeHtml).join(' ') || escapeHtml(v.name || '') || '—';
     const holder = v.current_holder
       ? `<strong>${escapeHtml(v.current_holder)}</strong>`
       : `<span style="color: hsl(var(--text-muted));">—</span>`;
@@ -5021,12 +5046,13 @@ function renderVehicles(filterQuery = '') {
       <td class="mobile-primary">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="openVehicleDetail(${v.id})" title="Открыть карточку">
           ${thumb}
-          <div><strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(v.name)}</strong>${v.brand ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(v.brand)}${v.model ? ' · ' + escapeHtml(v.model) : ''}</div>` : ''}</div>
+          <div><strong style="border-bottom:1px dashed hsl(var(--border-color));">${brandModel}</strong></div>
         </div>
       </td>
       <td class="mobile-hidden">${escapeHtml(v.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(v.plate_number || '—')}</td>
-      <td>${statusBadge}${vehicleExpiryBadgesHtml(v)}</td>
+      <td>${statusBadge}${insuranceBadge ? ' ' + insuranceBadge : ''}</td>
+      <td class="mobile-hidden">${inspectionBadge || '<span style="color: hsl(var(--text-muted));">—</span>'}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
