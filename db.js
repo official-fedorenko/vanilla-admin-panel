@@ -376,6 +376,33 @@ const MIGRATIONS = [
         db.run("CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id)", () => {});
       });
     }
+  },
+  {
+    version: 22,
+    description: 'Add support_resolutions (история закрытий обращений + ответ "решён ли вопрос?")',
+    up: () => {
+      // Отдельная таблица, а не переиспользование support_tickets — тикет
+      // (ticket_id) живёт бессрочно и может закрываться/переоткрываться много
+      // раз; здесь фиксируется каждое закрытие отдельной строкой, чтобы в
+      // «истории обращений» было видно, кто закрыл и решилась ли проблема,
+      // даже после того как тикет снова открылся новым сообщением.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS support_resolutions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ticket_id TEXT NOT NULL,
+          closed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          closed_by_name TEXT,
+          closed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          resolved INTEGER,
+          resolved_at DATETIME
+        )
+      `, () => {
+        db.run("CREATE INDEX IF NOT EXISTS idx_support_resolutions_ticket ON support_resolutions(ticket_id)", () => {});
+      });
+      // Помечает служебные сообщения в чате (вопрос "решён ли вопрос?" и ответ
+      // на него), чтобы фронтенд мог отрисовать их отдельно от обычных реплик.
+      db.run("ALTER TABLE support_messages ADD COLUMN system_type TEXT", () => {});
+    }
   }
 ];
 

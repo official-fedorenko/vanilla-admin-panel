@@ -148,24 +148,43 @@ module.exports = function handleSupport(req, res, user, parsedUrl, method) {
         (statusRows || []).forEach(s => { statusByTicket[s.ticket_id] = s.status; });
         rows.forEach(r => { r.status = statusByTicket[r.ticket_id] || 'open'; });
 
-        if (!ownerIds.length) return sendJson(res, 200, { success: true, tickets: rows });
-
-        const placeholders = ownerIds.map(() => '?').join(',');
+        // Последнее закрытие каждого тикета (кто закрыл, решён ли вопрос) — для
+        // «истории обращений»; для открытых тикетов эти поля просто null.
         db.all(
-          `SELECT user_id, first_name, last_name FROM employees WHERE user_id IN (${placeholders})`,
-          ownerIds,
-          (e2, empRows) => {
-            const namesByUser = {};
-            (empRows || []).forEach(e => {
-              const full = [e.first_name, e.last_name].filter(Boolean).join(' ').trim();
-              if (full) namesByUser[e.user_id] = full;
-            });
+          `SELECT r1.ticket_id, r1.closed_by_name, r1.closed_at, r1.resolved
+           FROM support_resolutions r1
+           WHERE r1.id = (SELECT MAX(id) FROM support_resolutions r2 WHERE r2.ticket_id = r1.ticket_id)`,
+          [],
+          (eRes, resRows) => {
+            const resByTicket = {};
+            (resRows || []).forEach(rr => { resByTicket[rr.ticket_id] = rr; });
             rows.forEach(r => {
-              const full = namesByUser[r.owner_user_id];
-              if (full) r.name = full;
-              delete r.owner_user_id;
+              const rr = resByTicket[r.ticket_id];
+              r.closed_by_name = rr ? rr.closed_by_name : null;
+              r.resolution_closed_at = rr ? rr.closed_at : null;
+              r.resolved = rr ? rr.resolved : null;
             });
-            sendJson(res, 200, { success: true, tickets: rows });
+
+            if (!ownerIds.length) return sendJson(res, 200, { success: true, tickets: rows });
+
+            const placeholders = ownerIds.map(() => '?').join(',');
+            db.all(
+              `SELECT user_id, first_name, last_name FROM employees WHERE user_id IN (${placeholders})`,
+              ownerIds,
+              (e2, empRows) => {
+                const namesByUser = {};
+                (empRows || []).forEach(e => {
+                  const full = [e.first_name, e.last_name].filter(Boolean).join(' ').trim();
+                  if (full) namesByUser[e.user_id] = full;
+                });
+                rows.forEach(r => {
+                  const full = namesByUser[r.owner_user_id];
+                  if (full) r.name = full;
+                  delete r.owner_user_id;
+                });
+                sendJson(res, 200, { success: true, tickets: rows });
+              }
+            );
           }
         );
       });
@@ -437,7 +456,8 @@ module.exports = function handleSupport(req, res, user, parsedUrl, method) {
     return;
   }
 
-  // POST /api/support/close — закрыть обращение (Admin/Superadmin).
+  // POST /api/support/close — закрыть обращение (Admin/Superadmin). Заводит
+  // запись в истории закрытий и спрашивает пользователя в чате, решён ли вопрос.
   if (currentPath === '/api/support/close' && method === 'POST') {
     if (!isAdmin(user)) return sendJson(res, 403, { success: false, message: 'Доступ запрещен' });
     (async () => {
@@ -450,9 +470,82 @@ module.exports = function handleSupport(req, res, user, parsedUrl, method) {
           [ticketId, user.id],
           (err) => {
             if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+
+            db.run(
+              "INSERT INTO support_resolutions (ticket_id, closed_by, closed_by_name) VALUES (?, ?, ?)",
+              [ticketId, user.id, user.username],
+              () => {
+                const askText = 'Обращение закрыто администратором. Помог ли ответ решить ваш вопрос?';
+                db.run(
+                  "INSERT INTO support_messages (ticket_id, name, message, sender_role, is_read, system_type) VALUES (?, 'Система', ?, 'System', 1, 'resolution_ask')",
+                  [ticketId, askText],
+                  function (e2) {
+                    const messageId = this.lastID;
+                    db.get("SELECT * FROM support_messages WHERE id = ?", [messageId], (e3, row) => {
+                      if (row) {
+                        applyDisplayNames([row], (msgs) => {
+                          publishToTicket(ticketId, msgs[0]);
+                        });
+                      }
+                    });
+                  }
+                );
+                // Уведомление в личный кабинет — только для тикетов, привязанных к аккаунту.
+                const ownerMatch = /^user_(\d+)$/.exec(ticketId);
+                if (ownerMatch) {
+                  db.run(
+                    "INSERT INTO notifications (user_id, message, created_by) VALUES (?, ?, ?)",
+                    [Number(ownerMatch[1]), 'Ваше обращение в поддержку закрыто. Загляните в чат поддержки — помогло ли решение?', user.id],
+                    () => {}
+                  );
+                }
+              }
+            );
+
             publishToTicket(ticketId, { type: 'status', status: 'closed' });
             publishToAdmins({ type: 'ticket_updated', ticketId });
             sendJson(res, 200, { success: true });
+          }
+        );
+      } catch (e) {
+        sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+      }
+    })();
+    return;
+  }
+
+  // POST /api/support/resolve — пользователь отвечает, решён ли его вопрос
+  // после закрытия обращения администратором.
+  if (currentPath === '/api/support/resolve' && method === 'POST') {
+    (async () => {
+      try {
+        const { resolved } = await getJsonBody(req);
+        if (typeof resolved !== 'boolean') return sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+        if (isAdmin(user)) return sendJson(res, 403, { success: false, message: 'Ответить может только автор обращения' });
+        const ticketId = 'user_' + user.id;
+        db.run(
+          `UPDATE support_resolutions SET resolved = ?, resolved_at = CURRENT_TIMESTAMP
+           WHERE id = (SELECT id FROM support_resolutions WHERE ticket_id = ? AND resolved IS NULL ORDER BY id DESC LIMIT 1)`,
+          [resolved ? 1 : 0, ticketId],
+          function (err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            const answerText = resolved ? 'Пользователь подтвердил: вопрос решён.' : 'Пользователь сообщил: вопрос не решён.';
+            db.run(
+              "INSERT INTO support_messages (ticket_id, user_id, name, message, sender_role, is_read, system_type) VALUES (?, ?, 'Система', ?, 'System', 1, 'resolution_answer')",
+              [ticketId, user.id, answerText],
+              function (e2) {
+                const messageId = this.lastID;
+                db.get("SELECT * FROM support_messages WHERE id = ?", [messageId], (e3, row) => {
+                  if (row) {
+                    applyDisplayNames([row], (msgs) => {
+                      publishToTicket(ticketId, msgs[0]);
+                      publishToAdmins({ type: 'ticket_updated', ticketId });
+                    });
+                  }
+                });
+                sendJson(res, 200, { success: true });
+              }
+            );
           }
         );
       } catch (e) {

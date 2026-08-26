@@ -433,6 +433,12 @@
         return;
       }
       container.innerHTML = messagesCache.map(msg => {
+        if (msg.sender_role === 'System') {
+          return `
+            <div class="msg-bubble-row" style="align-items:center;">
+              <div class="msg-bubble" style="background:transparent; border-style:dashed; color:var(--text-muted); font-size:12px; text-align:center;">${escapeHtml(msg.message)}</div>
+            </div>`;
+        }
         const isAdmin = msg.sender_role === 'Admin' || msg.sender_role === 'Superadmin';
         const align = isAdmin ? 'flex-end' : 'flex-start';
         const bg = isAdmin ? 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))' : 'var(--bg-input)';

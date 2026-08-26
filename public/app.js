@@ -709,7 +709,7 @@ function loadSectionData(hash) {
   } else if (hash === 'logs') {
     loadFullLogs();
   } else if (hash === 'support') {
-    updateSupportBadge();
+    loadSupportTicketTables();
   } else if (hash === 'requests') {
     loadToolRequests();
   } else if (hash === 'worktime') {
@@ -1465,7 +1465,83 @@ async function updateSupportBadge() {
     const data = await res.json();
     const total = (data.tickets || []).reduce((s, t) => s + (t.unread_count || 0), 0);
     setSupportBadge(total);
+    renderSupportTicketTables(data.tickets || []);
   } catch (e) { /* тихо */ }
+}
+
+// «Обратная связь»: таблица необработанных (открытых) обращений + история закрытых.
+async function loadSupportTicketTables() {
+  try {
+    const res = await fetch('/api/support/tickets');
+    if (!res.ok) return;
+    const data = await res.json();
+    setSupportBadge((data.tickets || []).reduce((s, t) => s + (t.unread_count || 0), 0));
+    renderSupportTicketTables(data.tickets || []);
+  } catch (e) { /* тихо */ }
+}
+
+function renderSupportTicketTables(tickets) {
+  const activeBody = document.getElementById('supportActiveTableBody');
+  const historyBody = document.getElementById('supportHistoryTableBody');
+  if (!activeBody || !historyBody) return;
+
+  const active = tickets.filter(t => t.status !== 'closed');
+  const closed = tickets.filter(t => t.status === 'closed')
+    .sort((a, b) => new Date(b.resolution_closed_at || b.last_activity) - new Date(a.resolution_closed_at || a.last_activity));
+
+  activeBody.innerHTML = active.length
+    ? active.map(t => `
+        <tr>
+          <td>${escapeHtml(t.name || 'Пользователь')}${t.email ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(t.email)}</div>` : ''}</td>
+          <td class="mobile-hidden">${escapeHtml((t.last_message || '—').slice(0, 80))}</td>
+          <td class="mobile-hidden">${t.last_activity ? new Date(t.last_activity.replace(' ', 'T')).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+          <td>${t.unread_count > 0 ? `<span class="badge badge-danger">${t.unread_count}</span>` : '—'}</td>
+          <td class="no-label" style="text-align:right;">
+            <div class="action-btns" style="justify-content:flex-end;">
+              <a href="/admin/support-inbox.html?with=${encodeURIComponent(t.ticket_id)}" class="action-btn" title="Открыть чат"><i data-lucide="message-circle"></i></a>
+              <button class="action-btn" title="Завершить обращение" onclick="closeSupportTicketFromTable('${t.ticket_id}')" style="color: hsl(var(--accent-red));"><i data-lucide="check-circle"></i></button>
+            </div>
+          </td>
+        </tr>
+      `).join('')
+    : `<tr class="empty-row"><td colspan="5" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Необработанных обращений нет</td></tr>`;
+
+  historyBody.innerHTML = closed.length
+    ? closed.map(t => {
+        const resolvedLabel = t.resolved === 1
+          ? '<span class="badge badge-success">Решено</span>'
+          : (t.resolved === 0 ? '<span class="badge badge-danger">Не решено</span>' : '<span class="badge badge-warning">Ожидает ответа</span>');
+        return `
+          <tr>
+            <td>${escapeHtml(t.name || 'Пользователь')}</td>
+            <td class="mobile-hidden">${escapeHtml(t.closed_by_name || '—')}</td>
+            <td class="mobile-hidden">${t.resolution_closed_at ? new Date(t.resolution_closed_at.replace(' ', 'T')).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+            <td>${resolvedLabel}</td>
+          </tr>
+        `;
+      }).join('')
+    : `<tr class="empty-row"><td colspan="4" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">История пуста</td></tr>`;
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function closeSupportTicketFromTable(ticketId) {
+  if (!await confirmDialog('Завершить это обращение? Пользователю придёт вопрос, решена ли проблема.', { okText: 'Завершить' })) return;
+  try {
+    const res = await fetch('/api/support/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticketId })
+    });
+    if (res.ok) {
+      showToast('Обращение завершено', 'success');
+      loadSupportTicketTables();
+    } else {
+      showToast('Не удалось завершить обращение', 'error');
+    }
+  } catch (e) {
+    showToast('Ошибка при завершении обращения', 'error');
+  }
 }
 
 document.getElementById('requestsStatusFilter')?.addEventListener('change', loadRequests);
