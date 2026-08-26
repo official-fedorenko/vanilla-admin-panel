@@ -354,6 +354,28 @@ const MIGRATIONS = [
         )
       `, () => {});
     }
+  },
+  {
+    version: 21,
+    description: 'Add direct_messages (личные чаты между сотрудниками)',
+    up: () => {
+      // conversation_id — 'dm_<меньший user_id>_<больший user_id>', вычисляется
+      // и на бэкенде, и здесь не хранится отдельной таблицей диалогов — пара
+      // участников всегда выводится из id детерминированно.
+      db.run(`
+        CREATE TABLE IF NOT EXISTS direct_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          conversation_id TEXT NOT NULL,
+          sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          message TEXT NOT NULL,
+          is_read INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, () => {
+        db.run("CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id)", () => {});
+      });
+    }
   }
 ];
 

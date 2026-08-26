@@ -831,6 +831,31 @@
           </div><!-- /cbody -->
         </div>
 
+        <!-- Личные чаты между сотрудниками -->
+        <div class="card mobile-collapse chat-card" id="myMessagesCard" style="display: none; flex-direction: column; height: 500px;">
+          <div class="card-title collapse-toggle" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <span style="display:flex; align-items:center; gap:10px;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              <span id="dmCardTitle">Личные чаты</span>
+            </span>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <button id="dmBackBtn" type="button" style="display:none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif;">Назад</button>
+              <span class="collapse-chev">▾</span>
+            </div>
+          </div>
+          <div class="cbody" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+            <input type="text" id="dmContactSearch" class="form-input" placeholder="Поиск коллеги..." style="margin-bottom:10px; display:none;">
+            <div id="dmContactsList" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto;">
+              <div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Загрузка...</div>
+            </div>
+            <div id="dmMessages" style="flex: 1; overflow-y: auto; padding-right: 10px; margin-bottom: 16px; display: none; flex-direction: column; gap: 12px;"></div>
+            <form id="dmForm" class="chat-form" style="display:none;">
+              <input type="text" id="dmMessageInput" class="chat-form-input" placeholder="Напишите сообщение..." required>
+              <button type="submit" class="btn-save chat-form-submit">Отправить</button>
+            </form>
+          </div><!-- /cbody -->
+        </div>
+
         <!-- Заявления -->
         <div class="card mobile-collapse" id="requestsCard">
           <div class="card-title collapse-toggle" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1087,6 +1112,9 @@
           loadMyTools();
           document.getElementById('myVehiclesCard').style.display = '';
           loadMyVehicles();
+          document.getElementById('myMessagesCard').style.display = 'flex';
+          loadDmContacts();
+          setInterval(updateDmBadge, 20000);
         }
       } catch (e) {
         window.location.href = '/login.html';
@@ -1401,6 +1429,206 @@
         }
       });
     })();
+
+    // === Личные чаты между сотрудниками ===
+    let dmContactsCache = [];
+    let activeDmContactId = null;
+    let dmEventSource = null;
+    let dmPollingInterval = null;
+    let dmMessagesCache = [];
+
+    async function loadDmContacts(query = '') {
+      try {
+        const res = await fetch('/api/dm/contacts' + (query ? '?q=' + encodeURIComponent(query) : ''));
+        if (!res.ok) return;
+        const data = await res.json();
+        dmContactsCache = data.contacts || [];
+        renderDmContacts();
+        updateDmBadge();
+      } catch (e) {}
+    }
+
+    function updateDmBadge() {
+      const total = dmContactsCache.reduce((s, c) => s + (c.unread_count || 0), 0);
+      const title = document.getElementById('dmCardTitle');
+      if (title) title.textContent = total > 0 ? `Личные чаты (${total})` : 'Личные чаты';
+    }
+
+    function dmShortWhen(raw) {
+      if (!raw) return '';
+      const d = new Date(String(raw).replace(' ', 'T'));
+      if (isNaN(d)) return '';
+      const diff = Date.now() - d.getTime();
+      const min = Math.floor(diff / 60000);
+      if (min < 1) return 'только что';
+      if (min < 60) return `${min} мин`;
+      const h = Math.floor(min / 60);
+      if (h < 24) return `${h} ч`;
+      return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    }
+
+    function renderDmContacts() {
+      if (activeDmContactId) return;
+      const list = document.getElementById('dmContactsList');
+      const search = document.getElementById('dmContactSearch');
+      if (!list) return;
+      document.getElementById('dmMessages').style.display = 'none';
+      document.getElementById('dmForm').style.display = 'none';
+      document.getElementById('dmBackBtn').style.display = 'none';
+      list.style.display = 'flex';
+      if (search) search.style.display = dmContactsCache.length > 5 ? '' : 'none';
+
+      if (!dmContactsCache.length) {
+        list.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 13px; margin: auto;">Коллег пока не нашлось.</div>';
+        return;
+      }
+      list.innerHTML = dmContactsCache.map(c => {
+        const letter = (c.name || '?').charAt(0).toUpperCase();
+        const avatar = c.avatar_url
+          ? `<img src="${c.avatar_url}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`
+          : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent-purple),var(--accent-cyan));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;">${letter}</div>`;
+        const preview = c.last_message
+          ? (c.last_from_me ? 'Вы: ' : '') + escapeHtml(String(c.last_message).replace(/\s+/g, ' ').trim())
+          : 'Нет переписки — напишите первым';
+        const badge = c.unread_count > 0
+          ? `<span style="background:var(--red); color:#fff; border-radius:10px; padding:2px 8px; font-size:11px; font-weight:700; margin-left:auto;">${c.unread_count}</span>`
+          : '';
+        return `
+          <div onclick="openDmConversation(${c.user_id})" style="display:flex; align-items:center; gap:12px; padding:12px 16px; border:1px solid var(--border-color); border-radius:12px; cursor:pointer; background:rgba(255,255,255,0.01);">
+            ${avatar}
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;">
+              <span style="font-weight:600; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.name)}</span>
+              <span style="font-size:12px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${preview}</span>
+            </div>
+            ${c.last_activity ? `<span style="font-size:11px; color:var(--text-muted); flex-shrink:0;">${dmShortWhen(c.last_activity)}</span>` : ''}
+            ${badge}
+          </div>`;
+      }).join('');
+    }
+
+    document.getElementById('dmContactSearch')?.addEventListener('input', (e) => loadDmContacts(e.target.value));
+
+    window.openDmConversation = async function (userId) {
+      activeDmContactId = userId;
+      const contact = dmContactsCache.find(c => c.user_id === userId);
+      document.getElementById('dmCardTitle').textContent = contact ? contact.name : 'Чат';
+      document.getElementById('dmContactsList').style.display = 'none';
+      document.getElementById('dmContactSearch').style.display = 'none';
+      document.getElementById('dmBackBtn').style.display = 'inline-block';
+      document.getElementById('dmMessages').style.display = 'flex';
+      document.getElementById('dmForm').style.display = 'flex';
+
+      await loadDmMessages();
+      await fetch('/api/dm/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ with: userId })
+      });
+      loadDmContacts();
+      connectDmStream(userId);
+      setTimeout(() => document.getElementById('dmMessageInput')?.focus(), 50);
+    };
+
+    window.closeDmConversation = function () {
+      closeDmStream();
+      activeDmContactId = null;
+      updateDmBadge();
+      loadDmContacts();
+    };
+    document.getElementById('dmBackBtn')?.addEventListener('click', closeDmConversation);
+
+    async function loadDmMessages(isPolling = false) {
+      if (!activeDmContactId) return;
+      try {
+        const res = await fetch(`/api/dm/messages?with=${activeDmContactId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        dmMessagesCache = data.messages || [];
+        renderDmMessages(isPolling);
+      } catch (e) {}
+    }
+
+    function renderDmMessages(isPolling) {
+      const container = document.getElementById('dmMessages');
+      if (!container) return;
+      const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+      if (!dmMessagesCache.length) {
+        container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:13px; margin:auto;">Сообщений пока нет. Напишите первым!</div>';
+        return;
+      }
+      container.innerHTML = dmMessagesCache.map(msg => {
+        const isMe = msg.sender_id === currentUserData.id;
+        const align = isMe ? 'flex-end' : 'flex-start';
+        const bg = isMe ? 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))' : 'rgba(255,255,255,0.05)';
+        const color = isMe ? '#fff' : 'inherit';
+        const time = new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        return `
+          <div style="display:flex; flex-direction:column; align-items:${align};">
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">${time}</div>
+            <div style="background:${bg}; color:${color}; padding:10px 14px; border-radius:14px; max-width:80%; border:1px solid ${isMe ? 'transparent' : 'var(--border-color)'}; word-break:break-word;">${escapeHtml(msg.message)}</div>
+          </div>`;
+      }).join('');
+      if (!isPolling || wasAtBottom) container.scrollTop = container.scrollHeight;
+    }
+
+    function connectDmStream(userId) {
+      closeDmStream();
+      try {
+        dmEventSource = new EventSource(`/api/dm/stream?with=${userId}`);
+        dmEventSource.onmessage = (e) => {
+          let data;
+          try { data = JSON.parse(e.data); } catch (err) { return; }
+          if (!data || !data.id) return;
+          if (dmMessagesCache.some(m => m.id === data.id)) return;
+          dmMessagesCache.push(data);
+          renderDmMessages(true);
+          if (data.recipient_id === currentUserData.id) {
+            fetch('/api/dm/read', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ with: userId })
+            });
+          }
+        };
+        dmEventSource.onerror = () => {
+          if (dmEventSource) { dmEventSource.close(); dmEventSource = null; }
+          if (dmPollingInterval) clearInterval(dmPollingInterval);
+          dmPollingInterval = setInterval(() => loadDmMessages(true), 4000);
+        };
+      } catch (e) {
+        if (dmPollingInterval) clearInterval(dmPollingInterval);
+        dmPollingInterval = setInterval(() => loadDmMessages(true), 4000);
+      }
+    }
+    function closeDmStream() {
+      if (dmEventSource) { dmEventSource.close(); dmEventSource = null; }
+      if (dmPollingInterval) { clearInterval(dmPollingInterval); dmPollingInterval = null; }
+    }
+
+    document.getElementById('dmForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeDmContactId) return;
+      const input = document.getElementById('dmMessageInput');
+      const message = input.value.trim();
+      if (!message) return;
+      input.disabled = true;
+      try {
+        const res = await fetch('/api/dm/send', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: activeDmContactId, message })
+        });
+        if (res.ok) {
+          input.value = '';
+          await loadDmMessages();
+        } else {
+          const d = await res.json().catch(() => ({}));
+          showToast(d.message || 'Ошибка при отправке', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      } finally {
+        input.disabled = false;
+        input.focus();
+      }
+    });
 
     function populateUI(user) {
       const letter = user.username.charAt(0).toUpperCase();
