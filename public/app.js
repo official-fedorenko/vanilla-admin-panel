@@ -5051,8 +5051,8 @@ function renderVehicles(filterQuery = '') {
       </td>
       <td class="mobile-hidden">${escapeHtml(v.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(v.plate_number || '—')}</td>
-      <td>${statusBadge}${insuranceBadge ? ' ' + insuranceBadge : ''}</td>
-      <td class="mobile-hidden">${inspectionBadge || '<span style="color: hsl(var(--text-muted));">—</span>'}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${[inspectionBadge, insuranceBadge].filter(Boolean).join(' ') || '<span style="color: hsl(var(--text-muted));">—</span>'}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
