@@ -943,22 +943,6 @@
           </form>
           </div><!-- /cbody -->
         </div>
-
-        <div class="card mobile-collapse">
-          <div class="card-title collapse-toggle">
-            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Последние публикации</span>
-            <span class="collapse-chev">▾</span>
-          </div>
-          <div class="cbody">
-          <div id="articlesList" class="articles-list">
-            <!-- Skeleton -->
-            <div class="article-item" style="opacity:0.4">
-              <div class="article-date">Загрузка...</div>
-              <div class="article-title">—</div>
-            </div>
-          </div>
-          </div><!-- /cbody -->
-        </div>
       </div>
     </div>
   </div>
@@ -1522,34 +1506,6 @@
       const regDate = new Date(user.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
       document.getElementById('regDate').textContent = regDate;
       document.title = `Кабинет — ${user.username}`;
-    }
-
-    async function loadArticles() {
-      try {
-        const res = await fetch('/api/public/articles');
-        const articles = await res.json();
-        const list = document.getElementById('articlesList');
-
-        if (!articles.length) {
-          list.innerHTML = '<div class="no-articles">Опубликованных статей пока нет</div>';
-          return;
-        }
-
-        list.innerHTML = '';
-        articles.slice(0, 5).forEach(art => {
-          const date = new Date(art.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-          const item = document.createElement('div');
-          item.className = 'article-item';
-          item.innerHTML = `
-            <div class="article-date">${date}</div>
-            <div class="article-title">${escapeHtml(art.title)}</div>
-            <div class="article-preview">${art.content || 'Нет описания'}</div>
-          `;
-          list.appendChild(item);
-        });
-      } catch (e) {
-        document.getElementById('articlesList').innerHTML = '<div class="no-articles">Не удалось загрузить статьи</div>';
-      }
     }
 
     async function loadSettings() {
@@ -2910,7 +2866,7 @@
 
       // Init
       (async () => {
-        await Promise.all([loadProfile(), loadArticles(), loadSettings()]);
+        await Promise.all([loadProfile(), loadSettings()]);
         loadTwoFactorStatus();
         setupToolRequests();
         setupWorkLog();
