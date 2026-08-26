@@ -828,6 +828,8 @@ db.serialize(() => {
   stmt.run("public_vehicle_card_show_mileage", "false", "Публичная карточка авто: показывать пробег");
   stmt.run("public_vehicle_card_show_purchase_date", "false", "Публичная карточка авто: показывать дату покупки");
   stmt.run("public_vehicle_card_show_notes", "false", "Публичная карточка авто: показывать заметки");
+  stmt.run("vehicle_inspection_soon_days", "30", "За сколько дней до окончания ТО показывать напоминание");
+  stmt.run("vehicle_insurance_soon_days", "30", "За сколько дней до окончания страховки показывать напоминание");
   stmt.finalize();
 
   // Заполняем тестовые статьи
