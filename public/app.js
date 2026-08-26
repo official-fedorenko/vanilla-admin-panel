@@ -6937,24 +6937,24 @@ async function openConstructionSiteModal(site = null) {
   document.getElementById('constructionSiteBudget').value = site ? (site.budget ?? '') : '';
   document.getElementById('constructionSiteNotes').value = site ? (site.notes || '') : '';
   populateConstructionSiteCategorySelect(site ? (site.category || '') : '');
-  await populateConstructionSiteForemanSelect(site ? site.foreman_id : null);
+  populateConstructionSiteForemanSelect(site ? site.foreman_id : null, site ? parseConstructionSiteCrew(site) : []);
   document.getElementById('constructionSiteModalOverlay').classList.add('active');
 }
 
-async function populateConstructionSiteForemanSelect(selectedId) {
+// Бригадиром может быть только тот, кто сейчас числится на объекте —
+// список ограничен текущей бригадой (crew), а не всеми сотрудниками.
+function populateConstructionSiteForemanSelect(selectedId, crew) {
   const select = document.getElementById('constructionSiteForeman');
   if (!select) return;
-  select.innerHTML = '<option value="">Загрузка...</option>';
-  try {
-    const res = await fetch('/api/crud/employees');
-    const employees = res.ok ? await res.json() : [];
-    const active = employees.filter(e => e.status !== 'fired');
-    select.innerHTML = '<option value="">— не назначен —</option>' +
-      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
-    select.value = selectedId || '';
-  } catch (err) {
-    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  if (!crew.length) {
+    select.innerHTML = '<option value="">— не назначен —</option>';
+    select.disabled = true;
+    return;
   }
+  select.disabled = false;
+  select.innerHTML = '<option value="">— не назначен —</option>' +
+    crew.map(o => `<option value="${o.employeeId}">${escapeHtml(o.name)}</option>`).join('');
+  select.value = selectedId || '';
 }
 
 window.editConstructionSite = (id) => {

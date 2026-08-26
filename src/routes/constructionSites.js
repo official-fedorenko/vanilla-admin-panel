@@ -114,6 +114,10 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       const body = await getJsonBody(req);
       const { error, values } = extractSiteFields(body);
       if (error) return sendJson(res, 400, { success: false, message: error });
+      // Новый объект ещё ни за кем не закреплён — бригадира назначить нельзя.
+      if (values.foreman_id) {
+        return sendJson(res, 400, { success: false, message: 'Бригадиром может быть только сотрудник, направленный на этот объект' });
+      }
 
       db.run(
         `INSERT INTO construction_sites (name, category, address, customer, foreman_id, status, start_date, end_date, budget, photo_url, notes)
@@ -140,18 +144,35 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       const { error, values } = extractSiteFields(body);
       if (error) return sendJson(res, 400, { success: false, message: error });
 
-      db.run(
-        `UPDATE construction_sites SET name = ?, category = ?, address = ?, customer = ?, foreman_id = ?, status = ?,
-           start_date = ?, end_date = ?, budget = ?, photo_url = ?, notes = ? WHERE id = ?`,
-        [values.name, values.category, values.address, values.customer, values.foreman_id, values.status,
-         values.start_date, values.end_date, values.budget, values.photo_url, values.notes, id],
-        function (err) {
-          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
-          if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Объект не найден' });
-          logAction(user.username, `Обновлён строительный объект id=${id}`);
-          sendJson(res, 200, { success: true });
-        }
-      );
+      const applyUpdate = () => {
+        db.run(
+          `UPDATE construction_sites SET name = ?, category = ?, address = ?, customer = ?, foreman_id = ?, status = ?,
+             start_date = ?, end_date = ?, budget = ?, photo_url = ?, notes = ? WHERE id = ?`,
+          [values.name, values.category, values.address, values.customer, values.foreman_id, values.status,
+           values.start_date, values.end_date, values.budget, values.photo_url, values.notes, id],
+          function (err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
+            if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Объект не найден' });
+            logAction(user.username, `Обновлён строительный объект id=${id}`);
+            sendJson(res, 200, { success: true });
+          }
+        );
+      };
+
+      // Бригадиром может быть только тот, кто сейчас числится на объекте.
+      if (values.foreman_id) {
+        db.get(
+          "SELECT id FROM construction_site_assignments WHERE site_id = ? AND employee_id = ? AND returned_at IS NULL",
+          [id, values.foreman_id],
+          (chkErr, row) => {
+            if (chkErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            if (!row) return sendJson(res, 400, { success: false, message: 'Бригадиром может быть только сотрудник, направленный на этот объект' });
+            applyUpdate();
+          }
+        );
+      } else {
+        applyUpdate();
+      }
     } catch (e) {
       sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
     }
@@ -223,6 +244,17 @@ async function handleIssue(req, res, user) {
   }
 }
 
+// Бригадиром может быть только тот, кто сейчас числится на объекте — если
+// снимаемый/заменяемый сотрудник был бригадиром, сбрасываем поле, вместо
+// того чтобы оставлять «висячую» ссылку на человека, которого там уже нет.
+function clearForemanIfMatches(siteId, employeeId, cb) {
+  db.run(
+    "UPDATE construction_sites SET foreman_id = NULL WHERE id = ? AND foreman_id = ?",
+    [siteId, employeeId],
+    () => cb && cb()
+  );
+}
+
 // ---- Снять конкретного сотрудника с объекта (/api/construction-sites/return) ----
 async function handleReturn(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
@@ -241,8 +273,10 @@ async function handleReturn(req, res, user) {
 
         db.run("UPDATE construction_site_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], function (err2) {
           if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка снятия' });
-          logAction(user.username, `Снят сотрудник id=${employeeId} с объекта id=${siteId}`);
-          sendJson(res, 200, { success: true });
+          clearForemanIfMatches(siteId, employeeId, () => {
+            logAction(user.username, `Снят сотрудник id=${employeeId} с объекта id=${siteId}`);
+            sendJson(res, 200, { success: true });
+          });
         });
       }
     );
@@ -288,6 +322,7 @@ async function handleTransfer(req, res, user) {
                 [siteId, employeeId, user.username, notes],
                 function (e5) {
                   if (e5) return sendJson(res, 500, { success: false, message: 'Ошибка замены' });
+                  clearForemanIfMatches(siteId, fromEmployeeId, () => {});
                   logAction(user.username, `На объекте «${site.name}» сотрудник заменён на ${emp.last_name} ${emp.first_name}`);
                   sendJson(res, 200, { success: true, id: this.lastID });
                 }
