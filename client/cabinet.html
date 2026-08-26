@@ -1456,12 +1456,17 @@
       completed: 'Завершён'
     };
 
+    // Объект(ы), на котором сотрудник сейчас числится — используется как
+    // значение по умолчанию при выборе объекта в учёте рабочего времени.
+    let myCurrentSiteIds = [];
+
     async function loadMyConstructionSites() {
       const list = document.getElementById('myConstructionSiteList');
       try {
         const res = await fetch('/api/cabinet/my-construction-sites');
         const data = res.ok ? await res.json() : { sites: [] };
         const sites = data.sites || [];
+        myCurrentSiteIds = sites.map(s => s.id);
         if (!sites.length) {
           list.innerHTML = assetEmpty('12 2l9 4.5v11L12 22l-9-4.5v-11L12 2zM9 22V12M15 22V12M3 6.5l9 4.5 9-4.5', 'Сейчас не направлен ни на один объект.');
           return;
@@ -2911,16 +2916,21 @@
         document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
         if (!wlEntriesCache.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
         box.innerHTML = '';
-        wlEntriesCache.forEach(r => {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);';
-          const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+        // Отработанные часы и объект не показываем прямо в списке — только
+        // дату; сколько часов и на каком объекте видно в модалке дня (клик).
+        const dateOrder = [];
+        const seenDates = new Set();
+        wlEntriesCache.forEach(r => { if (!seenDates.has(r.work_date)) { seenDates.add(r.work_date); dateOrder.push(r.work_date); } });
+        dateOrder.forEach(dateKey => {
+          const entries = wlEntriesCache.filter(r => r.work_date === dateKey);
+          const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01); width:100%; text-align:left; cursor:pointer; color:inherit; font-family:inherit;';
           row.innerHTML = `
-            <div style="min-width:0;">
-              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span>${r.site_name ? ` · <span style="color:var(--text-secondary); font-weight:400;">${escapeHtmlC(r.site_name)}</span>` : ''}</div>
-              ${r.note ? `<div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtmlC(r.note)}</div>` : ''}
-            </div>
-            <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>`;
+            <span style="font-size:13px; font-weight:600;">${dateStr}${entries.length > 1 ? ` <span style="color:var(--text-muted); font-weight:400;">· ${entries.length} записи</span>` : ''}</span>
+            <span style="font-size:12px; color:var(--accent-cyan); flex-shrink:0;">Подробнее ›</span>`;
+          row.onclick = () => openWlDayModal(dateKey);
           box.appendChild(row);
         });
         // Если открыт календарь/детали дня — обновим их тоже.
@@ -3015,10 +3025,13 @@
     }
 
     // === Модалка деталей дня ===
+    // Текущий объект сотрудника помечаем в списке — его же используем как
+    // значение по умолчанию при добавлении новой записи.
     function siteSelectOptions(selectedId) {
       let opts = '<option value="">— не указан —</option>';
       wlSitesCache.forEach(s => {
-        opts += `<option value="${s.id}"${String(s.id) === String(selectedId) ? ' selected' : ''}>${escapeHtmlC(s.name)}</option>`;
+        const isCurrent = myCurrentSiteIds.includes(s.id);
+        opts += `<option value="${s.id}"${String(s.id) === String(selectedId) ? ' selected' : ''}>${escapeHtmlC(s.name)}${isCurrent ? ' (текущий)' : ''}</option>`;
       });
       return opts;
     }
@@ -3062,7 +3075,7 @@
           </div>
           <div class="form-group" style="margin:0;">
             <label style="font-size:11px;">Объект</label>
-            <select id="wlAddSite">${siteSelectOptions('')}</select>
+            <select id="wlAddSite">${siteSelectOptions(myCurrentSiteIds[0] || '')}</select>
           </div>
           <div class="form-group" style="margin:0;">
             <label style="font-size:11px;">Заметка</label>

@@ -45,6 +45,25 @@ function parseSiteId(raw) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+// Сумма часов, уже внесённых пользователем за дату (кроме записи excludeId).
+function sumHoursForDate(userId, workDate, excludeId, cb) {
+  const sql = excludeId
+    ? "SELECT COALESCE(SUM(hours), 0) AS total FROM work_logs WHERE user_id = ? AND work_date = ? AND id != ?"
+    : "SELECT COALESCE(SUM(hours), 0) AS total FROM work_logs WHERE user_id = ? AND work_date = ?";
+  const params = excludeId ? [userId, workDate, excludeId] : [userId, workDate];
+  db.get(sql, params, cb);
+}
+
+// Есть ли у пользователя уже запись на этот объект в эту дату (кроме excludeId).
+function siteAlreadyLogged(userId, workDate, siteId, excludeId, cb) {
+  if (!siteId) return cb(null, false);
+  const sql = excludeId
+    ? "SELECT id FROM work_logs WHERE user_id = ? AND work_date = ? AND site_id = ? AND id != ?"
+    : "SELECT id FROM work_logs WHERE user_id = ? AND work_date = ? AND site_id = ?";
+  const params = excludeId ? [userId, workDate, siteId, excludeId] : [userId, workDate, siteId];
+  db.get(sql, params, (err, row) => cb(err, !!row));
+}
+
 async function addOwn(req, res, user) {
   try {
     const body = await getJsonBody(req);
@@ -55,12 +74,23 @@ async function addOwn(req, res, user) {
     if (!workDate) return sendJson(res, 400, { success: false, message: 'Некорректная дата' });
     if (hours == null) return sendJson(res, 400, { success: false, message: 'Часы: число от 0 до 24' });
 
-    db.run("INSERT INTO work_logs (user_id, work_date, hours, note, site_id) VALUES (?, ?, ?, ?, ?)",
-      [user.id, workDate, hours, note, siteId], function (err) {
-        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
-        logAction(user.username, `Внёс ${hours} ч за ${workDate}`);
-        sendJson(res, 201, { success: true, id: this.lastID });
+    sumHoursForDate(user.id, workDate, null, (sumErr, row) => {
+      if (sumErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if ((row.total || 0) + hours > 24) {
+        return sendJson(res, 400, { success: false, message: 'Суммарно за один день нельзя внести больше 24 часов' });
+      }
+      siteAlreadyLogged(user.id, workDate, siteId, null, (siteErr, used) => {
+        if (siteErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (used) return sendJson(res, 400, { success: false, message: 'На этот объект в эту дату уже внесена запись' });
+
+        db.run("INSERT INTO work_logs (user_id, work_date, hours, note, site_id) VALUES (?, ?, ?, ?, ?)",
+          [user.id, workDate, hours, note, siteId], function (err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+            logAction(user.username, `Внёс ${hours} ч за ${workDate}`);
+            sendJson(res, 201, { success: true, id: this.lastID });
+          });
       });
+    });
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
   }
@@ -87,14 +117,25 @@ async function editOwn(req, res, user, parsedUrl) {
     const body = await getJsonBody(req);
     const note = (body.note == null ? '' : String(body.note)).trim().slice(0, 300) || null;
     const siteId = parseSiteId(body.site_id);
-    const sql = isAdmin(user)
-      ? "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ?"
-      : "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ? AND user_id = ?";
-    const params = isAdmin(user) ? [note, siteId, id] : [note, siteId, id, user.id];
-    db.run(sql, params, function (err) {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
-      if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
-      sendJson(res, 200, { success: true });
+
+    const lookupSql = isAdmin(user)
+      ? "SELECT user_id, work_date FROM work_logs WHERE id = ?"
+      : "SELECT user_id, work_date FROM work_logs WHERE id = ? AND user_id = ?";
+    const lookupParams = isAdmin(user) ? [id] : [id, user.id];
+    db.get(lookupSql, lookupParams, (lookupErr, entry) => {
+      if (lookupErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!entry) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
+
+      siteAlreadyLogged(entry.user_id, entry.work_date, siteId, id, (siteErr, used) => {
+        if (siteErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (used) return sendJson(res, 400, { success: false, message: 'На этот объект в эту дату уже внесена запись' });
+
+        db.run("UPDATE work_logs SET note = ?, site_id = ? WHERE id = ?", [note, siteId, id], function (err) {
+          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+          if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
+          sendJson(res, 200, { success: true });
+        });
+      });
     });
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
