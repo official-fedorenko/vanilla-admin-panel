@@ -387,6 +387,50 @@
     }
     .card-title svg { width: 18px; height: 18px; color: var(--accent-purple); }
 
+    /* Карточки закреплённого имущества/данных (инструмент, авто, жильё,
+       объект, карточка сотрудника) — единый стиль: заголовок с фото,
+       разделитель, бирки с деталями, футер с датой. */
+    .asset-item {
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 14px; border: 1px solid var(--border-color); border-radius: 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005));
+      transition: border-color .15s;
+    }
+    .asset-item:hover { border-color: rgba(255,255,255,0.16); }
+    .asset-item-head { display: flex; align-items: center; gap: 12px; }
+    .asset-item-photo {
+      width: 52px; height: 52px; border-radius: 12px; object-fit: cover; flex-shrink: 0;
+      border: 1px solid var(--border-color);
+    }
+    .asset-item-photo-empty {
+      width: 52px; height: 52px; border-radius: 12px; flex-shrink: 0;
+      background: var(--bg-input); border: 1px solid var(--border-color);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted);
+    }
+    .asset-item-title { font-weight: 700; color: var(--text-primary); font-size: 14.5px; }
+    .asset-item-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .asset-item-divider { height: 1px; background: var(--border-color); margin: 0; }
+    .asset-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .asset-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+      border: 1px solid var(--border-color); background: rgba(255,255,255,0.04);
+      color: var(--text-secondary); white-space: nowrap; line-height: 1.4;
+    }
+    .asset-chip b { font-weight: 700; color: var(--text-primary); }
+    .asset-chip--cyan { background: rgba(0,210,255,0.10); border-color: rgba(0,210,255,0.3); color: var(--accent-cyan); }
+    .asset-chip--green { background: rgba(0,229,160,0.10); border-color: rgba(0,229,160,0.3); color: var(--green); }
+    .asset-chip--amber { background: rgba(255,193,7,0.10); border-color: rgba(255,193,7,0.32); color: #ffc107; }
+    .asset-chip--red { background: rgba(255,74,110,0.10); border-color: rgba(255,74,110,0.32); color: var(--red); }
+    .asset-item-footer { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+    .asset-item-actions { display: flex; flex-direction: column; gap: 6px; margin-left: auto; flex-shrink: 0; }
+    .asset-empty {
+      display: flex; align-items: center; gap: 10px; padding: 16px;
+      border: 1px dashed var(--border-color); border-radius: 14px;
+      color: var(--text-muted); font-size: 13px;
+    }
+
     /* Form */
     .form-group { margin-bottom: 18px; }
     label { display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; }
@@ -835,8 +879,8 @@
             <span class="collapse-chev">▾</span>
           </div>
           <div class="cbody">
-          <div id="myEmployeeCardBody" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-            <div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Загрузка...</div>
+          <div id="myEmployeeCardBody">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
           </div>
           <div style="margin-top:14px; font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1151,13 +1195,27 @@
       }
     }
 
+    // Бирка (chip) для карточек закреплённого имущества/данных профиля.
+    // variant: '' (нейтральная) | 'cyan' | 'green' | 'amber' | 'red'
+    function assetChip(label, value, variant) {
+      if (value == null || value === '') return '';
+      const cls = 'asset-chip' + (variant ? ' asset-chip--' + variant : '');
+      return `<span class="${cls}">${label ? escapeHtml(label) + ': ' : ''}<b>${escapeHtml(String(value))}</b></span>`;
+    }
+    function assetEmpty(icon, text) {
+      return `<div class="asset-empty">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${icon}"/></svg>
+        <span>${text}</span>
+      </div>`;
+    }
+
     // === Моя карточка сотрудника (read-only) ===
     const EMP_STATUS = {
-      active:     { label: 'Работает',      color: 'var(--green)' },
-      vacation:   { label: 'В отпуске',     color: 'var(--accent-cyan)' },
-      sick_leave: { label: 'На больничном', color: 'var(--red)' },
-      inactive:   { label: 'Неактивен',     color: 'var(--text-muted)' },
-      fired:      { label: 'Уволен',        color: 'var(--red)' }
+      active:     { label: 'Работает',      variant: 'green' },
+      vacation:   { label: 'В отпуске',     variant: 'cyan' },
+      sick_leave: { label: 'На больничном', variant: 'red' },
+      inactive:   { label: 'Неактивен',     variant: '' },
+      fired:      { label: 'Уволен',        variant: 'red' }
     };
 
     async function loadMyCard() {
@@ -1167,27 +1225,40 @@
         const data = res.ok ? await res.json() : { card: null };
         const c = data.card;
         if (!c) {
-          body.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; grid-column:1/-1;">Карточка сотрудника ещё не создана администратором.</div>';
+          body.className = '';
+          body.innerHTML = assetEmpty('9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'Карточка сотрудника ещё не создана администратором.');
           return;
         }
         const st = EMP_STATUS[c.status] || EMP_STATUS.active;
         const fio = [c.last_name, c.first_name].filter(Boolean).join(' ') || '—';
-        const hire = c.hire_date ? new Date(c.hire_date).toLocaleDateString('ru-RU') : '—';
-        const field = (label, value) => `
-          <div>
-            <div style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin-bottom:3px;">${label}</div>
-            <div style="font-size:14px; color:var(--text-primary);">${value}</div>
-          </div>`;
-        body.innerHTML =
-          field('ФИО', escapeHtml(fio)) +
-          field('Статус', `<span style="color:${st.color}; font-weight:600;">${st.label}</span>`) +
-          field('Должность', escapeHtml(c.position || '—')) +
-          field('Отдел', escapeHtml(c.department || '—')) +
-          field('Телефон', escapeHtml(c.phone || '—')) +
-          field('Дата приёма', hire) +
-          (c.notes ? `<div style="grid-column:1/-1;">${field('Заметки', escapeHtml(c.notes))}</div>` : '');
+        const hire = c.hire_date ? new Date(c.hire_date).toLocaleDateString('ru-RU') : '';
+
+        body.className = 'asset-item';
+        body.innerHTML = `
+          <div class="asset-item-head">
+            <div class="asset-item-photo-empty">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div class="asset-item-title">${escapeHtml(fio)}</div>
+              ${c.position ? `<div class="asset-item-sub">${escapeHtml(c.position)}</div>` : ''}
+            </div>
+          </div>
+          <div class="asset-item-divider"></div>
+          <div class="asset-chips">
+            <span class="asset-chip asset-chip--${st.variant || ''}"><b>${st.label}</b></span>
+            ${assetChip('Отдел', c.department)}
+            ${assetChip('Телефон', c.phone)}
+            ${assetChip('Принят', hire)}
+          </div>
+          ${c.notes ? `<div class="asset-item-footer" style="align-items:flex-start;">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13" style="flex-shrink:0;margin-top:1px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            <span>${escapeHtml(c.notes)}</span>
+          </div>` : ''}
+        `;
       } catch (e) {
-        body.innerHTML = '<div style="color: var(--red); font-size: 13px; grid-column:1/-1;">Не удалось загрузить карточку.</div>';
+        body.className = '';
+        body.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить карточку.');
       }
     }
 
@@ -1238,7 +1309,7 @@
         const tools = data.tools || [];
         myToolsCache = tools;
         if (!tools.length) {
-          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплён инструмент.</div>';
+          list.innerHTML = assetEmpty('11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z', 'За вами сейчас не закреплён инструмент.');
           return;
         }
         list.innerHTML = '';
@@ -1247,27 +1318,34 @@
           const photoSrc = (t.photo_url && t.photo_url.startsWith('/catalog/images/') && !t.photo_url.includes('?'))
             ? t.photo_url + '?v=2' : t.photo_url;
           const photoInner = t.photo_url
-            ? `<img src="${photoSrc}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
-            : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+            ? `<img src="${photoSrc}" class="asset-item-photo">`
+            : `<div class="asset-item-photo-empty"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></div>`;
           const photo = `<button type="button" onclick="openItemPhotoModal('tool', ${t.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
           const sub = [t.brand, t.model].filter(Boolean).join(' · ');
 
           const item = document.createElement('div');
-          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.className = 'asset-item';
           item.innerHTML = `
-            <div style="display:flex; align-items:center; gap:12px;">
+            <div class="asset-item-head">
               ${photo}
               <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(t.name)}</div>
-                ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
-                ${t.serial_number ? `<div style="font-size:12px;color:var(--text-muted);">S/N: ${escapeHtml(t.serial_number)}</div>` : ''}
-                ${t.inventory_number ? `<div style="font-size:12px;color:var(--text-muted);">Инв. №: ${escapeHtml(t.inventory_number)}</div>` : ''}
-                ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+                <div class="asset-item-title">${escapeHtml(t.name)}</div>
+                ${sub ? `<div class="asset-item-sub">${escapeHtml(sub)}</div>` : ''}
               </div>
-              <div style="display:flex; flex-direction:column; gap:6px;">
+              <div class="asset-item-actions">
                 <button type="button" onclick="saveMyToolQr(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
               </div>
             </div>
+            ${(t.serial_number || t.inventory_number) ? `
+              <div class="asset-item-divider"></div>
+              <div class="asset-chips">
+                ${assetChip('S/N', t.serial_number)}
+                ${assetChip('Инв. №', t.inventory_number, 'cyan')}
+              </div>` : ''}
+            ${issued ? `<div class="asset-item-footer">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Выдан ${issued}
+            </div>` : ''}
           `;
           list.appendChild(item);
         });
@@ -1325,33 +1403,40 @@
         const data = res.ok ? await res.json() : { apartments: [], own_housing: false };
         const apartments = data.apartments || [];
         if (!apartments.length) {
-          list.innerHTML = data.own_housing
-            ? '<div style="color: var(--text-muted); font-size: 13px;">Живёт в своей квартире.</div>'
-            : '<div style="color: var(--text-muted); font-size: 13px;">Не заселён.</div>';
+          list.innerHTML = assetEmpty(
+            '3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
+            data.own_housing ? 'Живёт в своей квартире.' : 'Не заселён.'
+          );
           return;
         }
         list.innerHTML = '';
         apartments.forEach(a => {
           const issued = a.issued_at ? new Date(a.issued_at).toLocaleDateString('ru-RU') : '';
           const addressLine = [a.address, a.house ? `д. ${a.house}` : '', a.floor ? `эт. ${a.floor}` : '', a.unit_number ? `кв. ${a.unit_number}` : ''].filter(Boolean).join(', ');
-          const details = [
-            a.category,
-            a.rooms ? `${a.rooms} комн.` : '',
-            a.area ? `${a.area} м²` : ''
-          ].filter(Boolean).join(' · ');
 
           const item = document.createElement('div');
-          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.className = 'asset-item';
           item.innerHTML = `
-            <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(a.name)}</div>
-            ${addressLine ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(addressLine)}</div>` : ''}
-            ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
-            ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Заселён: ${issued}</div>` : ''}
+            <div>
+              <div class="asset-item-title">${escapeHtml(a.name)}</div>
+              ${addressLine ? `<div class="asset-item-sub">${escapeHtml(addressLine)}</div>` : ''}
+            </div>
+            ${(a.category || a.rooms || a.area) ? `
+              <div class="asset-item-divider"></div>
+              <div class="asset-chips">
+                ${assetChip('', a.category, 'cyan')}
+                ${assetChip('Комнат', a.rooms)}
+                ${assetChip('Площадь', a.area ? a.area + ' м²' : '')}
+              </div>` : ''}
+            ${issued ? `<div class="asset-item-footer">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Заселён ${issued}
+            </div>` : ''}
           `;
           list.appendChild(item);
         });
       } catch (e) {
-        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не удалось загрузить.</div>';
+        list.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить.');
       }
     }
 
@@ -1369,28 +1454,37 @@
         const data = res.ok ? await res.json() : { sites: [] };
         const sites = data.sites || [];
         if (!sites.length) {
-          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Сейчас не направлен ни на один объект.</div>';
+          list.innerHTML = assetEmpty('12 2l9 4.5v11L12 22l-9-4.5v-11L12 2zM9 22V12M15 22V12M3 6.5l9 4.5 9-4.5', 'Сейчас не направлен ни на один объект.');
           return;
         }
         list.innerHTML = '';
+        const SITE_STATUS_VARIANT = { planning: '', active: 'green', paused: 'amber', completed: 'cyan' };
         sites.forEach(s => {
           const issued = s.issued_at ? new Date(s.issued_at).toLocaleDateString('ru-RU') : '';
           const statusLabel = MY_CONSTRUCTION_SITE_STATUS[s.status] || s.status;
-          const details = [s.category, s.customer ? `Заказчик: ${s.customer}` : ''].filter(Boolean).join(' · ');
 
           const item = document.createElement('div');
-          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.className = 'asset-item';
           item.innerHTML = `
-            <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(s.name)}</div>
-            ${s.address ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(s.address)}</div>` : ''}
-            ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Статус: ${escapeHtml(statusLabel)}</div>
-            ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Направлен: ${issued}</div>` : ''}
+            <div>
+              <div class="asset-item-title">${escapeHtml(s.name)}</div>
+              ${s.address ? `<div class="asset-item-sub">${escapeHtml(s.address)}</div>` : ''}
+            </div>
+            <div class="asset-item-divider"></div>
+            <div class="asset-chips">
+              <span class="asset-chip asset-chip--${SITE_STATUS_VARIANT[s.status] || ''}"><b>${escapeHtml(statusLabel)}</b></span>
+              ${assetChip('', s.category, 'cyan')}
+              ${assetChip('Заказчик', s.customer)}
+            </div>
+            ${issued ? `<div class="asset-item-footer">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Направлен ${issued}
+            </div>` : ''}
           `;
           list.appendChild(item);
         });
       } catch (e) {
-        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не удалось загрузить.</div>';
+        list.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить.');
       }
     }
 
@@ -1402,34 +1496,41 @@
         const vehicles = data.vehicles || [];
         myVehiclesCache = vehicles;
         if (!vehicles.length) {
-          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплено авто.</div>';
+          list.innerHTML = assetEmpty('5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14', 'За вами сейчас не закреплено авто.');
           return;
         }
         list.innerHTML = '';
         vehicles.forEach(v => {
           const issued = v.issued_at ? new Date(v.issued_at).toLocaleDateString('ru-RU') : '';
           const photoInner = v.photo_url
-            ? `<img src="${v.photo_url}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
-            : `<div style="width:56px;height:56px;border-radius:10px;background:var(--bg-input);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--text-muted);font-size:11px;">нет фото</div>`;
+            ? `<img src="${v.photo_url}" class="asset-item-photo">`
+            : `<div class="asset-item-photo-empty"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg></div>`;
           const photo = `<button type="button" onclick="openItemPhotoModal('vehicle', ${v.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
           const sub = [v.brand, v.model].filter(Boolean).join(' · ');
 
           const item = document.createElement('div');
-          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.className = 'asset-item';
           item.innerHTML = `
-            <div style="display:flex; align-items:center; gap:12px;">
+            <div class="asset-item-head">
               ${photo}
               <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(v.name)}</div>
-                ${sub ? `<div style="font-size:12px;color:var(--text-secondary);">${escapeHtml(sub)}</div>` : ''}
-                ${v.plate_number ? `<div style="font-size:12px;color:var(--text-muted);">Гос. номер: ${escapeHtml(v.plate_number)}</div>` : ''}
-                ${v.year ? `<div style="font-size:12px;color:var(--text-muted);">Год: ${escapeHtml(String(v.year))}</div>` : ''}
-                ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Выдан: ${issued}</div>` : ''}
+                <div class="asset-item-title">${escapeHtml(v.name)}</div>
+                ${sub ? `<div class="asset-item-sub">${escapeHtml(sub)}</div>` : ''}
               </div>
-              <div style="display:flex; flex-direction:column; gap:6px;">
+              <div class="asset-item-actions">
                 <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
               </div>
             </div>
+            ${(v.plate_number || v.year) ? `
+              <div class="asset-item-divider"></div>
+              <div class="asset-chips">
+                ${assetChip('Номер', v.plate_number, 'cyan')}
+                ${assetChip('Год', v.year)}
+              </div>` : ''}
+            ${issued ? `<div class="asset-item-footer">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Выдан ${issued}
+            </div>` : ''}
           `;
           list.appendChild(item);
         });
