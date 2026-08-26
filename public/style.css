@@ -959,6 +959,11 @@ table.data-table tbody tr:hover {
   color: hsl(var(--accent-red));
 }
 
+.badge-purple {
+  background-color: hsl(var(--accent-purple) / 0.15);
+  color: hsl(var(--accent-purple));
+}
+
 /* === Модалка «Выдать инструмент»: карточка инструмента + пикер сотрудников === */
 .issue-tool-card {
   display: flex;
