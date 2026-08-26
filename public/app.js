@@ -6859,9 +6859,14 @@ function renderConstructionSites(filterQuery = '') {
     const st = CONSTRUCTION_SITE_STATUS[s.status] || CONSTRUCTION_SITE_STATUS.planning;
     const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
     const crew = parseConstructionSiteCrew(s);
-    const crewHtml = crew.length
-      ? `<strong>${escapeHtml(crew.map(o => o.name).join(', '))}</strong>`
-      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+    let crewHtml;
+    if (!crew.length) {
+      crewHtml = `<span style="color: hsl(var(--text-muted));">—</span>`;
+    } else if (crew.length > 2) {
+      crewHtml = `<button type="button" class="btn btn-secondary" style="padding:5px 12px; font-size:12px;" onclick="openReturnConstructionSiteModal(${s.id})">Сотрудники (${crew.length})</button>`;
+    } else {
+      crewHtml = `<strong>${escapeHtml(crew.map(o => o.name).join(', '))}</strong>`;
+    }
 
     const isCompleted = s.status === 'completed';
     const manageBtn = crew.length
