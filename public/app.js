@@ -1016,8 +1016,8 @@ function renderVacations() {
       <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
       <td class="no-label" style="text-align:right;">
         <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
-          <button class="req-action req-action--green" onclick="openVacationMoreInfo(${v.id})">Подробнее</button>
-          <button class="req-action req-action--green" onclick="openEditVacationForm(${v.id})">Редактировать</button>
+          <button class="req-action req-action--green" style="min-width:132px;" onclick="openVacationMoreInfo(${v.id})">Подробнее</button>
+          <button class="req-action req-action--green" style="min-width:132px;" onclick="openEditVacationForm(${v.id})">Редактировать</button>
         </div>
       </td>`;
     tbody.appendChild(tr);
