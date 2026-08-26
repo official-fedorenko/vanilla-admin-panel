@@ -708,7 +708,7 @@ function loadSectionData(hash) {
   } else if (hash === 'logs') {
     loadFullLogs();
   } else if (hash === 'support') {
-    loadSupportTickets();
+    updateSupportBadge();
   } else if (hash === 'requests') {
     loadToolRequests();
   } else if (hash === 'worktime') {
@@ -1386,9 +1386,15 @@ async function updateRequestsBadge(count) {
 // count — суммарное число непрочитанных сообщений по всем диалогам.
 function setSupportBadge(count) {
   const badge = document.getElementById('supportBadge');
-  if (!badge) return;
-  if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = ''; }
-  else badge.style.display = 'none';
+  if (badge) {
+    if (count > 0) { badge.textContent = count > 99 ? '99+' : count; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+  const linkBadge = document.getElementById('supportInboxLinkBadge');
+  if (linkBadge) {
+    if (count > 0) { linkBadge.textContent = count > 99 ? '99+' : count; linkBadge.style.display = ''; }
+    else linkBadge.style.display = 'none';
+  }
 }
 
 async function updateSupportBadge() {
@@ -2617,7 +2623,7 @@ function renderUsers(filterQuery = '') {
         <div class="action-btns" style="justify-content: flex-end;">
           <button class="action-btn edit" onclick="editUser(${u.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" onclick="deleteUser(${u.id})"><i data-lucide="trash-2"></i></button>
-          <button class="action-btn chat" onclick="adminStartChat(${u.id}, '${escapeHtml(name)}', '${escapeHtml(u.email)}')"><i data-lucide="message-circle"></i></button>
+          <button class="action-btn chat" onclick="location.href='/admin/support-inbox.html?with=user_${u.id}'"><i data-lucide="message-circle"></i></button>
           <button class="action-btn" title="Отправить уведомление" onclick="openSendNotificationModal(${u.id})"><i data-lucide="bell"></i></button>
         </div>
       </td>
@@ -2651,7 +2657,7 @@ window.openUserDetail = (id) => {
     ['Создан', dateFormatted]
   ];
   const actions = `
-    <button class="btn btn-secondary" onclick="closeRowDetail(); adminStartChat(${u.id}, '${escapeHtml(name)}', '${escapeHtml(u.email)}')">Чат</button>
+    <button class="btn btn-secondary" onclick="location.href='/admin/support-inbox.html?with=user_${u.id}'">Чат</button>
     <button class="btn btn-secondary" onclick="closeRowDetail(); deleteUser(${u.id})" style="color:hsl(var(--accent-red));">Удалить</button>
     <button class="btn" onclick="closeRowDetail(); editUser(${u.id})">Редактировать</button>`;
   showRowDetail(name, rows, actions);
@@ -2741,395 +2747,6 @@ window.deleteUser = async (id) => {
     }
   }
 };
-
-// --- SUPPORT CHAT LOGIC ---
-let activeTicketId = null;
-let supportPollingInterval = null;
-let supportUsersCache = [];   // все пользователи + агрегаты поддержки
-let supportSearchQuery = '';
-let supportListStream = null;  // EventSource: любое новое сообщение в любом тикете
-let ticketChatStream = null;   // EventSource: сообщения открытого тикета
-let activeTicketStatus = 'open';
-let currentChatMessages = [];
-
-// Открывает/переоткрывает SSE-канал списка тикетов (раздел «Обратная связь»).
-// При ошибке — молча отключается, старый setInterval (5с, ниже) остаётся
-// подстраховкой и продолжает работать сам по себе.
-function startSupportListStream() {
-  if (supportListStream) { supportListStream.close(); supportListStream = null; }
-  try {
-    supportListStream = new EventSource('/api/support/stream/admin');
-    supportListStream.onmessage = async (e) => {
-      let data;
-      try { data = JSON.parse(e.data); } catch (err) { return; }
-      if (data && data.type === 'ticket_updated') {
-        const u = await fetchSupportUsers();
-        if (u) { supportUsersCache = u; renderSupportUsers(); }
-        if (activeTicketId && data.ticketId === activeTicketId) loadSupportMessages(activeTicketId, true);
-      }
-    };
-    supportListStream.onerror = () => {
-      if (supportListStream) { supportListStream.close(); supportListStream = null; }
-    };
-  } catch (e) { supportListStream = null; }
-}
-function stopSupportListStream() {
-  if (supportListStream) { supportListStream.close(); supportListStream = null; }
-}
-
-async function fetchSupportUsers() {
-  const res = await fetch('/api/support/users');
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.users || [];
-}
-
-// Фильтр по имени/нику и сортировка: сначала непрочитанные, затем по
-// последней активности, затем по имени.
-function renderSupportUsers() {
-  const q = supportSearchQuery.trim().toLowerCase();
-  let list = supportUsersCache.slice();
-  if (q) list = list.filter(u => (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
-  list.sort((a, b) => {
-    if ((b.unread_count || 0) !== (a.unread_count || 0)) return (b.unread_count || 0) - (a.unread_count || 0);
-    const ta = a.last_activity ? Date.parse(String(a.last_activity).replace(' ', 'T')) : 0;
-    const tb = b.last_activity ? Date.parse(String(b.last_activity).replace(' ', 'T')) : 0;
-    if (tb !== ta) return tb - ta;
-    return (a.name || '').localeCompare(b.name || '', 'ru');
-  });
-  renderTickets(list, !!q);
-}
-
-async function loadSupportTickets() {
-  try {
-    const users = await fetchSupportUsers();
-    if (users) { supportUsersCache = users; renderSupportUsers(); }
-
-    startSupportListStream();
-
-    // Подстраховка на случай обрыва/недоступности SSE (прокси и т.п.) —
-    // редкий опрос, основная доставка идёт через SSE выше.
-    if (supportPollingInterval) clearInterval(supportPollingInterval);
-    supportPollingInterval = setInterval(async () => {
-      const sec = document.getElementById('section-support');
-      if (sec && sec.classList.contains('active')) {
-        if (!supportListStream) {
-          const u = await fetchSupportUsers();
-          if (u) { supportUsersCache = u; renderSupportUsers(); }
-          if (activeTicketId && !ticketChatStream) loadSupportMessages(activeTicketId, true);
-        }
-      } else {
-        clearInterval(supportPollingInterval);
-        stopSupportListStream();
-      }
-    }, 30000);
-  } catch (err) {
-    showToast('Ошибка загрузки списка пользователей', 'error');
-  }
-}
-
-document.getElementById('supportUserSearch')?.addEventListener('input', (e) => {
-  supportSearchQuery = e.target.value || '';
-  renderSupportUsers();
-});
-
-// Короткая относительная дата: «5 мин», «3 ч», «2 дн», иначе дата.
-function shortWhen(raw) {
-  if (!raw) return '';
-  const d = new Date(String(raw).replace(' ', 'T'));
-  if (isNaN(d)) return '';
-  const diff = Date.now() - d.getTime();
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'только что';
-  if (min < 60) return `${min} мин`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h} ч`;
-  const days = Math.floor(h / 24);
-  if (days < 7) return `${days} дн`;
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-}
-
-function renderTickets(tickets, isFiltered = false) {
-  const list = document.getElementById('ticketsList');
-  if (!list) return;
-
-  // Бейдж меню считаем из ПОЛНОГО кэша (не из отфильтрованного списка).
-  setSupportBadge((supportUsersCache || []).reduce((s, t) => s + (t.unread_count || 0), 0));
-
-  if (!tickets.length) {
-    const msg = isFiltered ? 'Никого не найдено' : 'Пока нет пользователей';
-    list.innerHTML = `
-      <div style="padding: 40px 20px; color: hsl(var(--text-muted)); text-align: center; display:flex; flex-direction:column; align-items:center; gap:10px;">
-        <i data-lucide="${isFiltered ? 'search-x' : 'users'}" style="width:36px; height:36px; opacity:0.5;"></i>
-        <div>${msg}</div>
-      </div>`;
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  let html = '';
-  tickets.forEach(t => {
-    const unread = t.unread_count || 0;
-    const isActive = t.ticket_id === activeTicketId;
-    const rowBg = isActive ? 'background: hsl(var(--accent-purple) / 0.12);'
-                : unread > 0 ? 'background: hsl(var(--accent-purple) / 0.06);' : '';
-    const accent = isActive ? 'box-shadow: inset 3px 0 0 hsl(var(--accent-purple));'
-                 : unread > 0 ? 'box-shadow: inset 3px 0 0 hsl(var(--accent-cyan));' : '';
-    const badge = unread > 0
-      ? `<span title="Непрочитанных: ${unread}" style="background: hsl(var(--accent-purple)); color:#fff; border-radius: 10px; min-width:18px; text-align:center; padding: 1px 6px; font-size: 11px; font-weight: 700;">${unread > 99 ? '99+' : unread}</span>`
-      : '';
-    const nameWeight = unread > 0 ? '700' : '600';
-    const avatarLetter = (t.name || '?').charAt(0).toUpperCase();
-    const closedBadge = t.status === 'closed'
-      ? `<span style="font-size:10px; color:hsl(var(--text-muted)); border:1px solid hsl(var(--border-color)); border-radius:6px; padding:1px 6px; flex-shrink:0;">закрыт</span>`
-      : '';
-
-    // Превью последнего сообщения (кто написал последним + текст).
-    const fromAdmin = t.last_sender_role === 'Admin' || t.last_sender_role === 'Superadmin';
-    const preview = t.last_message
-      ? (fromAdmin ? 'Вы: ' : '') + String(t.last_message).replace(/\s+/g, ' ').trim()
-      : (t.email ? t.email + ' · нет переписки' : 'Нет переписки — напишите первым');
-    const when = shortWhen(t.last_activity);
-
-    html += `
-      <div style="padding: 12px 16px; border-bottom: 1px solid hsl(var(--border-color)); cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s; ${rowBg} ${accent}"
-           onmouseover="this.style.background='hsl(var(--accent-purple) / 0.1)'"
-           onmouseout="this.style.background='${isActive ? 'hsl(var(--accent-purple) / 0.12)' : unread > 0 ? 'hsl(var(--accent-purple) / 0.06)' : 'transparent'}'"
-           onclick="openSupportChat('${t.ticket_id}', '${escapeHtml(t.name || '')}', '${escapeHtml(t.email || '')}')">
-        <div style="width: 40px; height: 40px; flex-shrink:0; border-radius: 50%; background: linear-gradient(135deg, hsl(var(--accent-purple)), hsl(var(--accent-cyan))); display: flex; align-items: center; justify-content: center; font-weight: bold; color:#fff; overflow:hidden;">${t.avatar_url ? `<img src="${escapeHtml(t.avatar_url)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.replaceWith(document.createTextNode('${avatarLetter}'))">` : avatarLetter}</div>
-        <div style="flex: 1; min-width:0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap:8px; margin-bottom: 3px;">
-            <strong style="font-size: 14px; font-weight:${nameWeight}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.name || 'Пользователь')}</strong>
-            <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-              ${closedBadge}
-              ${when ? `<span style="font-size:11px; color:hsl(var(--text-muted));">${when}</span>` : ''}
-              ${badge}
-            </span>
-          </div>
-          <div style="font-size: 12px; color: hsl(var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(preview)}</div>
-        </div>
-      </div>
-    `;
-  });
-  list.innerHTML = html;
-}
-
-// Статус тикета: обновляет текст/цвет кнопки в шапке модалки чата.
-function renderTicketStatusButton() {
-  const btn = document.getElementById('ticketStatusToggleBtn');
-  if (!btn) return;
-  if (activeTicketStatus === 'closed') {
-    btn.textContent = 'Открыть заново';
-    btn.style.color = 'hsl(var(--accent-cyan))';
-  } else {
-    btn.textContent = 'Закрыть обращение';
-    btn.style.color = '';
-  }
-}
-
-window.toggleTicketStatus = async () => {
-  if (!activeTicketId) return;
-  const endpoint = activeTicketStatus === 'closed' ? '/api/support/reopen' : '/api/support/close';
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticketId: activeTicketId })
-    });
-    if (res.ok) {
-      activeTicketStatus = activeTicketStatus === 'closed' ? 'open' : 'closed';
-      renderTicketStatusButton();
-      showToast(activeTicketStatus === 'closed' ? 'Обращение закрыто' : 'Обращение открыто заново', 'success');
-      loadSupportTickets();
-    } else {
-      showToast('Не удалось изменить статус', 'error');
-    }
-  } catch (e) {
-    showToast('Ошибка сети', 'error');
-  }
-};
-
-// Открывает/переоткрывает SSE-канал открытого тикета — новые сообщения и
-// смена статуса приходят сразу, без ожидания следующего опроса.
-function startTicketChatStream(ticketId) {
-  if (ticketChatStream) { ticketChatStream.close(); ticketChatStream = null; }
-  try {
-    ticketChatStream = new EventSource(`/api/support/stream?ticketId=${encodeURIComponent(ticketId)}`);
-    ticketChatStream.onmessage = (e) => {
-      let data;
-      try { data = JSON.parse(e.data); } catch (err) { return; }
-      if (!data) return;
-      if (data.type === 'status') {
-        activeTicketStatus = data.status;
-        renderTicketStatusButton();
-        return;
-      }
-      // Полноценное сообщение (есть id/message) — добавляем в открытый чат
-      // (дедуп на случай, если то же сообщение уже пришло обычной перезагрузкой).
-      if (data.id && !currentChatMessages.some(m => m.id === data.id)) {
-        currentChatMessages.push(data);
-        renderChatMessages(currentChatMessages, true);
-        fetch('/api/support/read', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticketId })
-        }).then(() => updateSupportBadge());
-      }
-    };
-    ticketChatStream.onerror = () => {
-      if (ticketChatStream) { ticketChatStream.close(); ticketChatStream = null; }
-    };
-  } catch (e) { ticketChatStream = null; }
-}
-function stopTicketChatStream() {
-  if (ticketChatStream) { ticketChatStream.close(); ticketChatStream = null; }
-}
-
-window.openSupportChat = (ticketId, name, email) => {
-  activeTicketId = ticketId;
-  document.getElementById('chatHeaderName').textContent = name;
-  document.getElementById('chatHeaderEmail').textContent = email || 'Гость';
-  document.getElementById('chatHeaderAvatar').textContent = (name || '?').charAt(0).toUpperCase();
-  document.getElementById('supportChatModalOverlay').classList.add('active');
-
-  loadSupportMessages(ticketId);
-  startTicketChatStream(ticketId);
-  loadSupportTickets(); // обновить счётчики в списке и бейдж меню
-  setTimeout(() => document.getElementById('replyMessageInput')?.focus(), 50);
-};
-
-window.closeSupportChat = () => {
-  document.getElementById('supportChatModalOverlay').classList.remove('active');
-  activeTicketId = null;
-  stopTicketChatStream();
-  loadSupportTickets(); // непрочитанные обнулились — обновляем список/бейдж
-};
-
-// Admin-initiated chat function
-function adminStartChat(userId, name, email) {
-  const ticketId = 'user_' + userId;
-  activeTicketId = ticketId;
-  // Ensure the ticket exists by creating it (admin only)
-  (async () => {
-    try {
-      await fetch('/api/support/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: userId })
-      });
-    } catch (e) {
-      console.error('Failed to create admin chat ticket', e);
-    }
-    // Открываем модалку чата
-    document.getElementById('chatHeaderName').textContent = name;
-    document.getElementById('chatHeaderEmail').textContent = email || 'Гость';
-    document.getElementById('chatHeaderAvatar').textContent = (name || '?').charAt(0).toUpperCase();
-    document.getElementById('supportChatModalOverlay').classList.add('active');
-    loadSupportMessages(ticketId);
-    startTicketChatStream(ticketId);
-    loadSupportTickets();
-    setTimeout(() => document.getElementById('replyMessageInput')?.focus(), 50);
-  })();
-}
-
-async function loadSupportMessages(ticketId, isPolling = false) {
-  try {
-    const res = await fetch(`/api/support/messages?ticketId=${ticketId}`);
-    if (res.ok) {
-      const data = await res.json();
-      currentChatMessages = data.messages || [];
-      activeTicketStatus = data.status || 'open';
-      renderTicketStatusButton();
-      renderChatMessages(currentChatMessages, isPolling);
-
-      // Mark as read
-      await fetch('/api/support/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId })
-      });
-      // Сразу обновляем бейдж меню (диалог прочитан).
-      if (!isPolling) updateSupportBadge();
-    }
-  } catch (err) {}
-}
-
-function renderChatMessages(messages, isPolling) {
-  const container = document.getElementById('chatMessages');
-  if (!container) return;
-  const wasAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
-  
-  if (!messages.length) {
-    container.innerHTML = '<div style="text-align:center; color:hsl(var(--text-muted));">Здесь пока нет сообщений.</div>';
-    return;
-  }
-  
-  let html = '';
-  messages.forEach(msg => {
-    const isAdmin = msg.sender_role === 'Admin' || msg.sender_role === 'Superadmin';
-    const align = isAdmin ? 'flex-end' : 'flex-start';
-    const bg = isAdmin ? 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))' : 'rgba(255,255,255,0.05)';
-    const color = isAdmin ? '#fff' : 'inherit';
-    const name = isAdmin ? (msg.name || 'Admin') : (msg.name || 'Гость');
-    const time = new Date(msg.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    
-    html += `
-      <div style="display: flex; flex-direction: column; align-items: ${align};">
-        <div style="font-size: 11px; color: hsl(var(--text-muted)); margin-bottom: 4px;">${escapeHtml(name)} • ${time}</div>
-        <div style="background: ${bg}; color: ${color}; padding: 10px 14px; border-radius: 14px; max-width: 80%; border: 1px solid ${isAdmin ? 'transparent' : 'hsl(var(--border-color))'}; word-break: break-word;">
-          ${escapeHtml(msg.message)}
-        </div>
-      </div>
-    `;
-  });
-  
-  container.innerHTML = html;
-  
-  if (!isPolling || wasAtBottom) {
-    container.scrollTop = container.scrollHeight;
-  }
-}
-
-const replyForm = document.getElementById('replyForm');
-if (replyForm) {
-  replyForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!activeTicketId) return;
-    
-    const input = document.getElementById('replyMessageInput');
-    const message = input.value.trim();
-    if (!message) return;
-    
-    input.disabled = true;
-    try {
-      const res = await fetch('/api/support/reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId: activeTicketId, message })
-      });
-      if (res.ok) {
-        input.value = '';
-        await loadSupportMessages(activeTicketId);
-      } else {
-        showToast('Ошибка при отправке', 'error');
-      }
-    } catch(err) {
-      showToast('Ошибка сети', 'error');
-    } finally {
-      input.disabled = false;
-      input.focus();
-    }
-  });
-}
-
-// Закрытие модалки чата поддержки по клику на фон и по Escape
-(function () {
-  const overlay = document.getElementById('supportChatModalOverlay');
-  if (!overlay) return;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSupportChat(); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay.classList.contains('active')) closeSupportChat();
-  });
-})();
 
 // =====================================================================
 //  EMPLOYEES (Сотрудники) — CRUD модуль учёта персонала
