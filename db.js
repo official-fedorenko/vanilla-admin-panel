@@ -403,6 +403,33 @@ const MIGRATIONS = [
       // на него), чтобы фронтенд мог отрисовать их отдельно от обычных реплик.
       db.run("ALTER TABLE support_messages ADD COLUMN system_type TEXT", () => {});
     }
+  },
+  {
+    version: 23,
+    description: 'Apartments: фиксированный список типов + аренда/собственность + порог напоминания об аренде',
+    up: () => {
+      db.run("ALTER TABLE apartments ADD COLUMN ownership_type TEXT NOT NULL DEFAULT 'owned'", () => {});
+      db.run("ALTER TABLE apartments ADD COLUMN rent_from DATE", () => {});
+
+      // Старые категории («Студия», «1-комнатная»...) заменяются фиксированным
+      // списком (Квартира/Дом/Офис/Земля) — удаляем только неиспользуемые
+      // default-категории, чтобы не оборвать ссылки у уже созданных объектов.
+      db.run(`
+        DELETE FROM apartment_categories
+        WHERE is_default = 1
+          AND name NOT IN ('Квартира', 'Дом', 'Офис', 'Земля')
+          AND name NOT IN (SELECT DISTINCT category FROM apartments WHERE category IS NOT NULL)
+      `, () => {
+        const stmt = db.prepare("INSERT OR IGNORE INTO apartment_categories (name, is_default) VALUES (?, 1)");
+        ['Квартира', 'Дом', 'Офис', 'Земля'].forEach(name => stmt.run(name));
+        stmt.finalize();
+      });
+
+      db.run(
+        "INSERT OR IGNORE INTO settings (key, value, description) VALUES ('apartment_rent_soon_days', '30', 'За сколько дней до окончания аренды показывать напоминание')",
+        () => {}
+      );
+    }
   }
 ];
 
@@ -778,6 +805,8 @@ db.serialize(() => {
       rooms INTEGER,
       area REAL,
       status TEXT NOT NULL DEFAULT 'available',
+      ownership_type TEXT NOT NULL DEFAULT 'owned',
+      rent_from DATE,
       rent_until DATE,
       photo_url TEXT,
       notes TEXT,
@@ -805,7 +834,7 @@ db.serialize(() => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `, () => {
-    const defaults = ['Студия', '1-комнатная', '2-комнатная', '3-комнатная', 'Дом'];
+    const defaults = ['Квартира', 'Дом', 'Офис', 'Земля'];
     const catStmt = db.prepare("INSERT OR IGNORE INTO apartment_categories (name, is_default) VALUES (?, 1)");
     defaults.forEach(name => catStmt.run(name));
     catStmt.finalize();
@@ -901,6 +930,7 @@ db.serialize(() => {
   stmt.run("public_vehicle_card_show_notes", "false", "Публичная карточка авто: показывать заметки");
   stmt.run("vehicle_inspection_soon_days", "30", "За сколько дней до окончания ТО показывать напоминание");
   stmt.run("vehicle_insurance_soon_days", "30", "За сколько дней до окончания страховки показывать напоминание");
+  stmt.run("apartment_rent_soon_days", "30", "За сколько дней до окончания аренды показывать напоминание");
   stmt.finalize();
 
   // Заполняем тестовые статьи
