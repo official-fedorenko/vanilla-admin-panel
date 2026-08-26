@@ -66,8 +66,12 @@ function duplicateMessage(conflict) {
 }
 
 function extractVehicleFields(body) {
-  const name = (body.name || '').trim();
-  if (name.length < 1) return { error: 'Название/обозначение авто обязательно' };
+  // Поле «Название/обозначение» убрано из формы — генерируем его сами из
+  // марки/модели (или гос.номера, если их нет), чтобы поиск/списки/детальная
+  // карточка, завязанные на name, продолжали работать без правок.
+  const bodyName = (body.name || '').trim();
+  const brandModel = [body.brand, body.model].filter(v => (v || '').trim()).map(v => v.trim()).join(' ');
+  const name = bodyName || brandModel || (body.plate_number || '').trim() || 'Авто';
 
   const status = ALLOWED_STATUSES.includes(body.status) ? body.status : 'available';
   const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');

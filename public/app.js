@@ -5152,7 +5152,7 @@ function renderVehicles(filterQuery = '') {
       <td class="mobile-hidden">${escapeHtml(v.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(v.plate_number || '—')}</td>
       <td>${statusBadge}</td>
-      <td class="mobile-hidden">${[inspectionBadge, insuranceBadge].filter(Boolean).join(' ') || '<span style="color: hsl(var(--text-muted));">—</span>'}</td>
+      <td class="mobile-hidden" style="white-space:nowrap;">${[inspectionBadge, insuranceBadge].filter(Boolean).join(' ') || '<span style="color: hsl(var(--text-muted));">—</span>'}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
@@ -5321,7 +5321,6 @@ function setupVehicles() {
       e.preventDefault();
       const id = document.getElementById('vehicleId').value;
       const payload = {
-        name: document.getElementById('vehicleName').value,
         category: document.getElementById('vehicleCategory').value,
         brand: document.getElementById('vehicleBrand').value,
         model: document.getElementById('vehicleModel').value,
@@ -5511,7 +5510,6 @@ async function openVehicleModal(vehicle = null) {
   const modal = document.getElementById('vehicleModalOverlay');
   document.getElementById('vehicleModalTitle').textContent = vehicle ? 'Редактировать авто' : 'Добавить авто';
   document.getElementById('vehicleId').value = vehicle ? vehicle.id : '';
-  document.getElementById('vehicleName').value = vehicle ? vehicle.name : '';
   populateVehicleCategorySelect(vehicle ? (vehicle.category || '') : '');
   document.getElementById('vehicleBrand').value = vehicle ? (vehicle.brand || '') : '';
   document.getElementById('vehicleModel').value = vehicle ? (vehicle.model || '') : '';
@@ -6284,7 +6282,7 @@ function renderApartments(filterQuery = '') {
       </td>
       <td class="mobile-hidden">${escapeHtml(a.category || '—')}</td>
       <td class="mobile-hidden">${roomsArea}</td>
-      <td>${statusBadge}${apartmentRentBadge(a) ? ' ' + apartmentRentBadge(a) : ''}</td>
+      <td style="white-space:nowrap;">${statusBadge}${apartmentRentBadge(a) ? ' ' + apartmentRentBadge(a) : ''}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">

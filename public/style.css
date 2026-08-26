@@ -1022,6 +1022,7 @@ table.data-table tbody tr:hover {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .badge-success {
