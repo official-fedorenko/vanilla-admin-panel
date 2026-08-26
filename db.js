@@ -460,6 +460,13 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE work_logs ADD COLUMN site_id INTEGER REFERENCES construction_sites(id) ON DELETE SET NULL", () => {});
     }
+  },
+  {
+    version: 28,
+    description: 'Users: добавить свою ставку в час (hourly_rate) для учёта рабочего времени',
+    up: () => {
+      db.run("ALTER TABLE users ADD COLUMN hourly_rate REAL", () => {});
+    }
   }
 ];
 
@@ -594,6 +601,7 @@ db.serialize(() => {
       avatar_url TEXT,
       two_factor_secret TEXT,
       two_factor_enabled INTEGER NOT NULL DEFAULT 0,
+      hourly_rate REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
