@@ -1287,15 +1287,18 @@
       const list = document.getElementById('myApartmentList');
       try {
         const res = await fetch('/api/cabinet/my-apartment');
-        const data = res.ok ? await res.json() : { apartments: [] };
+        const data = res.ok ? await res.json() : { apartments: [], own_housing: false };
         const apartments = data.apartments || [];
         if (!apartments.length) {
-          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не заселён.</div>';
+          list.innerHTML = data.own_housing
+            ? '<div style="color: var(--text-muted); font-size: 13px;">Живёт в своей квартире.</div>'
+            : '<div style="color: var(--text-muted); font-size: 13px;">Не заселён.</div>';
           return;
         }
         list.innerHTML = '';
         apartments.forEach(a => {
           const issued = a.issued_at ? new Date(a.issued_at).toLocaleDateString('ru-RU') : '';
+          const addressLine = [a.address, a.house ? `д. ${a.house}` : '', a.floor ? `эт. ${a.floor}` : '', a.unit_number ? `кв. ${a.unit_number}` : ''].filter(Boolean).join(', ');
           const details = [
             a.category,
             a.rooms ? `${a.rooms} комн.` : '',
@@ -1306,7 +1309,7 @@
           item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
           item.innerHTML = `
             <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(a.name)}</div>
-            ${a.address ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(a.address)}</div>` : ''}
+            ${addressLine ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(addressLine)}</div>` : ''}
             ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
             ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Заселён: ${issued}</div>` : ''}
           `;

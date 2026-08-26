@@ -134,10 +134,12 @@ function getMyVehicles(req, res, user) {
   });
 }
 
-// Квартира, закреплённая за сотрудником, привязанным к текущему аккаунту.
+// Квартира(ы), закреплённая за сотрудником, привязанным к текущему аккаунту.
+// own_housing — сотрудник живёт в своём жилье и не нуждается в закреплении.
 function getMyApartment(req, res, user) {
   const sql = `
-    SELECT ap.id, ap.name, ap.category, ap.address, ap.rooms, ap.area, ap.photo_url, a.issued_at
+    SELECT ap.id, ap.name, ap.category, ap.address, ap.house, ap.floor, ap.unit_number,
+           ap.rooms, ap.area, ap.photo_url, a.issued_at
     FROM employees e
     JOIN apartment_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
     JOIN apartments ap ON ap.id = a.apartment_id
@@ -145,7 +147,13 @@ function getMyApartment(req, res, user) {
     ORDER BY a.issued_at DESC`;
   db.all(sql, [user.id], (err, apartments) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    sendJson(res, 200, { success: true, apartments: apartments || [] });
+    db.get("SELECT own_housing FROM employees WHERE user_id = ?", [user.id], (e2, emp) => {
+      sendJson(res, 200, {
+        success: true,
+        apartments: apartments || [],
+        own_housing: !!(emp && emp.own_housing)
+      });
+    });
   });
 }
 

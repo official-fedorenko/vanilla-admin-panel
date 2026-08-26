@@ -8,10 +8,14 @@ const { db } = require('../../db');
  * Маршруты:
  *   GET/POST/PUT/DELETE /api/crud/apartments[?id=]        — CRUD квартир
  *   GET/POST/PUT/DELETE /api/crud/apartment-categories     — справочник типов квартир
- *   POST                /api/apartments/issue              — закрепить за сотрудником
- *   POST                /api/apartments/return              — освободить
- *   POST                /api/apartments/transfer             — передать другому сотруднику
+ *   POST                /api/apartments/issue              — заселить сотрудника (можно нескольких сразу)
+ *   POST                /api/apartments/return              — выселить конкретного сотрудника
+ *   POST                /api/apartments/transfer             — заменить одного жильца другим
  *   GET                 /api/apartments/history?apartment_id= — история закреплений
+ *
+ * В квартире может одновременно жить несколько сотрудников — в отличие от
+ * инструмента/автопарка (там закрепление 1:1), у apartment_assignments может
+ * быть больше одной активной (returned_at IS NULL) строки на одну квартиру.
  *
  * Права: чтение — любой авторизованный; изменения/выдача/возврат — Admin/Superadmin.
  */
@@ -49,6 +53,8 @@ function extractApartmentFields(body) {
   const validRooms = Number.isInteger(rooms) && rooms >= 0 ? rooms : null;
   const area = parseFloat(body.area);
   const validArea = Number.isFinite(area) && area >= 0 ? area : null;
+  const floor = parseInt(body.floor, 10);
+  const validFloor = Number.isInteger(floor) ? floor : null;
 
   const rawPhotoRaw = (body.photo_url == null ? '' : String(body.photo_url)).trim();
   const rawPhoto = rawPhotoRaw.split('?')[0].split('#')[0];
@@ -60,6 +66,9 @@ function extractApartmentFields(body) {
       name: name.slice(0, 200),
       category: str(body.category),
       address: str(body.address, 400),
+      house: str(body.house, 50),
+      floor: validFloor,
+      unit_number: str(body.unit_number, 20),
       rooms: validRooms,
       area: validArea,
       status,
@@ -76,15 +85,21 @@ function extractApartmentFields(body) {
 async function handleCrud(req, res, user, parsedUrl, method) {
   if (method === 'GET') {
     const { limit, offset } = parsePagination(parsedUrl);
+    // Квартира может быть заселена несколькими сотрудниками одновременно —
+    // агрегируем все активные (returned_at IS NULL) закрепления в один список
+    // «occupants» ('assignment_id|employee_id|issued_at|Фамилия Имя', разделитель ';;').
+    // issued_at сам содержит ':' (время) — поэтому поля разделяем '|', а не ':'.
     const sql = `
       SELECT a.*,
-        asn.employee_id AS current_employee_id,
-        asn.issued_at   AS current_issued_at,
-        CASE WHEN e.id IS NOT NULL
-             THEN e.last_name || ' ' || e.first_name END AS current_holder
+        GROUP_CONCAT(
+          asn.id || '|' || asn.employee_id || '|' || asn.issued_at || '|' ||
+          replace(replace(e.last_name || ' ' || e.first_name, '|', ''), ';;', ''),
+          ';;'
+        ) AS occupants
       FROM apartments a
       LEFT JOIN apartment_assignments asn ON asn.apartment_id = a.id AND asn.returned_at IS NULL
       LEFT JOIN employees e ON e.id = asn.employee_id
+      GROUP BY a.id
       ORDER BY a.name COLLATE NOCASE
       LIMIT ? OFFSET ?`;
     db.all(sql, [limit, offset], (err, rows) => {
@@ -108,9 +123,9 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `INSERT INTO apartments (name, category, address, rooms, area, status, ownership_type, rent_from, rent_until, photo_url, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [values.name, values.category, values.address, values.rooms, values.area,
+        `INSERT INTO apartments (name, category, address, house, floor, unit_number, rooms, area, status, ownership_type, rent_from, rent_until, photo_url, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [values.name, values.category, values.address, values.house, values.floor, values.unit_number, values.rooms, values.area,
          values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания квартиры' });
@@ -133,9 +148,9 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `UPDATE apartments SET name = ?, category = ?, address = ?, rooms = ?, area = ?,
+        `UPDATE apartments SET name = ?, category = ?, address = ?, house = ?, floor = ?, unit_number = ?, rooms = ?, area = ?,
            status = ?, ownership_type = ?, rent_from = ?, rent_until = ?, photo_url = ?, notes = ? WHERE id = ?`,
-        [values.name, values.category, values.address, values.rooms, values.area,
+        [values.name, values.category, values.address, values.house, values.floor, values.unit_number, values.rooms, values.area,
          values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
@@ -182,10 +197,15 @@ async function handleIssue(req, res, user) {
     db.get("SELECT id, name, status FROM apartments WHERE id = ?", [apartmentId], (err, apartment) => {
       if (err || !apartment) return sendJson(res, 404, { success: false, message: 'Квартира не найдена' });
       if (apartment.status === 'written_off') {
-        return sendJson(res, 400, { success: false, message: 'Квартира списана — закрепить нельзя' });
+        return sendJson(res, 400, { success: false, message: 'Квартира списана — заселить нельзя' });
       }
-      db.get("SELECT id FROM apartment_assignments WHERE apartment_id = ? AND returned_at IS NULL", [apartmentId], (err2, open) => {
-        if (open) return sendJson(res, 409, { success: false, message: 'Квартира уже занята — сначала освободите её' });
+      // Квартиру можно заселять несколькими сотрудниками одновременно — не
+      // блокируем на «уже занята», только на повторное заселение того же человека.
+      db.get(
+        "SELECT id FROM apartment_assignments WHERE apartment_id = ? AND employee_id = ? AND returned_at IS NULL",
+        [apartmentId, employeeId],
+        (err2, already) => {
+        if (already) return sendJson(res, 409, { success: false, message: 'Этот сотрудник уже заселён в эту квартиру' });
 
         db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (err3, emp) => {
           if (err3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
@@ -194,10 +214,12 @@ async function handleIssue(req, res, user) {
             "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
             [apartmentId, employeeId, user.username, notes],
             function (err4) {
-              if (err4) return sendJson(res, 500, { success: false, message: 'Ошибка закрепления' });
-              db.run("UPDATE apartments SET status = 'occupied' WHERE id = ?", [apartmentId]);
-              logAction(user.username, `Квартира «${apartment.name}» закреплена за ${emp.last_name} ${emp.first_name}`);
-              sendJson(res, 201, { success: true, id: this.lastID });
+              if (err4) return sendJson(res, 500, { success: false, message: 'Ошибка заселения' });
+              const insertedId = this.lastID;
+              recomputeApartmentStatus(apartmentId, () => {
+                logAction(user.username, `Квартира «${apartment.name}» заселена: ${emp.last_name} ${emp.first_name}`);
+                sendJson(res, 201, { success: true, id: insertedId });
+              });
             }
           );
         });
@@ -208,70 +230,98 @@ async function handleIssue(req, res, user) {
   }
 }
 
-// ---- Освободить квартиру (/api/apartments/return) ----
+// Статус квартиры пересчитывается по числу оставшихся активных закреплений:
+// есть хоть одно — 'occupied', ни одного — 'available' (кроме 'written_off',
+// её трогать не нужно — используется только после выселения).
+function recomputeApartmentStatus(apartmentId, cb) {
+  db.get(
+    "SELECT COUNT(*) AS c FROM apartment_assignments WHERE apartment_id = ? AND returned_at IS NULL",
+    [apartmentId],
+    (err, row) => {
+      const newStatus = row && row.c > 0 ? 'occupied' : 'available';
+      db.run("UPDATE apartments SET status = ? WHERE id = ? AND status != 'written_off'", [newStatus, apartmentId], () => cb && cb());
+    }
+  );
+}
+
+// ---- Выселить конкретного сотрудника (/api/apartments/return) ----
 async function handleReturn(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
     const body = await getJsonBody(req);
     const apartmentId = parseInt(body.apartment_id, 10);
-    if (!apartmentId) return sendJson(res, 400, { success: false, message: 'Не указана квартира' });
+    const employeeId = parseInt(body.employee_id, 10);
+    if (!apartmentId || !employeeId) return sendJson(res, 400, { success: false, message: 'Нужно указать квартиру и сотрудника' });
 
-    db.get("SELECT id FROM apartment_assignments WHERE apartment_id = ? AND returned_at IS NULL", [apartmentId], (err, open) => {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-      if (!open) return sendJson(res, 400, { success: false, message: 'Квартира и так свободна' });
+    db.get(
+      "SELECT id FROM apartment_assignments WHERE apartment_id = ? AND employee_id = ? AND returned_at IS NULL",
+      [apartmentId, employeeId],
+      (err, open) => {
+        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!open) return sendJson(res, 400, { success: false, message: 'Этот сотрудник не заселён в эту квартиру' });
 
-      db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], function (err2) {
-        if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка освобождения' });
-        db.run("UPDATE apartments SET status = 'available' WHERE id = ?", [apartmentId]);
-        logAction(user.username, `Освобождена квартира id=${apartmentId}`);
-        sendJson(res, 200, { success: true });
-      });
-    });
+        db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], function (err2) {
+          if (err2) return sendJson(res, 500, { success: false, message: 'Ошибка выселения' });
+          recomputeApartmentStatus(apartmentId, () => {
+            logAction(user.username, `Выселен сотрудник id=${employeeId} из квартиры id=${apartmentId}`);
+            sendJson(res, 200, { success: true });
+          });
+        });
+      }
+    );
   } catch (e) {
     sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
   }
 }
 
-// ---- Передать квартиру другому сотруднику (/api/apartments/transfer) ----
+// ---- Заменить одного жильца другим (/api/apartments/transfer) ----
+// from_employee_id — кого выселяем, employee_id — кого заселяем на его место.
 async function handleTransfer(req, res, user) {
   if (!canWrite(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   try {
     const body = await getJsonBody(req);
     const apartmentId = parseInt(body.apartment_id, 10);
+    const fromEmployeeId = parseInt(body.from_employee_id, 10);
     const employeeId = parseInt(body.employee_id, 10);
-    if (!apartmentId || !employeeId) {
-      return sendJson(res, 400, { success: false, message: 'Нужно указать квартиру и сотрудника' });
+    if (!apartmentId || !fromEmployeeId || !employeeId) {
+      return sendJson(res, 400, { success: false, message: 'Нужно указать квартиру, текущего и нового сотрудника' });
+    }
+    if (fromEmployeeId === employeeId) {
+      return sendJson(res, 400, { success: false, message: 'Нельзя передать квартиру тому же сотруднику' });
     }
     const notes = (body.notes || '').toString().trim().slice(0, 300) || null;
 
     db.get("SELECT id, name FROM apartments WHERE id = ?", [apartmentId], (err, apartment) => {
       if (err || !apartment) return sendJson(res, 404, { success: false, message: 'Квартира не найдена' });
 
-      db.get("SELECT id, employee_id FROM apartment_assignments WHERE apartment_id = ? AND returned_at IS NULL", [apartmentId], (e2, open) => {
-        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-        if (!open) return sendJson(res, 400, { success: false, message: 'Квартира свободна — используйте закрепление' });
-        if (open.employee_id === employeeId) {
-          return sendJson(res, 400, { success: false, message: 'Квартира уже закреплена за этим сотрудником' });
-        }
+      db.get(
+        "SELECT id FROM apartment_assignments WHERE apartment_id = ? AND employee_id = ? AND returned_at IS NULL",
+        [apartmentId, fromEmployeeId],
+        (e2, open) => {
+          if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          if (!open) return sendJson(res, 400, { success: false, message: 'Этот сотрудник не заселён в эту квартиру' });
 
-        db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (e3, emp) => {
-          if (e3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
+          db.get("SELECT id, first_name, last_name FROM employees WHERE id = ?", [employeeId], (e3, emp) => {
+            if (e3 || !emp) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
 
-          db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], (e4) => {
-            if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
-            db.run(
-              "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
-              [apartmentId, employeeId, user.username, notes],
-              function (e5) {
-                if (e5) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
-                db.run("UPDATE apartments SET status = 'occupied' WHERE id = ?", [apartmentId]);
-                logAction(user.username, `Квартира «${apartment.name}» передана ${emp.last_name} ${emp.first_name}`);
-                sendJson(res, 200, { success: true, id: this.lastID });
-              }
-            );
+            db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [open.id], (e4) => {
+              if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
+              db.run(
+                "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
+                [apartmentId, employeeId, user.username, notes],
+                function (e5) {
+                  if (e5) return sendJson(res, 500, { success: false, message: 'Ошибка передачи' });
+                  const insertedId = this.lastID;
+                  recomputeApartmentStatus(apartmentId, () => {
+                    logAction(user.username, `Квартира «${apartment.name}» передана ${emp.last_name} ${emp.first_name}`);
+                    sendJson(res, 200, { success: true, id: insertedId });
+                  });
+                }
+              );
+            });
           });
-        });
-      });
+        }
+      );
     });
   } catch (e) {
     sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });

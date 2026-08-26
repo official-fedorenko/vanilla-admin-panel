@@ -59,7 +59,8 @@ function extractEmployeeFields(body) {
       hire_date: hireDate,
       status,
       user_id: userId,
-      notes: str(body.notes)
+      notes: str(body.notes),
+      own_housing: body.own_housing ? 1 : 0
     }
   };
 }
@@ -266,10 +267,10 @@ async function handleEmployees(req, res, user, parsedUrl, method) {
 
       db.run(
         `INSERT INTO employees
-          (first_name, last_name, position, department, phone, email, hire_date, status, user_id, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (first_name, last_name, position, department, phone, email, hire_date, status, user_id, notes, own_housing)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [values.first_name, values.last_name, values.position, values.department,
-         values.phone, values.email, values.hire_date, values.status, values.user_id, values.notes],
+         values.phone, values.email, values.hire_date, values.status, values.user_id, values.notes, values.own_housing],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания сотрудника' });
           logAction(user.username, `Добавлен сотрудник ${values.last_name} ${values.first_name}`);
@@ -297,10 +298,10 @@ async function handleEmployees(req, res, user, parsedUrl, method) {
       db.run(
         `UPDATE employees SET
           first_name = ?, last_name = ?, position = ?, department = ?,
-          phone = ?, email = ?, hire_date = ?, status = ?, notes = ?
+          phone = ?, email = ?, hire_date = ?, status = ?, notes = ?, own_housing = ?
          WHERE id = ?`,
         [values.first_name, values.last_name, values.position, values.department,
-         values.phone, values.email, values.hire_date, values.status, values.notes, id],
+         values.phone, values.email, values.hire_date, values.status, values.notes, values.own_housing, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
           if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });
