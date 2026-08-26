@@ -981,14 +981,14 @@ function renderVacations() {
     const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
     const days = vacDaysCount(v.start_date, v.end_date);
     const isSick = v.type === 'sick_leave';
-    const typeBadge = `<span class="badge ${isSick ? 'badge-warning' : 'badge-secondary'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
+    const typeBadge = `<span class="badge ${isSick ? 'badge-danger' : 'badge-purple'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
     const pending = v.status === 'pending'
       ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
       : '';
     const statusBadge = `<span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span>`;
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
-    const editBtnHtml = `<button class="btn btn-secondary" onclick="closeRowDetail(); openEditVacationForm(${v.id})" style="padding:6px 12px; font-size:12px;">Редактировать</button>`;
+    const editBtnHtml = `<button class="req-action req-action--green" onclick="closeRowDetail(); openEditVacationForm(${v.id})">Редактировать</button>`;
     tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
       ['Тип', typeBadge, true],
       ['С', vacFmtDate(v.start_date)],
@@ -1007,7 +1007,7 @@ function renderVacations() {
       <td class="mobile-hidden"><span class="badge ${ph.badge}">${ph.label}</span></td>
       <td>${statusBadge}</td>
       <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>
-      <td class="no-label" style="text-align:right;"><button class="btn btn-secondary" onclick="openEditVacationForm(${v.id})" style="padding:6px 12px; font-size:12px; white-space:nowrap;">Редактировать</button></td>`;
+      <td class="no-label" style="text-align:right;"><button class="req-action req-action--green" onclick="openEditVacationForm(${v.id})">Редактировать</button></td>`;
     tbody.appendChild(tr);
   });
 }
