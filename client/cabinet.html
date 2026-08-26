@@ -835,6 +835,19 @@
           </div><!-- /cbody -->
         </div>
 
+        <!-- Заселён (закреплённая за мной квартира, только для сотрудников) -->
+        <div class="card mobile-collapse" id="myApartmentCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg> Заселён</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+          <div id="myApartmentList" style="display:flex; flex-direction:column; gap:12px;">
+            <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+          </div>
+          </div><!-- /cbody -->
+        </div>
+
         <!-- Заявления -->
         <div class="card mobile-collapse" id="requestsCard">
           <div class="card-title collapse-toggle" style="display:flex; align-items:center; justify-content:space-between;">
@@ -1091,6 +1104,7 @@
           loadMyTools();
           document.getElementById('myVehiclesCard').style.display = '';
           loadMyVehicles();
+          loadMyApartment();
           const msgLink = document.getElementById('messagesNavLink');
           if (msgLink) msgLink.style.display = '';
           updateMessagesBadge();
@@ -1103,10 +1117,11 @@
 
     // === Моя карточка сотрудника (read-only) ===
     const EMP_STATUS = {
-      active:   { label: 'Работает',  color: 'var(--green)' },
-      vacation: { label: 'В отпуске', color: 'var(--accent-cyan)' },
-      inactive: { label: 'Неактивен', color: 'var(--text-muted)' },
-      fired:    { label: 'Уволен',    color: 'var(--red)' }
+      active:     { label: 'Работает',      color: 'var(--green)' },
+      vacation:   { label: 'В отпуске',     color: 'var(--accent-cyan)' },
+      sick_leave: { label: 'На больничном', color: 'var(--red)' },
+      inactive:   { label: 'Неактивен',     color: 'var(--text-muted)' },
+      fired:      { label: 'Уволен',        color: 'var(--red)' }
     };
 
     async function loadMyCard() {
@@ -1266,6 +1281,40 @@
         img.src = url;
       } catch (e) { showToast('Не удалось сохранить QR', 'error'); }
     };
+
+    async function loadMyApartment() {
+      const list = document.getElementById('myApartmentList');
+      try {
+        const res = await fetch('/api/cabinet/my-apartment');
+        const data = res.ok ? await res.json() : { apartments: [] };
+        const apartments = data.apartments || [];
+        if (!apartments.length) {
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплено жильё.</div>';
+          return;
+        }
+        list.innerHTML = '';
+        apartments.forEach(a => {
+          const issued = a.issued_at ? new Date(a.issued_at).toLocaleDateString('ru-RU') : '';
+          const details = [
+            a.category,
+            a.rooms ? `${a.rooms} комн.` : '',
+            a.area ? `${a.area} м²` : ''
+          ].filter(Boolean).join(' · ');
+
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; flex-direction:column; padding:12px; border:1px solid var(--border-color); border-radius:12px; background:rgba(255,255,255,0.01);';
+          item.innerHTML = `
+            <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(a.name)}</div>
+            ${a.address ? `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${escapeHtml(a.address)}</div>` : ''}
+            ${details ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${escapeHtml(details)}</div>` : ''}
+            ${issued ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Заселён: ${issued}</div>` : ''}
+          `;
+          list.appendChild(item);
+        });
+      } catch (e) {
+        list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не удалось загрузить.</div>';
+      }
+    }
 
     async function loadMyVehicles() {
       const list = document.getElementById('myVehiclesList');

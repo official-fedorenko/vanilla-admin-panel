@@ -134,6 +134,21 @@ function getMyVehicles(req, res, user) {
   });
 }
 
+// Квартира, закреплённая за сотрудником, привязанным к текущему аккаунту.
+function getMyApartment(req, res, user) {
+  const sql = `
+    SELECT ap.id, ap.name, ap.category, ap.address, ap.rooms, ap.area, ap.photo_url, a.issued_at
+    FROM employees e
+    JOIN apartment_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
+    JOIN apartments ap ON ap.id = a.apartment_id
+    WHERE e.user_id = ?
+    ORDER BY a.issued_at DESC`;
+  db.all(sql, [user.id], (err, apartments) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    sendJson(res, 200, { success: true, apartments: apartments || [] });
+  });
+}
+
 // Сотрудник добавляет фото в галерею ТОЛЬКО у авто, которое сейчас на нём.
 async function setVehiclePhoto(req, res, user) {
   try {
@@ -246,6 +261,7 @@ module.exports = async function handleCabinet(req, res, user, parsedUrl, method)
   if (pathname === '/api/cabinet/my-tools' && method === 'GET') return getMyTools(req, res, user);
   if (pathname === '/api/cabinet/tool-photo' && method === 'POST') return setToolPhoto(req, res, user);
   if (pathname === '/api/cabinet/my-vehicles' && method === 'GET') return getMyVehicles(req, res, user);
+  if (pathname === '/api/cabinet/my-apartment' && method === 'GET') return getMyApartment(req, res, user);
   if (pathname === '/api/cabinet/vehicle-photo' && method === 'POST') return setVehiclePhoto(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });

@@ -22,6 +22,7 @@ const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
 const handleVehicles = require('./src/routes/vehicles');
+const handleApartments = require('./src/routes/apartments');
 const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
@@ -188,7 +189,8 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
       pathname === '/api/cabinet/my-card' ||
       pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
-      pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo') {
+      pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo' ||
+      pathname === '/api/cabinet/my-apartment') {
     return handleCabinet(req, res, user, parsedUrl, method);
   }
 
@@ -219,6 +221,12 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/crud/vehicles') || pathname.startsWith('/api/vehicles/') ||
       pathname.startsWith('/api/crud/vehicle-categories')) {
     return handleVehicles(req, res, user, parsedUrl, method);
+  }
+
+  // Квартиры: CRUD жилья + закрепление/освобождение/история + справочник типов
+  if (pathname.startsWith('/api/crud/apartments') || pathname.startsWith('/api/apartments/') ||
+      pathname.startsWith('/api/crud/apartment-categories')) {
+    return handleApartments(req, res, user, parsedUrl, method);
   }
 
   // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
