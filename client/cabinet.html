@@ -1104,6 +1104,7 @@
           loadMyTools();
           document.getElementById('myVehiclesCard').style.display = '';
           loadMyVehicles();
+          document.getElementById('myApartmentCard').style.display = '';
           loadMyApartment();
           const msgLink = document.getElementById('messagesNavLink');
           if (msgLink) msgLink.style.display = '';
@@ -1289,7 +1290,7 @@
         const data = res.ok ? await res.json() : { apartments: [] };
         const apartments = data.apartments || [];
         if (!apartments.length) {
-          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">За вами сейчас не закреплено жильё.</div>';
+          list.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Не заселён.</div>';
           return;
         }
         list.innerHTML = '';

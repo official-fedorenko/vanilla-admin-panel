@@ -296,6 +296,7 @@ function initApp() {
   initToolOrdersBadge();
   initVehicleOrdersBadge();
   initVehiclesExpiryBadge();
+  initApartmentsExpiryBadge();
 
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
@@ -2533,7 +2534,8 @@ async function loadSettings() {
   const CARD_GROUPS = {
     'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
     'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes'],
-    'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days']
+    'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'],
+    'Напоминания о недвижимости': ['apartment_rent_soon_days']
   };
   const GROUPS = { ...SITE_GROUPS, ...CARD_GROUPS };
 
@@ -2563,7 +2565,8 @@ async function loadSettings() {
     public_vehicle_card_show_purchase_date: 'Показывать дату покупки',
     public_vehicle_card_show_notes: 'Показывать заметки',
     vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
-    vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)'
+    vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)',
+    apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)'
   };
 
   const PUBLIC_CARD_KEYS = [...GROUPS['Публичная карточка инструмента (по QR)'], ...GROUPS['Публичная карточка авто (по QR)']];
@@ -2573,7 +2576,7 @@ async function loadSettings() {
     if (['maintenance_mode', 'allow_registration'].includes(key) || PUBLIC_CARD_KEYS.includes(key)) return 'boolean';
     if (['site_description', 'about_subtitle', 'about_card1_text', 'about_card2_text', 'contact_subtitle'].includes(key)) return 'textarea';
     if (key === 'contact_email') return 'email';
-    if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'].includes(key)) return 'number';
+    if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days', 'apartment_rent_soon_days'].includes(key)) return 'number';
     return 'text';
   }
 
@@ -6123,16 +6126,69 @@ const APARTMENT_STATUS = {
 
 async function loadApartments() {
   try {
+    await loadApartmentExpirySettings();
     const res = await fetch('/api/crud/apartments');
     if (res.ok) {
       apartmentsList = await res.json();
       renderApartments();
+      updateApartmentsExpiryBadge();
     } else if (res.status === 401) {
       showToast('Сессия истекла, войдите заново', 'error');
     }
   } catch (err) {
     showToast('Ошибка загрузки недвижимости', 'error');
   }
+}
+
+// Порог напоминания об окончании аренды (в днях), настраивается в
+// «Настройки» → «Напоминания о недвижимости». 0 — выключено.
+let apartmentRentSoonDays = 30;
+
+async function loadApartmentExpirySettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const rows = await res.json();
+    const map = {};
+    (rows || []).forEach(r => { map[r.key] = r.value; });
+    if (map.apartment_rent_soon_days !== undefined) apartmentRentSoonDays = parseInt(map.apartment_rent_soon_days, 10) || 0;
+  } catch (e) { /* используем значение по умолчанию */ }
+}
+
+// 'overdue'|'soon'|null — только для объектов в аренде с заданной датой окончания.
+function apartmentRentStatus(a) {
+  if (a.ownership_type !== 'rented' || !a.rent_until || !apartmentRentSoonDays) return null;
+  const d = new Date(a.rent_until);
+  if (isNaN(d)) return null;
+  const days = Math.ceil((d - new Date(new Date().toDateString())) / 86400000);
+  if (days < 0) return 'overdue';
+  if (days <= apartmentRentSoonDays) return 'soon';
+  return null;
+}
+
+function apartmentRentBadge(a) {
+  const level = apartmentRentStatus(a);
+  if (!level) return '';
+  const title = level === 'overdue' ? 'Аренда просрочена' : 'Аренда скоро заканчивается';
+  return `<span class="badge badge-danger" title="${title}">Аренда</span>`;
+}
+
+function updateApartmentsExpiryBadge() {
+  const badge = document.getElementById('apartmentsExpiryBadge');
+  if (!badge) return;
+  const count = apartmentsList.filter(a => apartmentRentStatus(a)).length;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+async function initApartmentsExpiryBadge() {
+  try {
+    await loadApartmentExpirySettings();
+    const res = await fetch('/api/crud/apartments');
+    if (!res.ok) return;
+    apartmentsList = await res.json();
+    updateApartmentsExpiryBadge();
+  } catch (e) { /* тихо */ }
 }
 
 async function loadApartmentCategories() {
@@ -6197,7 +6253,7 @@ function renderApartments(filterQuery = '') {
       </td>
       <td class="mobile-hidden">${escapeHtml(a.category || '—')}</td>
       <td class="mobile-hidden">${roomsArea}</td>
-      <td>${statusBadge}</td>
+      <td>${statusBadge}${apartmentRentBadge(a) ? ' ' + apartmentRentBadge(a) : ''}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
@@ -6221,10 +6277,18 @@ function openApartmentModal(apartment = null) {
   document.getElementById('apartmentRooms').value = apartment ? (apartment.rooms ?? '') : '';
   document.getElementById('apartmentArea').value = apartment ? (apartment.area ?? '') : '';
   document.getElementById('apartmentStatus').value = apartment ? apartment.status : 'available';
+  document.getElementById('apartmentOwnership').value = apartment ? (apartment.ownership_type || 'owned') : 'owned';
+  document.getElementById('apartmentRentFrom').value = apartment ? (apartment.rent_from || '') : '';
   document.getElementById('apartmentRentUntil').value = apartment ? (apartment.rent_until || '') : '';
   document.getElementById('apartmentNotes').value = apartment ? (apartment.notes || '') : '';
   populateApartmentCategorySelect(apartment ? (apartment.category || '') : '');
+  toggleApartmentRentDates();
   document.getElementById('apartmentModalOverlay').classList.add('active');
+}
+
+function toggleApartmentRentDates() {
+  const isRented = document.getElementById('apartmentOwnership').value === 'rented';
+  document.getElementById('apartmentRentDates').style.display = isRented ? 'grid' : 'none';
 }
 
 window.editApartment = (id) => {
@@ -6325,7 +6389,11 @@ async function openApartmentDetail(id) {
     ['Комнат', apartment.rooms ?? '—'],
     ['Площадь', apartment.area ? `${apartment.area} м²` : '—'],
     ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
-    ['Аренда/договор до', apartment.rent_until || '—'],
+    ['Владение', apartment.ownership_type === 'rented' ? 'В аренде' : 'В собственности'],
+    ...(apartment.ownership_type === 'rented' ? [
+      ['Аренда с', apartment.rent_from || '—'],
+      ['Аренда до', apartment.rent_until || '—']
+    ] : []),
     ['Кто заселён', apartment.current_holder || '—'],
     ['Заметки', apartment.notes || '—']
   ];
@@ -6360,6 +6428,9 @@ function setupApartments() {
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   if (search) search.addEventListener('input', (e) => renderApartments(e.target.value));
 
+  const ownershipSelect = document.getElementById('apartmentOwnership');
+  if (ownershipSelect) ownershipSelect.addEventListener('change', toggleApartmentRentDates);
+
   loadApartmentCategories();
 
   if (form) {
@@ -6373,6 +6444,8 @@ function setupApartments() {
         rooms: document.getElementById('apartmentRooms').value,
         area: document.getElementById('apartmentArea').value,
         status: document.getElementById('apartmentStatus').value,
+        ownership_type: document.getElementById('apartmentOwnership').value,
+        rent_from: document.getElementById('apartmentRentFrom').value,
         rent_until: document.getElementById('apartmentRentUntil').value,
         notes: document.getElementById('apartmentNotes').value
       };

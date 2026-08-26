@@ -52,7 +52,7 @@
         <li class="nav-item" data-section="apartments">
           <a href="#apartments" title="Недвижимость">
             <i data-lucide="home"></i>
-            <span>Недвижимость</span>
+            <span>Недвижимость <span id="apartmentsExpiryBadge" style="display:none; background:var(--accent-red, #ef4444); color:#fff; font-size:11px; border-radius:10px; padding:1px 7px; margin-left:4px;">0</span></span>
           </a>
         </li>
         <li class="nav-item" data-section="requests">
@@ -1902,6 +1902,19 @@
             <div class="form-group">
               <label for="apartmentArea">Площадь, м²</label>
               <input type="number" id="apartmentArea" class="form-control" min="0" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="apartmentOwnership">Владение</label>
+              <select id="apartmentOwnership" class="form-control">
+                <option value="owned">В собственности</option>
+                <option value="rented">В аренде</option>
+              </select>
+            </div>
+          </div>
+          <div id="apartmentRentDates" style="display:none; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="apartmentRentFrom">Аренда с</label>
+              <input type="date" id="apartmentRentFrom" class="form-control">
             </div>
             <div class="form-group">
               <label for="apartmentRentUntil">Аренда/договор до</label>

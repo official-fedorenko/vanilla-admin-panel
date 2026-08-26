@@ -17,6 +17,7 @@ const { db } = require('../../db');
  */
 
 const ALLOWED_STATUSES = ['available', 'occupied', 'repair', 'written_off'];
+const ALLOWED_OWNERSHIP = ['owned', 'rented'];
 
 function parseId(parsedUrl, key = 'id') {
   const id = parseInt(parsedUrl.searchParams.get(key), 10);
@@ -32,8 +33,12 @@ function extractApartmentFields(body) {
   if (name.length < 1) return { error: 'Название/адрес квартиры обязательно' };
 
   const status = ALLOWED_STATUSES.includes(body.status) ? body.status : 'available';
+  const ownershipType = ALLOWED_OWNERSHIP.includes(body.ownership_type) ? body.ownership_type : 'owned';
   const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
-  const rentUntil = isDate(body.rent_until) ? body.rent_until : null;
+  // Даты аренды имеют смысл только при ownership_type='rented' — для
+  // собственной недвижимости не сохраняем, даже если форма их прислала.
+  const rentFrom = ownershipType === 'rented' && isDate(body.rent_from) ? body.rent_from : null;
+  const rentUntil = ownershipType === 'rented' && isDate(body.rent_until) ? body.rent_until : null;
 
   const str = (v, max = 300) => {
     const s = (v == null ? '' : String(v)).trim();
@@ -58,6 +63,8 @@ function extractApartmentFields(body) {
       rooms: validRooms,
       area: validArea,
       status,
+      ownership_type: ownershipType,
+      rent_from: rentFrom,
       rent_until: rentUntil,
       photo_url: photoUrl,
       notes: str(body.notes, 2000)
@@ -101,10 +108,10 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `INSERT INTO apartments (name, category, address, rooms, area, status, rent_until, photo_url, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO apartments (name, category, address, rooms, area, status, ownership_type, rent_from, rent_until, photo_url, notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [values.name, values.category, values.address, values.rooms, values.area,
-         values.status, values.rent_until, values.photo_url, values.notes],
+         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания квартиры' });
           logAction(user.username, `Добавлена квартира «${values.name}»`);
@@ -127,9 +134,9 @@ async function handleCrud(req, res, user, parsedUrl, method) {
 
       db.run(
         `UPDATE apartments SET name = ?, category = ?, address = ?, rooms = ?, area = ?,
-           status = ?, rent_until = ?, photo_url = ?, notes = ? WHERE id = ?`,
+           status = ?, ownership_type = ?, rent_from = ?, rent_until = ?, photo_url = ?, notes = ? WHERE id = ?`,
         [values.name, values.category, values.address, values.rooms, values.area,
-         values.status, values.rent_until, values.photo_url, values.notes, id],
+         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
           if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Квартира не найдена' });
