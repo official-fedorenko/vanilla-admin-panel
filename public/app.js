@@ -295,6 +295,7 @@ function initApp() {
   // Счётчик заказов, ожидающих получения сотрудником (бейдж в меню)
   initToolOrdersBadge();
   initVehicleOrdersBadge();
+  initVehiclesExpiryBadge();
 
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
@@ -768,8 +769,10 @@ function renderToolOrders() {
   const tbody = document.getElementById('toolOrdersTableBody');
   const filter = document.getElementById('toolOrdersReceiptFilter')?.value || '';
   let list = toolOrdersCache;
-  if (filter === 'awaiting') list = list.filter(o => !o.received);
-  else if (filter === 'received') list = list.filter(o => o.received);
+  // По умолчанию (и при пустом фильтре) показываем только ожидающие
+  // получения — уже полученные заказы видны только когда явно выбран
+  // фильтр «Получены», чтобы не засорять список тем, что уже закрыто.
+  list = filter === 'received' ? list.filter(o => o.received) : list.filter(o => !o.received);
 
   tbody.innerHTML = '';
   if (!list.length) {
@@ -1016,8 +1019,8 @@ function renderVacations() {
       <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
       <td class="no-label" style="text-align:right;">
         <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
-          <button class="req-action req-action--green" onclick="openVacationMoreInfo(${v.id})">Подробнее</button>
-          <button class="req-action req-action--green" onclick="openEditVacationForm(${v.id})">Редактировать</button>
+          <button class="req-action req-action--green" style="min-width:132px;" onclick="openVacationMoreInfo(${v.id})">Подробнее</button>
+          <button class="req-action req-action--green" style="min-width:132px;" onclick="openEditVacationForm(${v.id})">Редактировать</button>
         </div>
       </td>`;
     tbody.appendChild(tr);
@@ -4919,12 +4922,63 @@ async function loadVehicles() {
     if (res.ok) {
       vehiclesList = await res.json();
       renderVehicles();
+      updateVehiclesExpiryBadge();
     } else if (res.status === 401) {
       showToast('Сессия истекла, войдите заново', 'error');
     }
   } catch (err) {
     showToast('Ошибка загрузки автопарка', 'error');
   }
+}
+
+const VEHICLE_EXPIRY_SOON_DAYS = 30;
+
+// Возвращает { insurance: 'overdue'|'soon'|null, inspection: 'overdue'|'soon'|null }
+function vehicleExpiryStatus(v) {
+  const check = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d)) return null;
+    const days = Math.ceil((d - new Date(new Date().toDateString())) / 86400000);
+    if (days < 0) return 'overdue';
+    if (days <= VEHICLE_EXPIRY_SOON_DAYS) return 'soon';
+    return null;
+  };
+  return { insurance: check(v.insurance_until), inspection: check(v.inspection_until) };
+}
+
+function vehicleExpiryBadgesHtml(v) {
+  const st = vehicleExpiryStatus(v);
+  const parts = [];
+  const mk = (label, level) => {
+    if (!level) return '';
+    const cls = level === 'overdue' ? 'badge-danger' : 'badge-warning';
+    const title = level === 'overdue' ? `Просрочен(о): ${label}` : `Скоро истекает: ${label}`;
+    return `<span class="badge ${cls}" title="${title}" style="margin-left:4px;">${label}</span>`;
+  };
+  parts.push(mk('ТО', st.inspection));
+  parts.push(mk('Страховка', st.insurance));
+  return parts.join('');
+}
+
+function updateVehiclesExpiryBadge() {
+  const badge = document.getElementById('vehiclesExpiryBadge');
+  if (!badge) return;
+  const count = vehiclesList.filter(v => {
+    const st = vehicleExpiryStatus(v);
+    return st.insurance || st.inspection;
+  }).length;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+async function initVehiclesExpiryBadge() {
+  try {
+    const res = await fetch('/api/crud/vehicles');
+    if (!res.ok) return;
+    vehiclesList = await res.json();
+    updateVehiclesExpiryBadge();
+  } catch (e) { /* тихо */ }
 }
 
 function renderVehicles(filterQuery = '') {
@@ -4972,7 +5026,7 @@ function renderVehicles(filterQuery = '') {
       </td>
       <td class="mobile-hidden">${escapeHtml(v.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(v.plate_number || '—')}</td>
-      <td>${statusBadge}</td>
+      <td>${statusBadge}${vehicleExpiryBadgesHtml(v)}</td>
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
@@ -5907,8 +5961,9 @@ function renderVehicleOrders() {
   const tbody = document.getElementById('vehicleOrdersTableBody');
   const filter = document.getElementById('vehicleOrdersReceiptFilter')?.value || '';
   let list = vehicleOrdersCache;
-  if (filter === 'awaiting') list = list.filter(o => !o.received);
-  else if (filter === 'received') list = list.filter(o => o.received);
+  // Как и в «Заказах инструмента»: полученные заказы скрыты по умолчанию,
+  // видны только при явном фильтре «Получены».
+  list = filter === 'received' ? list.filter(o => o.received) : list.filter(o => !o.received);
 
   tbody.innerHTML = '';
   if (!list.length) {
