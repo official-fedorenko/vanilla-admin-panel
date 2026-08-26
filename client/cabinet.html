@@ -1752,6 +1752,24 @@
       } catch(e) {}
     }
 
+    window.answerSupportResolution = async function (resolved) {
+      try {
+        const res = await fetch('/api/support/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resolved })
+        });
+        if (res.ok) {
+          showToast(resolved ? 'Спасибо за ответ!' : 'Спасибо, мы обратим на это внимание', 'success');
+          loadChatMessages();
+        } else {
+          showToast('Не удалось отправить ответ', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка при отправке ответа', 'error');
+      }
+    };
+
     function renderChatClosedBanner(status) {
       const banner = document.getElementById('cabinetChatClosedBanner');
       if (banner) banner.style.display = status === 'closed' ? 'block' : 'none';
@@ -1827,7 +1845,25 @@
       }
       
       let html = '';
-      messages.forEach(msg => {
+      messages.forEach((msg, idx) => {
+        if (msg.sender_role === 'System') {
+          const isLast = idx === messages.length - 1;
+          const showButtons = msg.system_type === 'resolution_ask' && isLast;
+          html += `
+            <div style="display:flex; flex-direction:column; align-items:center; margin:6px 0;">
+              <div style="background: rgba(255,255,255,0.06); color: var(--text-secondary); padding: 10px 14px; border-radius: 12px; max-width: 85%; font-size: 12px; text-align:center;">
+                ${escapeHtml(msg.message)}
+                ${showButtons ? `
+                  <div style="display:flex; gap:8px; justify-content:center; margin-top:10px;">
+                    <button type="button" onclick="answerSupportResolution(true)" style="padding:6px 14px; border-radius:8px; border:1px solid var(--accent-green,#22c55e); color:var(--accent-green,#22c55e); background:transparent; cursor:pointer; font-size:12px;">Да, решено</button>
+                    <button type="button" onclick="answerSupportResolution(false)" style="padding:6px 14px; border-radius:8px; border:1px solid var(--accent-red,#ef4444); color:var(--accent-red,#ef4444); background:transparent; cursor:pointer; font-size:12px;">Нет</button>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `;
+          return;
+        }
         const isMe = msg.user_id === currentUserData.id || msg.sender_role === 'User' || msg.sender_role === 'Guest' || msg.sender_role === currentUserData.role;
         const isAdminMsg = msg.sender_role === 'Admin' || msg.sender_role === 'Superadmin';
         const alignRight = (currentUserData.role === 'Admin' || currentUserData.role === 'Superadmin') ? isAdminMsg : !isAdminMsg;
