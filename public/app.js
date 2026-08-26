@@ -836,15 +836,15 @@ async function loadVacations() {
   const tbody = document.getElementById('vacationsTableBody');
   const cal = document.getElementById('vacationsCalendar');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
   try {
     const res = await fetch('/api/requests/vacations');
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     const data = await res.json();
     vacationsCache = data.vacations || [];
     renderVacations();
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
     if (cal) cal.innerHTML = '';
   }
 }
@@ -894,6 +894,47 @@ window.submitVacation = async function (e) {
   return false;
 };
 
+// --- Редактирование существующего отпуска/больничного (админ) ---
+window.openEditVacationForm = function (id) {
+  const v = vacationsCache.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('editVacationId').value = v.id;
+  document.getElementById('editVacationModalTitle').textContent =
+    v.type === 'sick_leave' ? 'Редактировать больничный' : 'Редактировать отпуск';
+  document.getElementById('editVacationEmployeeName').textContent = v.name || '—';
+  document.getElementById('editVacationStart').value = v.start_date || '';
+  document.getElementById('editVacationEnd').value = v.end_date || '';
+  document.getElementById('editVacationNotes').value = v.notes || '';
+  document.getElementById('editVacationModalOverlay').classList.add('active');
+};
+window.closeEditVacationForm = function () {
+  document.getElementById('editVacationModalOverlay').classList.remove('active');
+};
+window.submitEditVacation = async function (e) {
+  if (e) e.preventDefault();
+  const id = document.getElementById('editVacationId').value;
+  const start_date = document.getElementById('editVacationStart').value;
+  const end_date = document.getElementById('editVacationEnd').value;
+  const notes = document.getElementById('editVacationNotes').value;
+  if (!start_date || !end_date) { showToast('Укажите даты', 'error'); return false; }
+  if (end_date < start_date) { showToast('Дата окончания раньше начала', 'error'); return false; }
+  try {
+    const res = await fetch('/api/requests/vacation-edit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, start_date, end_date, notes })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.success) {
+      showToast('Изменения сохранены', 'success');
+      closeEditVacationForm();
+      loadVacations();
+    } else {
+      showToast(d.message || 'Не удалось сохранить', 'error');
+    }
+  } catch (err) { showToast('Ошибка сети', 'error'); }
+  return false;
+};
+
 // Год отпуска — по дате начала.
 function vacYear(v) { return (v.start_date || '').slice(0, 4); }
 
@@ -933,7 +974,7 @@ function renderVacations() {
   // --- Список ---
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="9" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -947,6 +988,7 @@ function renderVacations() {
     const statusBadge = `<span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span>`;
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
+    const editBtnHtml = `<button class="btn btn-secondary" onclick="closeRowDetail(); openEditVacationForm(${v.id})" style="padding:6px 12px; font-size:12px;">Редактировать</button>`;
     tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
       ['Тип', typeBadge, true],
       ['С', vacFmtDate(v.start_date)],
@@ -955,7 +997,7 @@ function renderVacations() {
       ['Период', `<span class="badge ${ph.badge}">${ph.label}</span>`, true],
       ['Статус', statusBadge, true],
       ['Комментарий', v.notes]
-    ]));
+    ], editBtnHtml));
     tr.innerHTML = `
       <td class="mobile-primary"><strong>${escapeHtml(v.name)}</strong>${pending}</td>
       <td class="mobile-hidden">${typeBadge}</td>
@@ -964,7 +1006,8 @@ function renderVacations() {
       <td class="mobile-hidden">${days !== '' ? days : '—'}</td>
       <td class="mobile-hidden"><span class="badge ${ph.badge}">${ph.label}</span></td>
       <td>${statusBadge}</td>
-      <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>`;
+      <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>
+      <td class="no-label" style="text-align:right;"><button class="btn btn-secondary" onclick="openEditVacationForm(${v.id})" style="padding:6px 12px; font-size:12px; white-space:nowrap;">Редактировать</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -5902,7 +5945,8 @@ function renderVehicleOrders() {
     chatSettingsModalOverlay: () => window.closeChatSettingsModal && window.closeChatSettingsModal(),
     standardAvatarsModalOverlay: () => window.closeStandardAvatarsModal && window.closeStandardAvatarsModal(),
     rowDetailModalOverlay: () => window.closeRowDetail && window.closeRowDetail(),
-    employeeDetailModalOverlay: () => window.closeEmployeeDetail && window.closeEmployeeDetail()
+    employeeDetailModalOverlay: () => window.closeEmployeeDetail && window.closeEmployeeDetail(),
+    editVacationModalOverlay: () => window.closeEditVacationForm && window.closeEditVacationForm()
   };
   Object.entries(map).forEach(([id, close]) => {
     const overlay = document.getElementById(id);

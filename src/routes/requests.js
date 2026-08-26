@@ -297,6 +297,46 @@ async function createVacationForEmployee(req, res, user) {
   }
 }
 
+// --- Редактирование отпуска/больничного (админ) ---
+// Меняет только даты и комментарий существующего заявления type IN
+// ('vacation','sick_leave') — тип, статус и заявитель не трогаются.
+async function editVacation(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const id = parseInt(body.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+    const start = /^\d{4}-\d{2}-\d{2}$/.test(String(body.start_date || '')) ? body.start_date : '';
+    const end = /^\d{4}-\d{2}-\d{2}$/.test(String(body.end_date || '')) ? body.end_date : '';
+    if (!start || !end) return sendJson(res, 400, { success: false, message: 'Укажите даты начала и окончания' });
+    if (end < start) return sendJson(res, 400, { success: false, message: 'Дата окончания раньше даты начала' });
+    const notes = str(body.notes, 2000);
+
+    db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!row || (row.type !== 'vacation' && row.type !== 'sick_leave')) {
+        return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+      }
+      let payload = {};
+      try { payload = JSON.parse(row.payload || '{}'); } catch (e) {}
+      payload.start_date = start;
+      payload.end_date = end;
+      payload.notes = notes;
+      const title = buildTitle(row.type, payload);
+      db.run(
+        "UPDATE requests SET payload = ?, title = ? WHERE id = ?",
+        [JSON.stringify(payload), title, id],
+        (uErr) => {
+          if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+          logAction(user.username, `Изменил ${row.type === 'sick_leave' ? 'больничный' : 'отпуск'} (id=${id}): ${start} — ${end}`);
+          sendJson(res, 200, { success: true });
+        }
+      );
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
+}
+
 // --- Сводка заказов инструмента (админ): кому и что одобрили ---
 // Только одобренные заявки type='tool_order' (отклонённые «исчезают»).
 // received_at показывает, отметил ли сотрудник получение.
@@ -506,6 +546,10 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   if (p === '/api/requests/vacation-for' && method === 'POST') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return createVacationForEmployee(req, res, user);
+  }
+  if (p === '/api/requests/vacation-edit' && method === 'POST') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return editVacation(req, res, user);
   }
   if (p === '/api/requests/tool-orders' && method === 'GET') {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
