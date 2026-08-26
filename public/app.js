@@ -699,6 +699,7 @@ function initApp() {
   setupTools();
   setupVehicles();
   setupApartments();
+  setupConstructionSites();
 }
 
 // Load data specifically for selected route
@@ -713,6 +714,8 @@ function loadSectionData(hash) {
     loadVehicles();
   } else if (hash === 'apartments') {
     loadApartments();
+  } else if (hash === 'constructionsites') {
+    loadConstructionSites();
   } else if (hash === 'vehicleorders') {
     loadVehicleOrders();
   } else if (hash === 'catalog') {
@@ -6717,6 +6720,426 @@ function setupApartments() {
       showToast('Ошибка сети', 'error');
     }
   });
+}
+
+// =====================================================================
+//  CONSTRUCTION SITES (Строительные объекты) — CRUD + бригада сотрудников
+// =====================================================================
+
+let constructionSitesList = [];
+let constructionSiteCategories = [];
+
+const CONSTRUCTION_SITE_STATUS = {
+  planning:  { label: 'Планируется',    badge: 'badge-warning' },
+  active:    { label: 'В работе',       badge: 'badge-success' },
+  paused:    { label: 'Приостановлен',  badge: 'badge-warning' },
+  completed: { label: 'Завершён',       badge: 'badge-danger' }
+};
+
+// Разбирает агрегированное поле "crew" ('assignmentId|employeeId|issuedAt|Имя', разделитель ';;')
+// в массив { assignmentId, employeeId, issuedAt, name }.
+function parseConstructionSiteCrew(s) {
+  if (!s.crew) return [];
+  return s.crew.split(';;').map(entry => {
+    const [assignmentId, employeeId, issuedAt, ...nameParts] = entry.split('|');
+    return { assignmentId: Number(assignmentId), employeeId: Number(employeeId), issuedAt, name: nameParts.join('|') };
+  }).filter(o => o.employeeId);
+}
+
+async function loadConstructionSites() {
+  try {
+    const res = await fetch('/api/crud/construction-sites');
+    if (res.ok) {
+      constructionSitesList = await res.json();
+      renderConstructionSites();
+    } else if (res.status === 401) {
+      showToast('Сессия истекла, войдите заново', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка загрузки строительных объектов', 'error');
+  }
+}
+
+async function loadConstructionSiteCategories() {
+  try {
+    const res = await fetch('/api/crud/construction-site-categories');
+    if (res.ok) constructionSiteCategories = await res.json();
+  } catch (e) { /* тихо */ }
+}
+
+function populateConstructionSiteCategorySelect(selectedValue = '') {
+  const select = document.getElementById('constructionSiteCategory');
+  if (!select) return;
+  const names = constructionSiteCategories.map(c => c.name);
+  let html = '<option value="">— выберите —</option>';
+  names.forEach(n => { html += `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`; });
+  if (selectedValue && !names.includes(selectedValue)) {
+    html += `<option value="${escapeHtml(selectedValue)}">${escapeHtml(selectedValue)} (своя)</option>`;
+  }
+  select.innerHTML = html;
+  select.value = selectedValue || '';
+}
+
+function renderConstructionSites(filterQuery = '') {
+  const tbody = document.getElementById('constructionSitesTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const q = filterQuery.toLowerCase();
+  const filtered = constructionSitesList.filter(s => {
+    const crewNames = parseConstructionSiteCrew(s).map(o => o.name).join(' ');
+    const hay = `${s.name} ${s.category || ''} ${s.address || ''} ${s.customer || ''} ${crewNames}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Объекты не найдены</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(s => {
+    const st = CONSTRUCTION_SITE_STATUS[s.status] || CONSTRUCTION_SITE_STATUS.planning;
+    const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
+    const crew = parseConstructionSiteCrew(s);
+    const crewHtml = crew.length
+      ? `<strong>${escapeHtml(crew.map(o => o.name).join(', '))}</strong>`
+      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+
+    const isCompleted = s.status === 'completed';
+    const manageBtn = crew.length
+      ? `<button class="action-btn" title="Бригада: снять / заменить" onclick="openReturnConstructionSiteModal(${s.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : '';
+    const issueBtn = isCompleted ? '' : `<button class="action-btn" title="Направить" onclick="openIssueConstructionSiteModal(${s.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`;
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => openConstructionSiteDetail(s.id));
+    tr.innerHTML = `
+      <td class="hide-mobile">${s.id}</td>
+      <td class="mobile-primary">
+        <div style="cursor:pointer;" onclick="openConstructionSiteDetail(${s.id})" title="Открыть карточку">
+          <strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(s.name)}</strong>
+          ${s.address ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(s.address)}</div>` : ''}
+        </div>
+      </td>
+      <td class="mobile-hidden">${escapeHtml(s.category || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(s.customer || '—')}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${crewHtml}</td>
+      <td class="no-label" style="text-align: right;">
+        <div class="action-btns" style="justify-content: flex-end;">
+          ${manageBtn}
+          ${issueBtn}
+          <button class="action-btn edit" title="Изменить" onclick="editConstructionSite(${s.id})"><i data-lucide="edit-3"></i></button>
+          <button class="action-btn delete" title="Удалить" onclick="deleteConstructionSite(${s.id})"><i data-lucide="trash-2"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function openConstructionSiteModal(site = null) {
+  document.getElementById('constructionSiteModalTitle').textContent = site ? 'Изменить объект' : 'Добавить объект';
+  document.getElementById('constructionSiteId').value = site ? site.id : '';
+  document.getElementById('constructionSiteName').value = site ? site.name : '';
+  document.getElementById('constructionSiteAddress').value = site ? (site.address || '') : '';
+  document.getElementById('constructionSiteCustomer').value = site ? (site.customer || '') : '';
+  document.getElementById('constructionSiteStatus').value = site ? site.status : 'planning';
+  document.getElementById('constructionSiteStartDate').value = site ? (site.start_date || '') : '';
+  document.getElementById('constructionSiteEndDate').value = site ? (site.end_date || '') : '';
+  document.getElementById('constructionSiteBudget').value = site ? (site.budget ?? '') : '';
+  document.getElementById('constructionSiteNotes').value = site ? (site.notes || '') : '';
+  populateConstructionSiteCategorySelect(site ? (site.category || '') : '');
+  document.getElementById('constructionSiteModalOverlay').classList.add('active');
+}
+
+window.editConstructionSite = (id) => {
+  const site = constructionSitesList.find(s => s.id === id);
+  if (site) openConstructionSiteModal(site);
+};
+
+window.deleteConstructionSite = async (id) => {
+  if (!await confirmDialog('Удалить этот объект? Действие необратимо.', { okText: 'Удалить', danger: true })) return;
+  try {
+    const res = await fetch(`/api/crud/construction-sites?id=${id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Объект удалён', 'success');
+      await loadConstructionSites();
+    } else {
+      showToast(data.message || 'Не удалось удалить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+function buildConstructionSiteCard(site) {
+  return `
+    <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:16px;">
+      <strong>${escapeHtml(site.name)}</strong>
+      ${site.address ? `<span style="font-size:13px;color:hsl(var(--text-secondary));">${escapeHtml(site.address)}</span>` : ''}
+      ${site.customer ? `<span style="font-size:12px;color:hsl(var(--text-muted));">Заказчик: ${escapeHtml(site.customer)}</span>` : ''}
+    </div>
+  `;
+}
+
+window.openIssueConstructionSiteModal = async (id) => {
+  const site = constructionSitesList.find(s => s.id === id);
+  if (!site) return;
+  const crewIds = new Set(parseConstructionSiteCrew(site).map(o => o.employeeId));
+  document.getElementById('issueConstructionSiteId').value = id;
+  document.getElementById('issueConstructionSiteNotes').value = '';
+  document.getElementById('issueConstructionSiteInfo').innerHTML = buildConstructionSiteCard(site);
+
+  const select = document.getElementById('issueConstructionSiteEmployeeSelect');
+  select.innerHTML = '<option value="">Загрузка...</option>';
+  document.getElementById('issueConstructionSiteModalOverlay').classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired' && !crewIds.has(e.id));
+    select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
+};
+
+window.openReturnConstructionSiteModal = (id) => {
+  const site = constructionSitesList.find(s => s.id === id);
+  if (!site) return;
+  const modal = document.getElementById('returnConstructionSiteModalOverlay');
+  modal.dataset.siteId = id;
+  document.getElementById('returnConstructionSiteInfo').innerHTML = buildConstructionSiteCard(site);
+  renderConstructionSiteCrewList(id);
+  modal.classList.add('active');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+};
+
+function renderConstructionSiteCrewList(siteId) {
+  const site = constructionSitesList.find(s => s.id === siteId);
+  const container = document.getElementById('returnConstructionSiteOccupants');
+  if (!site || !container) return;
+  const crew = parseConstructionSiteCrew(site);
+  if (!crew.length) {
+    container.innerHTML = '<div style="color:hsl(var(--text-muted)); font-size:13px;">Сейчас на объекте никто не работает.</div>';
+    return;
+  }
+  container.innerHTML = crew.map(o => `
+    <div style="display:flex; flex-direction:column; gap:8px; padding:12px 0; border-bottom:1px solid hsl(var(--border-color));">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div>
+          <strong>${escapeHtml(o.name)}</strong>
+          <div style="font-size:12px; color:hsl(var(--text-muted));">Направлен: ${escapeHtml(o.issuedAt || '—')}</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" onclick="doReturnConstructionSite(${siteId}, ${o.employeeId})">Снять</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleConstructionSiteTransferRow(${o.employeeId})">Заменить</button>
+        </div>
+      </div>
+      <div id="constructionSiteTransferRow_${o.employeeId}" style="display:none; gap:8px;">
+        <select id="constructionSiteTransferSelect_${o.employeeId}" class="form-control" style="flex:1;">
+          <option value="">Загрузка...</option>
+        </select>
+        <button type="button" class="btn" onclick="doConstructionSiteTransfer(${siteId}, ${o.employeeId})">Подтвердить</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.toggleConstructionSiteTransferRow = async (fromEmployeeId) => {
+  const row = document.getElementById(`constructionSiteTransferRow_${fromEmployeeId}`);
+  if (!row) return;
+  const willShow = row.style.display === 'none';
+  row.style.display = willShow ? 'flex' : 'none';
+  if (!willShow) return;
+
+  const modal = document.getElementById('returnConstructionSiteModalOverlay');
+  const site = constructionSitesList.find(s => s.id === Number(modal.dataset.siteId));
+  const crewIds = new Set(parseConstructionSiteCrew(site).map(o => o.employeeId));
+  const select = document.getElementById(`constructionSiteTransferSelect_${fromEmployeeId}`);
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired' && !crewIds.has(e.id));
+    select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
+};
+
+window.doConstructionSiteTransfer = async (siteId, fromEmployeeId) => {
+  const select = document.getElementById(`constructionSiteTransferSelect_${fromEmployeeId}`);
+  const employeeId = select ? select.value : '';
+  if (!employeeId) return showToast('Выберите сотрудника', 'error');
+  try {
+    const res = await fetch('/api/construction-sites/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_id: siteId, from_employee_id: fromEmployeeId, employee_id: Number(employeeId) })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Сотрудник заменён', 'success');
+      await loadConstructionSites();
+      renderConstructionSiteCrewList(siteId);
+    } else {
+      showToast(data.message || 'Не удалось заменить', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+window.doReturnConstructionSite = async (siteId, employeeId) => {
+  try {
+    const res = await fetch('/api/construction-sites/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site_id: siteId, employee_id: employeeId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Сотрудник снят с объекта', 'success');
+      await loadConstructionSites();
+      renderConstructionSiteCrewList(siteId);
+    } else {
+      showToast(data.message || 'Не удалось снять', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+async function openConstructionSiteDetail(id) {
+  const site = constructionSitesList.find(s => s.id === id);
+  if (!site) return;
+  const st = CONSTRUCTION_SITE_STATUS[site.status] || CONSTRUCTION_SITE_STATUS.planning;
+  const crew = parseConstructionSiteCrew(site);
+  const rows = [
+    ['Адрес', site.address || '—'],
+    ['Тип', site.category || '—'],
+    ['Заказчик', site.customer || '—'],
+    ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
+    ['Дата начала', site.start_date || '—'],
+    ['Дата окончания', site.end_date || '—'],
+    ['Бюджет', site.budget != null ? `${site.budget} €` : '—'],
+    ['Бригада', crew.length ? crew.map(o => escapeHtml(o.name)).join(', ') : '—', true],
+    ['Заметки', site.notes || '—']
+  ];
+  try {
+    const res = await fetch(`/api/construction-sites/history?site_id=${id}`);
+    const history = res.ok ? await res.json() : [];
+    if (history.length) {
+      rows.push(['История закреплений', null, 'section']);
+      history.forEach(h => {
+        const period = h.returned_at ? `${h.issued_at} — ${h.returned_at}` : `${h.issued_at} — по наст. время`;
+        rows.push([h.employee_name, `${period}${h.notes ? ' · ' + escapeHtml(h.notes) : ''}`, true]);
+      });
+    }
+  } catch (e) { /* без истории, не критично */ }
+  showRowDetail(site.name, rows);
+}
+
+function setupConstructionSites() {
+  const modal = document.getElementById('constructionSiteModalOverlay');
+  if (!modal) return;
+
+  const addBtn = document.getElementById('addConstructionSiteBtn');
+  const cancelBtn = document.getElementById('cancelConstructionSiteModalBtn');
+  const closeBtn = document.getElementById('closeConstructionSiteModalBtn');
+  const form = document.getElementById('constructionSiteForm');
+  const search = document.getElementById('constructionSitesSearch');
+
+  const closeModal = () => modal.classList.remove('active');
+  if (addBtn) addBtn.addEventListener('click', () => openConstructionSiteModal());
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  if (search) search.addEventListener('input', (e) => renderConstructionSites(e.target.value));
+
+  loadConstructionSiteCategories();
+
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('constructionSiteId').value;
+      const payload = {
+        name: document.getElementById('constructionSiteName').value,
+        category: document.getElementById('constructionSiteCategory').value,
+        address: document.getElementById('constructionSiteAddress').value,
+        customer: document.getElementById('constructionSiteCustomer').value,
+        status: document.getElementById('constructionSiteStatus').value,
+        start_date: document.getElementById('constructionSiteStartDate').value,
+        end_date: document.getElementById('constructionSiteEndDate').value,
+        budget: document.getElementById('constructionSiteBudget').value,
+        notes: document.getElementById('constructionSiteNotes').value
+      };
+      const url = id ? `/api/crud/construction-sites?id=${id}` : '/api/crud/construction-sites';
+      try {
+        const res = await fetch(url, {
+          method: id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast(id ? 'Объект обновлён' : 'Объект добавлен', 'success');
+          closeModal();
+          await loadConstructionSites();
+        } else {
+          showToast(data.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (err) {
+        showToast('Ошибка сети', 'error');
+      }
+    });
+  }
+
+  // --- Issue modal ---
+  const issueModal = document.getElementById('issueConstructionSiteModalOverlay');
+  const closeIssueModal = () => issueModal.classList.remove('active');
+  document.getElementById('closeIssueConstructionSiteModalBtn').addEventListener('click', closeIssueModal);
+  document.getElementById('cancelIssueConstructionSiteModalBtn').addEventListener('click', closeIssueModal);
+  issueModal.addEventListener('click', (e) => { if (e.target === issueModal) closeIssueModal(); });
+
+  document.getElementById('issueConstructionSiteForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const siteId = document.getElementById('issueConstructionSiteId').value;
+    const employeeId = document.getElementById('issueConstructionSiteEmployeeSelect').value;
+    const notes = document.getElementById('issueConstructionSiteNotes').value;
+    if (!employeeId) return showToast('Выберите сотрудника', 'error');
+    try {
+      const res = await fetch('/api/construction-sites/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_id: Number(siteId), employee_id: Number(employeeId), notes })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Сотрудник направлен на объект', 'success');
+        closeIssueModal();
+        await loadConstructionSites();
+      } else {
+        showToast(data.message || 'Не удалось направить', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+
+  // --- Crew (снять / заменить) modal ---
+  const returnModal = document.getElementById('returnConstructionSiteModalOverlay');
+  const closeReturnModal = () => returnModal.classList.remove('active');
+  document.getElementById('closeReturnConstructionSiteModalBtn').addEventListener('click', closeReturnModal);
+  document.getElementById('cancelReturnConstructionSiteModalBtn').addEventListener('click', closeReturnModal);
+  returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
 }
 
 (function wireClickOutsideForOverlays() {

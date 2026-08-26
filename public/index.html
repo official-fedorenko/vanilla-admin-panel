@@ -57,6 +57,12 @@
             <span>Недвижимость</span>
           </a>
         </li>
+        <li class="nav-item" data-section="constructionsites">
+          <a href="#constructionsites" title="Строительные объекты">
+            <i data-lucide="hard-hat"></i>
+            <span>Строительные объекты</span>
+          </a>
+        </li>
         <li class="nav-item" data-section="requests">
           <a href="#requests" title="Заявления">
             <i data-lucide="clipboard-list"></i>
@@ -324,6 +330,49 @@
                 </tr>
               </thead>
               <tbody id="apartmentsTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONSTRUCTION SITES (СТРОИТЕЛЬНЫЕ ОБЪЕКТЫ) SECTION -->
+      <section id="section-constructionsites" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Строительные объекты</h2>
+            <p>Учёт объектов и закрепление бригады сотрудников (направление / снятие)</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="exportCSV('construction-sites')">Экспорт CSV</button>
+            <button class="btn" id="addConstructionSiteBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить объект</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="constructionSitesSearch" class="form-control" placeholder="Поиск по названию, адресу, заказчику, бригаде...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">ID</th>
+                  <th>Название / адрес</th>
+                  <th>Тип</th>
+                  <th>Заказчик</th>
+                  <th style="width: 120px;">Статус</th>
+                  <th>Бригада</th>
+                  <th style="width: 150px; text-align: right;">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="constructionSitesTableBody">
                 <!-- Dynamically populated -->
               </tbody>
             </table>
@@ -2005,6 +2054,117 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="cancelApartmentSettingsBtn">Отмена</button>
         <button type="button" class="btn" id="saveApartmentSettingsBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONSTRUCTION SITE ADD/EDIT MODAL DIALOG -->
+  <div class="modal-overlay" id="constructionSiteModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="constructionSiteModalTitle">Добавить объект</h3>
+        <button class="modal-close" id="closeConstructionSiteModalBtn">&times;</button>
+      </div>
+      <form id="constructionSiteForm">
+        <input type="hidden" id="constructionSiteId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="constructionSiteName">Название объекта</label>
+            <input type="text" id="constructionSiteName" class="form-control" placeholder="ЖК Панорама, корпус 2" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div class="form-group">
+              <label for="constructionSiteCategory">Тип</label>
+              <select id="constructionSiteCategory" class="form-control">
+                <option value="">— выберите —</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="constructionSiteStatus">Статус</label>
+              <select id="constructionSiteStatus" class="form-control">
+                <option value="planning">Планируется</option>
+                <option value="active">В работе</option>
+                <option value="paused">Приостановлен</option>
+                <option value="completed">Завершён</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="constructionSiteStartDate">Дата начала</label>
+              <input type="date" id="constructionSiteStartDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="constructionSiteEndDate">Дата окончания</label>
+              <input type="date" id="constructionSiteEndDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="constructionSiteBudget">Бюджет, €</label>
+              <input type="number" id="constructionSiteBudget" class="form-control" min="0" step="0.01">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="constructionSiteAddress">Адрес</label>
+            <input type="text" id="constructionSiteAddress" class="form-control" placeholder="ул. Тайкос 5">
+          </div>
+          <div class="form-group">
+            <label for="constructionSiteCustomer">Заказчик</label>
+            <input type="text" id="constructionSiteCustomer" class="form-control" placeholder="ООО «Компания»">
+          </div>
+          <div class="form-group">
+            <label for="constructionSiteNotes">Заметки</label>
+            <textarea id="constructionSiteNotes" class="form-control" rows="2" placeholder="Особенности объекта..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelConstructionSiteModalBtn">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ISSUE (НАПРАВИТЬ) CONSTRUCTION SITE MODAL DIALOG -->
+  <div class="modal-overlay" id="issueConstructionSiteModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Направить на объект</h3>
+        <button class="modal-close" id="closeIssueConstructionSiteModalBtn">&times;</button>
+      </div>
+      <form id="issueConstructionSiteForm">
+        <input type="hidden" id="issueConstructionSiteId">
+        <div class="modal-body">
+          <div id="issueConstructionSiteInfo" class="issue-tool-card"></div>
+          <div class="form-group">
+            <label for="issueConstructionSiteEmployeeSelect">Кого направить</label>
+            <select id="issueConstructionSiteEmployeeSelect" class="form-control" required>
+              <option value="">— выберите сотрудника —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="issueConstructionSiteNotes">Заметка (необязательно)</label>
+            <input type="text" id="issueConstructionSiteNotes" class="form-control" placeholder="Например: бригадир на объекте">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelIssueConstructionSiteModalBtn">Отмена</button>
+          <button type="submit" class="btn">Направить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CREW (СНЯТЬ / ЗАМЕНИТЬ) CONSTRUCTION SITE MODAL DIALOG -->
+  <div class="modal-overlay" id="returnConstructionSiteModalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Бригада объекта</h3>
+        <button class="modal-close" id="closeReturnConstructionSiteModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="returnConstructionSiteInfo" class="issue-tool-card"></div>
+        <div id="returnConstructionSiteOccupants"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelReturnConstructionSiteModalBtn">Закрыть</button>
       </div>
     </div>
   </div>
