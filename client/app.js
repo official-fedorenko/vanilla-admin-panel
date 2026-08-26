@@ -45,12 +45,8 @@ async function checkAuth() {
         adminLink.href = '/admin/';
         adminLink.id = 'navAdminPanel';
         adminLink.className = 'admin-link';
-        adminLink.style.background = 'linear-gradient(135deg, var(--accent-purple), var(--accent-cyan))';
-        adminLink.style.color = '#fff';
-        adminLink.style.display = 'inline-flex';
-        adminLink.style.alignItems = 'center';
-        adminLink.style.gap = '6px';
         adminLink.style.marginRight = '8px';
+        adminLink.style.color = 'var(--accent-cyan)';
         adminLink.innerHTML = '<i data-lucide="settings" style="width:16px;height:16px;"></i> Панель';
         authNav.insertBefore(adminLink, cabinetLink);
       }

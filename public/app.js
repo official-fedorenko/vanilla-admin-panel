@@ -5177,6 +5177,17 @@ function renderVehicles(filterQuery = '') {
     return hay.includes(q);
   });
 
+  // Авто с истекающими/просроченными ТО/страховкой — наверх, чтобы было
+  // сразу видно, из-за чего появился счётчик в меню.
+  const expiryRank = { overdue: 0, soon: 1 };
+  filtered.sort((a, b) => {
+    const stA = vehicleExpiryStatus(a);
+    const stB = vehicleExpiryStatus(b);
+    const rankA = Math.min(expiryRank[stA.insurance] ?? 2, expiryRank[stA.inspection] ?? 2);
+    const rankB = Math.min(expiryRank[stB.insurance] ?? 2, expiryRank[stB.inspection] ?? 2);
+    return rankA - rankB;
+  });
+
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Авто не найдено</td></tr>`;
     return;
@@ -6313,6 +6324,11 @@ function renderApartments(filterQuery = '') {
     return hay.includes(q);
   });
 
+  // Квартиры с истекающей/просроченной арендой — наверх, чтобы было сразу
+  // видно, из-за чего появился счётчик в меню.
+  const expiryRank = { overdue: 0, soon: 1 };
+  filtered.sort((a, b) => (expiryRank[apartmentRentStatus(a)] ?? 2) - (expiryRank[apartmentRentStatus(b)] ?? 2));
+
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Квартиры не найдены</td></tr>`;
     return;
@@ -6850,6 +6866,11 @@ function renderConstructionSites(filterQuery = '') {
     return hay.includes(q);
   });
 
+  // Объекты с истекающим/просроченным дедлайном — наверх, чтобы было сразу
+  // видно, из-за чего появился счётчик в меню.
+  const expiryRank = { overdue: 0, soon: 1 };
+  filtered.sort((a, b) => (expiryRank[constructionSiteDeadlineStatus(a)] ?? 2) - (expiryRank[constructionSiteDeadlineStatus(b)] ?? 2));
+
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="8" class="empty-state" style="text-align: center; color: hsl(var(--text-muted)); padding: 30px;">Объекты не найдены</td></tr>`;
     return;
@@ -6859,9 +6880,14 @@ function renderConstructionSites(filterQuery = '') {
     const st = CONSTRUCTION_SITE_STATUS[s.status] || CONSTRUCTION_SITE_STATUS.planning;
     const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
     const crew = parseConstructionSiteCrew(s);
-    const crewHtml = crew.length
-      ? `<strong>${escapeHtml(crew.map(o => o.name).join(', '))}</strong>`
-      : `<span style="color: hsl(var(--text-muted));">—</span>`;
+    let crewHtml;
+    if (!crew.length) {
+      crewHtml = `<span style="color: hsl(var(--text-muted));">—</span>`;
+    } else if (crew.length > 2) {
+      crewHtml = `<button type="button" class="btn btn-secondary" style="padding:5px 12px; font-size:12px;" onclick="openReturnConstructionSiteModal(${s.id})">Сотрудники (${crew.length})</button>`;
+    } else {
+      crewHtml = `<strong>${escapeHtml(crew.map(o => o.name).join(', '))}</strong>`;
+    }
 
     const isCompleted = s.status === 'completed';
     const manageBtn = crew.length
