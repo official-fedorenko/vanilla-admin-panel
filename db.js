@@ -860,6 +860,52 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // 5e. Строительные объекты + закрепление бригады сотрудников — та же
+  // модель «выдача-возврат», но с несколькими исполнителями одновременно
+  // (как у квартир), а не 1:1 (как у инструмента/автопарка).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS construction_sites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT,
+      address TEXT,
+      customer TEXT,
+      status TEXT NOT NULL DEFAULT 'planning',
+      start_date DATE,
+      end_date DATE,
+      budget REAL,
+      photo_url TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS construction_site_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_id INTEGER NOT NULL REFERENCES construction_sites(id) ON DELETE CASCADE,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      returned_at DATETIME,
+      issued_by TEXT,
+      notes TEXT
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS construction_site_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `, () => {
+    const defaults = ['Жилой дом', 'Коммерческое здание', 'Промышленный объект', 'Ремонт/реконструкция'];
+    const catStmt = db.prepare("INSERT OR IGNORE INTO construction_site_categories (name, is_default) VALUES (?, 1)");
+    defaults.forEach(name => catStmt.run(name));
+    catStmt.finalize();
+  });
+
   // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
   // администраторы видят данные по всем. Одна строка — одна запись за день.
   db.run(`

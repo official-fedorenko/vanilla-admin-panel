@@ -23,6 +23,7 @@ const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
 const handleVehicles = require('./src/routes/vehicles');
 const handleApartments = require('./src/routes/apartments');
+const handleConstructionSites = require('./src/routes/constructionSites');
 const handleToolCatalog = require('./src/routes/toolCatalog');
 const handleCatalogModels = require('./src/routes/catalogModels');
 const handleCategoryIcons = require('./src/routes/categoryIcons');
@@ -167,11 +168,12 @@ const server = http.createServer(async (req, res) => {
   const isPublicNonApi = !pathname.startsWith('/admin') &&
                          !pathname.startsWith('/api/') &&
                          !pathname.startsWith('/uploads/') &&
-                         pathname !== '/favicon.ico';
+                         pathname !== '/favicon.ico' &&
+                         pathname !== '/login.html'; // сотрудники тоже должны иметь возможность войти
 
   if (isMaintenance && !user && isPublicNonApi) {
     res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>На обслуживании</title><style>body{font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.m{padding:48px 40px;background:rgba(20,20,28,.85);border:1px solid rgba(255,255,255,.08);border-radius:20px;text-align:center;max-width:420px}.icon{font-size:48px;margin-bottom:12px}.title{font-size:22px;font-weight:700;margin-bottom:8px;color:#ff6b6b}.desc{color:#a0a0ab;font-size:14px;line-height:1.5} .admin-link{color:#00d2ff;text-decoration:none} .admin-link:hover{text-decoration:underline}</style></head><body><div class="m"><div class="icon">🛠️</div><div class="title">Технические работы</div><div class="desc">Сайт временно недоступен для посетителей.<br>Администраторы могут войти через панель управления.</div><div style="margin-top:20px"><a class="admin-link" href="/admin/">Перейти в админ-панель →</a></div></div></body></html>`);
+    res.end(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>На обслуживании</title><style>body{font-family:Inter,system-ui,sans-serif;background:#050505;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.m{padding:48px 40px;background:rgba(20,20,28,.85);border:1px solid rgba(255,255,255,.08);border-radius:20px;text-align:center;max-width:420px}.icon{font-size:48px;margin-bottom:12px}.title{font-size:22px;font-weight:700;margin-bottom:8px;color:#ff6b6b}.desc{color:#a0a0ab;font-size:14px;line-height:1.5} .login-btn{display:inline-block;margin-top:22px;padding:12px 28px;background:linear-gradient(135deg,#00d2ff,#2e7bf6);color:#fff;font-weight:600;font-size:14px;text-decoration:none;border-radius:10px;transition:opacity .15s} .login-btn:hover{opacity:.88}</style></head><body><div class="m"><div class="icon">🛠️</div><div class="title">Технические работы</div><div class="desc">Сайт временно недоступен для посетителей.<br>Администраторы и сотрудники могут войти как обычно.</div><a class="login-btn" href="/login.html">Войти в личный кабинет</a></div></body></html>`);
     return;
   }
 
@@ -227,6 +229,12 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/crud/apartments') || pathname.startsWith('/api/apartments/') ||
       pathname.startsWith('/api/crud/apartment-categories')) {
     return handleApartments(req, res, user, parsedUrl, method);
+  }
+
+  // Строительные объекты: CRUD + направление/снятие бригады/история + справочник типов
+  if (pathname.startsWith('/api/crud/construction-sites') || pathname.startsWith('/api/construction-sites/') ||
+      pathname.startsWith('/api/crud/construction-site-categories')) {
+    return handleConstructionSites(req, res, user, parsedUrl, method);
   }
 
   // Справочник моделей (стандартный каталог) для подсказок при добавлении инструмента
