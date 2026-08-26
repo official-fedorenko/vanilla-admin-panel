@@ -3008,7 +3008,8 @@ function setupEmployees() {
         email: document.getElementById('empEmail').value,
         hire_date: document.getElementById('empHireDate').value,
         status: document.getElementById('empStatus').value,
-        notes: document.getElementById('empNotes').value
+        notes: document.getElementById('empNotes').value,
+        own_housing: document.getElementById('empOwnHousing').checked
       };
 
       const url = id ? `/api/crud/employees?id=${id}` : '/api/crud/employees';
@@ -3047,6 +3048,7 @@ function openEmployeeModal(emp = null) {
   document.getElementById('empEmail').value = emp ? (emp.email || '') : '';
   document.getElementById('empHireDate').value = emp && emp.hire_date ? String(emp.hire_date).slice(0, 10) : '';
   document.getElementById('empStatus').value = emp ? emp.status : 'active';
+  document.getElementById('empOwnHousing').checked = !!(emp && emp.own_housing);
   document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
   renderEmpAccountPanel(emp ? emp.id : null);
   modal.classList.add('active');
@@ -6211,6 +6213,17 @@ function populateApartmentCategorySelect(selectedValue = '') {
   select.value = selectedValue || '';
 }
 
+// Разбирает агрегированное поле "occupants" ('assignmentId:employeeId:issuedAt:Имя', разделитель ';;')
+// в массив { assignmentId, employeeId, issuedAt, name }. Квартиру может занимать
+// несколько сотрудников одновременно, поэтому это всегда массив, не одно значение.
+function parseApartmentOccupants(a) {
+  if (!a.occupants) return [];
+  return a.occupants.split(';;').map(entry => {
+    const [assignmentId, employeeId, issuedAt, ...nameParts] = entry.split('|');
+    return { assignmentId: Number(assignmentId), employeeId: Number(employeeId), issuedAt, name: nameParts.join('|') };
+  }).filter(o => o.employeeId);
+}
+
 function renderApartments(filterQuery = '') {
   const tbody = document.getElementById('apartmentsTableBody');
   if (!tbody) return;
@@ -6218,7 +6231,8 @@ function renderApartments(filterQuery = '') {
 
   const q = filterQuery.toLowerCase();
   const filtered = apartmentsList.filter(a => {
-    const hay = `${a.name} ${a.category || ''} ${a.address || ''} ${a.current_holder || ''}`.toLowerCase();
+    const occupantNames = parseApartmentOccupants(a).map(o => o.name).join(' ');
+    const hay = `${a.name} ${a.category || ''} ${a.address || ''} ${occupantNames}`.toLowerCase();
     return hay.includes(q);
   });
 
@@ -6230,16 +6244,18 @@ function renderApartments(filterQuery = '') {
   filtered.forEach(a => {
     const st = APARTMENT_STATUS[a.status] || APARTMENT_STATUS.available;
     const statusBadge = `<span class="badge ${st.badge}">${st.label}</span>`;
-    const holder = a.current_holder
-      ? `<strong>${escapeHtml(a.current_holder)}</strong>`
+    const occupants = parseApartmentOccupants(a);
+    const holder = occupants.length
+      ? `<strong>${escapeHtml(occupants.map(o => o.name).join(', '))}</strong>`
       : `<span style="color: hsl(var(--text-muted));">—</span>`;
     const roomsArea = [a.rooms ? `${a.rooms} комн.` : '', a.area ? `${a.area} м²` : ''].filter(Boolean).join(' / ') || '—';
+    const addressLine = [a.address, a.house ? `д. ${a.house}` : '', a.floor ? `эт. ${a.floor}` : '', a.unit_number ? `кв. ${a.unit_number}` : ''].filter(Boolean).join(', ');
 
-    const isHeld = !!a.current_employee_id;
     const canWriteOff = a.status === 'written_off';
-    const issueReturnBtn = isHeld
-      ? `<button class="action-btn" title="Выселить / передать" onclick="openReturnApartmentModal(${a.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
-      : (canWriteOff ? '' : `<button class="action-btn" title="Заселить" onclick="openIssueApartmentModal(${a.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`);
+    const manageBtn = occupants.length
+      ? `<button class="action-btn" title="Жильцы: выселить / передать" onclick="openReturnApartmentModal(${a.id})" style="color: hsl(var(--accent-cyan));"><i data-lucide="corner-down-left"></i></button>`
+      : '';
+    const issueBtn = canWriteOff ? '' : `<button class="action-btn" title="Заселить" onclick="openIssueApartmentModal(${a.id})" style="color: hsl(var(--accent-amber));"><i data-lucide="hand-helping"></i></button>`;
 
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => openApartmentDetail(a.id));
@@ -6248,7 +6264,7 @@ function renderApartments(filterQuery = '') {
       <td class="mobile-primary">
         <div style="cursor:pointer;" onclick="openApartmentDetail(${a.id})" title="Открыть карточку">
           <strong style="border-bottom:1px dashed hsl(var(--border-color));">${escapeHtml(a.name)}</strong>
-          ${a.address ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(a.address)}</div>` : ''}
+          ${addressLine ? `<div style="font-size:12px;color:hsl(var(--text-muted))">${escapeHtml(addressLine)}</div>` : ''}
         </div>
       </td>
       <td class="mobile-hidden">${escapeHtml(a.category || '—')}</td>
@@ -6257,7 +6273,8 @@ function renderApartments(filterQuery = '') {
       <td class="mobile-hidden">${holder}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
-          ${issueReturnBtn}
+          ${manageBtn}
+          ${issueBtn}
           <button class="action-btn edit" title="Изменить" onclick="editApartment(${a.id})"><i data-lucide="edit-3"></i></button>
           <button class="action-btn delete" title="Удалить" onclick="deleteApartment(${a.id})"><i data-lucide="trash-2"></i></button>
         </div>
@@ -6274,6 +6291,9 @@ function openApartmentModal(apartment = null) {
   document.getElementById('apartmentId').value = apartment ? apartment.id : '';
   document.getElementById('apartmentName').value = apartment ? apartment.name : '';
   document.getElementById('apartmentAddress').value = apartment ? (apartment.address || '') : '';
+  document.getElementById('apartmentHouse').value = apartment ? (apartment.house || '') : '';
+  document.getElementById('apartmentFloor').value = apartment ? (apartment.floor ?? '') : '';
+  document.getElementById('apartmentUnitNumber').value = apartment ? (apartment.unit_number || '') : '';
   document.getElementById('apartmentRooms').value = apartment ? (apartment.rooms ?? '') : '';
   document.getElementById('apartmentArea').value = apartment ? (apartment.area ?? '') : '';
   document.getElementById('apartmentStatus').value = apartment ? apartment.status : 'available';
@@ -6314,10 +6334,11 @@ window.deleteApartment = async (id) => {
 
 function buildApartmentCard(apartment) {
   const roomsArea = [apartment.rooms ? `${apartment.rooms} комн.` : '', apartment.area ? `${apartment.area} м²` : ''].filter(Boolean).join(' / ');
+  const addressLine = [apartment.address, apartment.house ? `д. ${apartment.house}` : '', apartment.floor ? `эт. ${apartment.floor}` : '', apartment.unit_number ? `кв. ${apartment.unit_number}` : ''].filter(Boolean).join(', ');
   return `
     <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:16px;">
       <strong>${escapeHtml(apartment.name)}</strong>
-      ${apartment.address ? `<span style="font-size:13px;color:hsl(var(--text-secondary));">${escapeHtml(apartment.address)}</span>` : ''}
+      ${addressLine ? `<span style="font-size:13px;color:hsl(var(--text-secondary));">${escapeHtml(addressLine)}</span>` : ''}
       ${roomsArea ? `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(roomsArea)}</span>` : ''}
     </div>
   `;
@@ -6326,6 +6347,7 @@ function buildApartmentCard(apartment) {
 window.openIssueApartmentModal = async (id) => {
   const apartment = apartmentsList.find(a => a.id === id);
   if (!apartment) return;
+  const occupantIds = new Set(parseApartmentOccupants(apartment).map(o => o.employeeId));
   document.getElementById('issueApartmentId').value = id;
   document.getElementById('issueApartmentNotes').value = '';
   document.getElementById('issueApartmentInfo').innerHTML = buildApartmentCard(apartment);
@@ -6338,7 +6360,8 @@ window.openIssueApartmentModal = async (id) => {
   try {
     const res = await fetch('/api/crud/employees');
     const employees = res.ok ? await res.json() : [];
-    const active = employees.filter(e => e.status !== 'fired');
+    // Не даём заселить того, кто и так уже здесь живёт (только уже отсутствующих).
+    const active = employees.filter(e => e.status !== 'fired' && !occupantIds.has(e.id));
     select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
       active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
   } catch (err) {
@@ -6352,39 +6375,117 @@ window.openReturnApartmentModal = (id) => {
   const modal = document.getElementById('returnApartmentModalOverlay');
   modal.dataset.apartmentId = id;
   document.getElementById('returnApartmentInfo').innerHTML = buildApartmentCard(apartment);
-  document.getElementById('returnApartmentHolder').textContent = apartment.current_holder ? `Сейчас заселён: ${apartment.current_holder}` : '';
-  document.getElementById('returnApartmentStep1').style.display = 'flex';
-  document.getElementById('returnApartmentStep2').style.display = 'none';
-  document.getElementById('confirmApartmentTransferBtn').style.display = 'none';
+  renderApartmentOccupantsList(id);
   modal.classList.add('active');
   if (typeof lucide !== 'undefined') lucide.createIcons();
 };
 
-async function doReturnApartmentFree(apartmentId) {
+function renderApartmentOccupantsList(apartmentId) {
+  const apartment = apartmentsList.find(a => a.id === apartmentId);
+  const container = document.getElementById('returnApartmentOccupants');
+  if (!apartment || !container) return;
+  const occupants = parseApartmentOccupants(apartment);
+  if (!occupants.length) {
+    container.innerHTML = '<div style="color:hsl(var(--text-muted)); font-size:13px;">Сейчас никто не заселён.</div>';
+    return;
+  }
+  container.innerHTML = occupants.map(o => `
+    <div style="display:flex; flex-direction:column; gap:8px; padding:12px 0; border-bottom:1px solid hsl(var(--border-color));">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div>
+          <strong>${escapeHtml(o.name)}</strong>
+          <div style="font-size:12px; color:hsl(var(--text-muted));">Заселён: ${escapeHtml(o.issuedAt || '—')}</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" onclick="doReturnApartmentFree(${apartmentId}, ${o.employeeId})">Выселить</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleApartmentTransferRow(${o.employeeId})">Передать</button>
+        </div>
+      </div>
+      <div id="apartmentTransferRow_${o.employeeId}" style="display:none; gap:8px;">
+        <select id="apartmentTransferSelect_${o.employeeId}" class="form-control" style="flex:1;">
+          <option value="">Загрузка...</option>
+        </select>
+        <button type="button" class="btn" onclick="doApartmentTransfer(${apartmentId}, ${o.employeeId})">Подтвердить</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.toggleApartmentTransferRow = async (fromEmployeeId) => {
+  const row = document.getElementById(`apartmentTransferRow_${fromEmployeeId}`);
+  if (!row) return;
+  const willShow = row.style.display === 'none';
+  row.style.display = willShow ? 'flex' : 'none';
+  if (!willShow) return;
+
+  const modal = document.getElementById('returnApartmentModalOverlay');
+  const apartment = apartmentsList.find(a => a.id === Number(modal.dataset.apartmentId));
+  const occupantIds = new Set(parseApartmentOccupants(apartment).map(o => o.employeeId));
+  const select = document.getElementById(`apartmentTransferSelect_${fromEmployeeId}`);
+  try {
+    const res = await fetch('/api/crud/employees');
+    const employees = res.ok ? await res.json() : [];
+    const active = employees.filter(e => e.status !== 'fired' && !occupantIds.has(e.id));
+    select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
+      active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
+  } catch (err) {
+    select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
+  }
+};
+
+window.doApartmentTransfer = async (apartmentId, fromEmployeeId) => {
+  const select = document.getElementById(`apartmentTransferSelect_${fromEmployeeId}`);
+  const employeeId = select ? select.value : '';
+  if (!employeeId) return showToast('Выберите сотрудника', 'error');
+  try {
+    const res = await fetch('/api/apartments/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apartment_id: apartmentId, from_employee_id: fromEmployeeId, employee_id: Number(employeeId) })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      showToast('Квартира передана', 'success');
+      await loadApartments();
+      renderApartmentOccupantsList(apartmentId);
+    } else {
+      showToast(data.message || 'Не удалось передать', 'error');
+    }
+  } catch (err) {
+    showToast('Ошибка сети', 'error');
+  }
+};
+
+window.doReturnApartmentFree = async (apartmentId, employeeId) => {
   try {
     const res = await fetch('/api/apartments/return', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apartment_id: apartmentId })
+      body: JSON.stringify({ apartment_id: apartmentId, employee_id: employeeId })
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      showToast('Квартира освобождена', 'success');
+      showToast('Сотрудник выселен', 'success');
       await loadApartments();
+      renderApartmentOccupantsList(apartmentId);
     } else {
       showToast(data.message || 'Не удалось выселить', 'error');
     }
   } catch (err) {
     showToast('Ошибка сети', 'error');
   }
-}
+};
 
 async function openApartmentDetail(id) {
   const apartment = apartmentsList.find(a => a.id === id);
   if (!apartment) return;
   const st = APARTMENT_STATUS[apartment.status] || APARTMENT_STATUS.available;
+  const occupants = parseApartmentOccupants(apartment);
   const rows = [
     ['Адрес', apartment.address || '—'],
+    ['Дом', apartment.house || '—'],
+    ['Этаж', apartment.floor ?? '—'],
+    ['Квартира №', apartment.unit_number || '—'],
     ['Тип', apartment.category || '—'],
     ['Комнат', apartment.rooms ?? '—'],
     ['Площадь', apartment.area ? `${apartment.area} м²` : '—'],
@@ -6394,7 +6495,7 @@ async function openApartmentDetail(id) {
       ['Аренда с', apartment.rent_from || '—'],
       ['Аренда до', apartment.rent_until || '—']
     ] : []),
-    ['Кто заселён', apartment.current_holder || '—'],
+    ['Кто заселён', occupants.length ? occupants.map(o => escapeHtml(o.name)).join(', ') : '—', true],
     ['Заметки', apartment.notes || '—']
   ];
   try {
@@ -6441,6 +6542,9 @@ function setupApartments() {
         name: document.getElementById('apartmentName').value,
         category: document.getElementById('apartmentCategory').value,
         address: document.getElementById('apartmentAddress').value,
+        house: document.getElementById('apartmentHouse').value,
+        floor: document.getElementById('apartmentFloor').value,
+        unit_number: document.getElementById('apartmentUnitNumber').value,
         rooms: document.getElementById('apartmentRooms').value,
         area: document.getElementById('apartmentArea').value,
         status: document.getElementById('apartmentStatus').value,
@@ -6502,53 +6606,41 @@ function setupApartments() {
     }
   });
 
-  // --- Return / transfer modal ---
+  // --- Occupants (выселить / передать) modal ---
   const returnModal = document.getElementById('returnApartmentModalOverlay');
   const closeReturnModal = () => returnModal.classList.remove('active');
   document.getElementById('closeReturnApartmentModalBtn').addEventListener('click', closeReturnModal);
   document.getElementById('cancelReturnApartmentModalBtn').addEventListener('click', closeReturnModal);
   returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
 
-  document.getElementById('returnApartmentFreeBtn').addEventListener('click', async () => {
-    await doReturnApartmentFree(Number(returnModal.dataset.apartmentId));
-    closeReturnModal();
-  });
-
-  document.getElementById('goApartmentTransferBtn').addEventListener('click', async () => {
-    document.getElementById('returnApartmentStep1').style.display = 'none';
-    document.getElementById('returnApartmentStep2').style.display = '';
-    document.getElementById('confirmApartmentTransferBtn').style.display = '';
-    const select = document.getElementById('apartmentTransferEmployeeSelect');
-    select.innerHTML = '<option value="">Загрузка...</option>';
+  // --- Apartment settings modal (порог напоминания об окончании аренды) ---
+  const settingsModal = document.getElementById('apartmentSettingsModalOverlay');
+  const openSettingsBtn = document.getElementById('openApartmentSettingsBtn');
+  const closeSettingsModal = () => settingsModal.classList.remove('active');
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener('click', async () => {
+      await loadApartmentExpirySettings();
+      document.getElementById('apartmentRentSoonDaysInput').value = apartmentRentSoonDays;
+      settingsModal.classList.add('active');
+    });
+  }
+  document.getElementById('closeApartmentSettingsBtn').addEventListener('click', closeSettingsModal);
+  document.getElementById('cancelApartmentSettingsBtn').addEventListener('click', closeSettingsModal);
+  settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
+  document.getElementById('saveApartmentSettingsBtn').addEventListener('click', async () => {
+    const days = document.getElementById('apartmentRentSoonDaysInput').value;
     try {
-      const res = await fetch('/api/crud/employees');
-      const employees = res.ok ? await res.json() : [];
-      const currentEmpId = apartmentsList.find(a => a.id === Number(returnModal.dataset.apartmentId))?.current_employee_id;
-      const active = employees.filter(e => e.status !== 'fired' && e.id !== currentEmpId);
-      select.innerHTML = '<option value="">— выберите сотрудника —</option>' +
-        active.map(e => `<option value="${e.id}">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' '))}${e.position ? ' — ' + escapeHtml(e.position) : ''}</option>`).join('');
-    } catch (err) {
-      select.innerHTML = '<option value="">Не удалось загрузить сотрудников</option>';
-    }
-  });
-
-  document.getElementById('confirmApartmentTransferBtn').addEventListener('click', async () => {
-    const apartmentId = Number(returnModal.dataset.apartmentId);
-    const empId = document.getElementById('apartmentTransferEmployeeSelect').value;
-    if (!empId) return showToast('Выберите сотрудника', 'error');
-    try {
-      const res = await fetch('/api/apartments/transfer', {
+      const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apartment_id: apartmentId, employee_id: Number(empId) })
+        body: JSON.stringify({ apartment_rent_soon_days: days })
       });
-      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        showToast('Квартира передана', 'success');
-        closeReturnModal();
+        showToast('Настройки сохранены', 'success');
+        closeSettingsModal();
         await loadApartments();
       } else {
-        showToast(data.message || 'Не удалось передать', 'error');
+        showToast('Не удалось сохранить настройки', 'error');
       }
     } catch (err) {
       showToast('Ошибка сети', 'error');

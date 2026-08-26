@@ -430,6 +430,22 @@ const MIGRATIONS = [
         () => {}
       );
     }
+  },
+  {
+    version: 24,
+    description: 'Apartments: разбить адрес на дом/этаж/квартиру',
+    up: () => {
+      db.run("ALTER TABLE apartments ADD COLUMN house TEXT", () => {});
+      db.run("ALTER TABLE apartments ADD COLUMN floor INTEGER", () => {});
+      db.run("ALTER TABLE apartments ADD COLUMN unit_number TEXT", () => {});
+    }
+  },
+  {
+    version: 25,
+    description: 'Employees: отметка "живёт в своей квартире" (own_housing)',
+    up: () => {
+      db.run("ALTER TABLE employees ADD COLUMN own_housing INTEGER NOT NULL DEFAULT 0", () => {});
+    }
   }
 ];
 
@@ -630,6 +646,7 @@ db.serialize(() => {
       status TEXT NOT NULL DEFAULT 'active',
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       notes TEXT,
+      own_housing INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -802,6 +819,9 @@ db.serialize(() => {
       name TEXT NOT NULL,
       category TEXT,
       address TEXT,
+      house TEXT,
+      floor INTEGER,
+      unit_number TEXT,
       rooms INTEGER,
       area REAL,
       status TEXT NOT NULL DEFAULT 'available',

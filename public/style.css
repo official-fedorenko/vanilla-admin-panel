@@ -198,13 +198,39 @@ aside.sidebar {
 .nav-item a {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 12px 16px;
   color: hsl(var(--text-secondary));
   text-decoration: none;
   border-radius: var(--border-radius-sm);
   font-weight: 500;
   transition: var(--transition-smooth);
+  white-space: nowrap;
+}
+
+.nav-item a > i {
+  flex-shrink: 0;
+}
+
+.nav-item a > span:not(.nav-badge) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--accent-red, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
 }
 
 .nav-item a:hover, .nav-item.active a {
