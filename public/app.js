@@ -312,6 +312,7 @@ function initApp() {
   initVehicleOrdersBadge();
   initVehiclesExpiryBadge();
   initApartmentsExpiryBadge();
+  initConstructionSitesExpiryBadge();
 
   // Счётчик непрочитанных сообщений поддержки (бейдж в меню) + лёгкий опрос,
   // чтобы цифра появлялась даже когда админ не в разделе «Обратная связь».
@@ -2553,7 +2554,8 @@ async function loadSettings() {
     'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
     'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes'],
     'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'],
-    'Напоминания о недвижимости': ['apartment_rent_soon_days']
+    'Напоминания о недвижимости': ['apartment_rent_soon_days'],
+    'Напоминания о строительных объектах': ['construction_site_deadline_soon_days']
   };
   const GROUPS = { ...SITE_GROUPS, ...CARD_GROUPS };
 
@@ -2600,7 +2602,8 @@ async function loadSettings() {
     public_vehicle_card_show_notes: 'Показывать заметки',
     vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
     vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)',
-    apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)'
+    apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)',
+    construction_site_deadline_soon_days: 'Напоминание о дедлайне объекта за сколько дней (0 — выключено)'
   };
 
   // Короткие пояснения под некоторыми настройками — там, где одного названия
@@ -2618,7 +2621,7 @@ async function loadSettings() {
     if (['maintenance_mode', 'allow_registration', 'two_factor_enabled'].includes(key) || PUBLIC_CARD_KEYS.includes(key)) return 'boolean';
     if (['site_description', 'about_subtitle', 'about_card1_text', 'about_card2_text', 'contact_subtitle'].includes(key)) return 'textarea';
     if (key === 'contact_email') return 'email';
-    if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days', 'apartment_rent_soon_days'].includes(key)) return 'number';
+    if (['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days', 'apartment_rent_soon_days', 'construction_site_deadline_soon_days'].includes(key)) return 'number';
     return 'text';
   }
 
@@ -6748,16 +6751,71 @@ function parseConstructionSiteCrew(s) {
 
 async function loadConstructionSites() {
   try {
+    await loadConstructionSiteExpirySettings();
     const res = await fetch('/api/crud/construction-sites');
     if (res.ok) {
       constructionSitesList = await res.json();
       renderConstructionSites();
+      updateConstructionSitesExpiryBadge();
     } else if (res.status === 401) {
       showToast('Сессия истекла, войдите заново', 'error');
     }
   } catch (err) {
     showToast('Ошибка загрузки строительных объектов', 'error');
   }
+}
+
+// Порог напоминания о дедлайне (в днях), настраивается в «Настройки» →
+// «Напоминания о строительных объектах». 0 — выключено.
+let constructionSiteDeadlineSoonDays = 30;
+
+async function loadConstructionSiteExpirySettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const rows = await res.json();
+    const map = {};
+    (rows || []).forEach(r => { map[r.key] = r.value; });
+    if (map.construction_site_deadline_soon_days !== undefined) {
+      constructionSiteDeadlineSoonDays = parseInt(map.construction_site_deadline_soon_days, 10) || 0;
+    }
+  } catch (e) { /* используем значение по умолчанию */ }
+}
+
+// 'overdue'|'soon'|null — только для объектов с датой окончания, ещё не завершённых.
+function constructionSiteDeadlineStatus(s) {
+  if (s.status === 'completed' || !s.end_date || !constructionSiteDeadlineSoonDays) return null;
+  const d = new Date(s.end_date);
+  if (isNaN(d)) return null;
+  const days = Math.ceil((d - new Date(new Date().toDateString())) / 86400000);
+  if (days < 0) return 'overdue';
+  if (days <= constructionSiteDeadlineSoonDays) return 'soon';
+  return null;
+}
+
+function constructionSiteDeadlineBadge(s) {
+  const level = constructionSiteDeadlineStatus(s);
+  if (!level) return '';
+  const title = level === 'overdue' ? 'Дедлайн просрочен' : 'Дедлайн скоро наступает';
+  return `<span class="badge badge-danger" title="${title}">Дедлайн</span>`;
+}
+
+function updateConstructionSitesExpiryBadge() {
+  const badge = document.getElementById('constructionSitesExpiryBadge');
+  if (!badge) return;
+  const count = constructionSitesList.filter(s => constructionSiteDeadlineStatus(s)).length;
+  if (count > 0) { badge.textContent = count; badge.style.display = 'inline-block'; }
+  else badge.style.display = 'none';
+}
+
+async function initConstructionSitesExpiryBadge() {
+  try {
+    await loadConstructionSiteExpirySettings();
+    const res = await fetch('/api/crud/construction-sites');
+    if (!res.ok) return;
+    constructionSitesList = await res.json();
+    updateConstructionSitesExpiryBadge();
+  } catch (e) { /* тихо */ }
 }
 
 async function loadConstructionSiteCategories() {
@@ -6824,7 +6882,7 @@ function renderConstructionSites(filterQuery = '') {
       <td class="mobile-hidden">${escapeHtml(s.category || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(s.customer || '—')}</td>
       <td class="mobile-hidden">${escapeHtml(s.foreman_name || '—')}</td>
-      <td>${statusBadge}</td>
+      <td style="white-space:nowrap;">${statusBadge}${constructionSiteDeadlineBadge(s) ? ' ' + constructionSiteDeadlineBadge(s) : ''}</td>
       <td class="mobile-hidden">${crewHtml}</td>
       <td class="no-label" style="text-align: right;">
         <div class="action-btns" style="justify-content: flex-end;">
@@ -7160,6 +7218,40 @@ function setupConstructionSites() {
   document.getElementById('closeReturnConstructionSiteModalBtn').addEventListener('click', closeReturnModal);
   document.getElementById('cancelReturnConstructionSiteModalBtn').addEventListener('click', closeReturnModal);
   returnModal.addEventListener('click', (e) => { if (e.target === returnModal) closeReturnModal(); });
+
+  // --- Construction site settings modal (порог напоминания о дедлайне) ---
+  const settingsModal = document.getElementById('constructionSiteSettingsModalOverlay');
+  const openSettingsBtn = document.getElementById('openConstructionSiteSettingsBtn');
+  const closeSettingsModal = () => settingsModal.classList.remove('active');
+  if (openSettingsBtn) {
+    openSettingsBtn.addEventListener('click', async () => {
+      await loadConstructionSiteExpirySettings();
+      document.getElementById('constructionSiteDeadlineSoonDaysInput').value = constructionSiteDeadlineSoonDays;
+      settingsModal.classList.add('active');
+    });
+  }
+  document.getElementById('closeConstructionSiteSettingsBtn').addEventListener('click', closeSettingsModal);
+  document.getElementById('cancelConstructionSiteSettingsBtn').addEventListener('click', closeSettingsModal);
+  settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
+  document.getElementById('saveConstructionSiteSettingsBtn').addEventListener('click', async () => {
+    const days = document.getElementById('constructionSiteDeadlineSoonDaysInput').value;
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ construction_site_deadline_soon_days: days })
+      });
+      if (res.ok) {
+        showToast('Настройки сохранены', 'success');
+        closeSettingsModal();
+        await loadConstructionSites();
+      } else {
+        showToast('Не удалось сохранить настройки', 'error');
+      }
+    } catch (err) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
 }
 
 (function wireClickOutsideForOverlays() {
