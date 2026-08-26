@@ -453,6 +453,13 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE construction_sites ADD COLUMN foreman_id INTEGER REFERENCES employees(id) ON DELETE SET NULL", () => {});
     }
+  },
+  {
+    version: 27,
+    description: 'Work logs: добавить поле "Объект" (site_id)',
+    up: () => {
+      db.run("ALTER TABLE work_logs ADD COLUMN site_id INTEGER REFERENCES construction_sites(id) ON DELETE SET NULL", () => {});
+    }
   }
 ];
 
@@ -923,6 +930,7 @@ db.serialize(() => {
       work_date DATE NOT NULL,
       hours REAL NOT NULL,
       note TEXT,
+      site_id INTEGER REFERENCES construction_sites(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

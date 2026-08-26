@@ -782,13 +782,49 @@
               </div>
               <button type="submit" class="btn-save" style="grid-column:1/-1; margin-top:2px;">Добавить запись</button>
             </form>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px; gap:10px; flex-wrap:wrap;">
               <span style="font-size:13px; color:var(--text-secondary);">Мои записи</span>
-              <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong></span>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong></span>
+                <button type="button" id="wlOpenCalendarBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">Этот месяц</button>
+              </div>
             </div>
             <div id="wlList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
               <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
             </div>
+          </div>
+        </div>
+
+        <!-- Модалка «Этот месяц» — календарь отработанного времени -->
+        <div id="wlCalendarModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(560px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color); gap:10px;">
+              <button type="button" id="wlCalPrev" style="background:none; border:1px solid var(--border-color); color:var(--text-primary); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:16px; flex-shrink:0;">‹</button>
+              <div style="text-align:center; min-width:0;">
+                <div id="wlCalTitle" style="font-weight:600; color:var(--text-primary); font-size:16px; text-transform:capitalize;"></div>
+                <div style="font-size:12px; color:var(--text-muted);">Итого за месяц: <strong id="wlCalMonthTotal" style="color:var(--accent-cyan);">0 ч</strong></div>
+              </div>
+              <button type="button" id="wlCalNext" style="background:none; border:1px solid var(--border-color); color:var(--text-primary); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:16px; flex-shrink:0;">›</button>
+              <button type="button" id="wlCalendarModalClose" style="background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer; line-height:1; flex-shrink:0;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <div id="wlCalWeekdays" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; font-size:11px; color:var(--text-muted); text-align:center;"></div>
+              <div id="wlCalGrid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка деталей дня: список записей за день, редактирование заметки/объекта -->
+        <div id="wlDayModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(3px); z-index:1100; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div>
+                <div id="wlDayModalTitle" style="font-weight:600; color:var(--text-primary); font-size:16px;"></div>
+                <div style="font-size:12px; color:var(--text-muted);">Всего: <strong id="wlDayModalTotal" style="color:var(--accent-cyan);">0 ч</strong></div>
+              </div>
+              <button type="button" id="wlDayModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div id="wlDayModalBody" style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0; display:flex; flex-direction:column; gap:12px;"></div>
           </div>
         </div>
 
@@ -2692,6 +2728,11 @@
       return (Number.isInteger(n) ? n : n.toFixed(2)) + ' ч';
     }
 
+    let wlEntriesCache = [];
+    let wlSitesCache = [];
+    let wlCalYear = new Date().getFullYear();
+    let wlCalMonth = new Date().getMonth(); // 0-based
+
     function setupWorkLog() {
       const form = document.getElementById('workLogForm');
       if (!form) return;
@@ -2721,7 +2762,36 @@
         } catch (_) { showToast('Ошибка сети', 'error'); }
       };
 
+      // Модалки должны жить в <body> — иначе фиксированный navbar (z-index:100)
+      // перекрывает шапку модалки, т.к. .page создаёт свой stacking-context.
+      ['wlCalendarModalOverlay', 'wlDayModalOverlay'].forEach(mid => {
+        const m = document.getElementById(mid);
+        if (m && m.parentElement !== document.body) document.body.appendChild(m);
+      });
+
+      document.getElementById('wlOpenCalendarBtn').onclick = openWlCalendar;
+      document.getElementById('wlCalendarModalClose').onclick = closeWlCalendar;
+      document.getElementById('wlCalendarModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'wlCalendarModalOverlay') closeWlCalendar();
+      });
+      document.getElementById('wlCalPrev').onclick = () => { shiftWlCalMonth(-1); };
+      document.getElementById('wlCalNext').onclick = () => { shiftWlCalMonth(1); };
+
+      document.getElementById('wlDayModalClose').onclick = closeWlDayModal;
+      document.getElementById('wlDayModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'wlDayModalOverlay') closeWlDayModal();
+      });
+
       loadMyWorkLogs();
+      loadWlSites();
+    }
+
+    async function loadWlSites() {
+      try {
+        const res = await fetch('/api/crud/construction-sites?limit=500');
+        const list = await res.json();
+        wlSitesCache = Array.isArray(list) ? list.map(s => ({ id: s.id, name: s.name })) : [];
+      } catch (_) { wlSitesCache = []; }
     }
 
     async function loadMyWorkLogs() {
@@ -2730,22 +2800,24 @@
       try {
         const res = await fetch('/api/worklogs/mine');
         const d = await res.json();
-        const list = (d && d.entries) || [];
+        wlEntriesCache = (d && d.entries) || [];
         document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
-        if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
+        if (!wlEntriesCache.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
         box.innerHTML = '';
-        list.forEach(r => {
+        wlEntriesCache.forEach(r => {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);';
           const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
           row.innerHTML = `
             <div style="min-width:0;">
-              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span></div>
+              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span>${r.site_name ? ` · <span style="color:var(--text-secondary); font-weight:400;">${escapeHtmlC(r.site_name)}</span>` : ''}</div>
               ${r.note ? `<div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtmlC(r.note)}</div>` : ''}
             </div>
             <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>`;
           box.appendChild(row);
         });
+        // Если открыт календарь/детали дня — обновим их тоже.
+        if (document.getElementById('wlCalendarModalOverlay').style.display === 'flex') renderWlCalendar();
       } catch (_) {
         box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
       }
@@ -2757,6 +2829,180 @@
         const res = await fetch('/api/worklogs?id=' + id, { method: 'DELETE' });
         if (res.ok) { showToast('Запись удалена', 'success'); loadMyWorkLogs(); }
         else showToast('Не удалось удалить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
+    // === Модалка «Этот месяц» — календарь ===
+    function openWlCalendar() {
+      const now = new Date();
+      wlCalYear = now.getFullYear();
+      wlCalMonth = now.getMonth();
+      renderWlCalendar();
+      document.getElementById('wlCalendarModalOverlay').style.display = 'flex';
+    }
+    function closeWlCalendar() {
+      document.getElementById('wlCalendarModalOverlay').style.display = 'none';
+    }
+    function shiftWlCalMonth(delta) {
+      wlCalMonth += delta;
+      if (wlCalMonth < 0) { wlCalMonth = 11; wlCalYear--; }
+      if (wlCalMonth > 11) { wlCalMonth = 0; wlCalYear++; }
+      renderWlCalendar();
+    }
+
+    function wlDayKey(y, m, d) {
+      return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    function renderWlCalendar() {
+      const title = document.getElementById('wlCalTitle');
+      const monthName = new Date(wlCalYear, wlCalMonth, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      title.textContent = monthName;
+
+      // Часы по дням месяца: { 'YYYY-MM-DD': { hours, entries: [...] } }
+      const byDay = {};
+      wlEntriesCache.forEach(r => {
+        if (!byDay[r.work_date]) byDay[r.work_date] = { hours: 0, entries: [] };
+        byDay[r.work_date].hours += (r.hours || 0);
+        byDay[r.work_date].entries.push(r);
+      });
+
+      const monthPrefix = `${wlCalYear}-${String(wlCalMonth + 1).padStart(2, '0')}-`;
+      const monthTotal = Object.keys(byDay)
+        .filter(k => k.startsWith(monthPrefix))
+        .reduce((s, k) => s + byDay[k].hours, 0);
+      document.getElementById('wlCalMonthTotal').textContent = fmtHours(monthTotal);
+
+      const weekdaysBox = document.getElementById('wlCalWeekdays');
+      weekdaysBox.innerHTML = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(w => `<div>${w}</div>`).join('');
+
+      const grid = document.getElementById('wlCalGrid');
+      grid.innerHTML = '';
+
+      const firstOfMonth = new Date(wlCalYear, wlCalMonth, 1);
+      // Понедельник = 0 ... воскресенье = 6
+      const leadingBlanks = (firstOfMonth.getDay() + 6) % 7;
+      const daysInMonth = new Date(wlCalYear, wlCalMonth + 1, 0).getDate();
+      const todayKey = new Date().toISOString().slice(0, 10);
+
+      for (let i = 0; i < leadingBlanks; i++) {
+        grid.appendChild(document.createElement('div'));
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = wlDayKey(wlCalYear, wlCalMonth, d);
+        const info = byDay[key];
+        const hours = info ? info.hours : 0;
+        const isToday = key === todayKey;
+        // Интенсивность цвета — чем больше часов, тем ярче заливка.
+        const intensity = hours <= 0 ? 0 : Math.min(1, hours / 8);
+        const bg = hours > 0 ? `rgba(0, 200, 220, ${0.10 + intensity * 0.35})` : 'rgba(255,255,255,0.02)';
+        const cell = document.createElement('div');
+        cell.style.cssText = `aspect-ratio:1; border-radius:8px; border:1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-color)'}; background:${bg}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; padding:2px;`;
+        cell.innerHTML = `
+          <div style="font-size:12px; color:var(--text-secondary);">${d}</div>
+          ${hours > 0 ? `<div style="font-size:11px; font-weight:700; color:var(--accent-cyan);">${fmtHours(hours)}</div>` : ''}`;
+        cell.onclick = () => openWlDayModal(key);
+        grid.appendChild(cell);
+      }
+    }
+
+    // === Модалка деталей дня ===
+    function siteSelectOptions(selectedId) {
+      let opts = '<option value="">— не указан —</option>';
+      wlSitesCache.forEach(s => {
+        opts += `<option value="${s.id}"${String(s.id) === String(selectedId) ? ' selected' : ''}>${escapeHtmlC(s.name)}</option>`;
+      });
+      return opts;
+    }
+
+    function openWlDayModal(dateKey) {
+      const entries = wlEntriesCache.filter(r => r.work_date === dateKey);
+      const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+      document.getElementById('wlDayModalTitle').textContent = dateStr;
+      const total = entries.reduce((s, r) => s + (r.hours || 0), 0);
+      document.getElementById('wlDayModalTotal').textContent = fmtHours(total);
+
+      const body = document.getElementById('wlDayModalBody');
+      if (!entries.length) {
+        body.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">В этот день записей нет.</div>';
+      } else {
+        body.innerHTML = entries.map(r => `
+          <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span style="font-size:14px; font-weight:700; color:var(--accent-cyan);">${fmtHours(r.hours)}</span>
+              <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id}); closeWlDayModal();" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px;">&times;</button>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:11px;">Объект</label>
+              <select id="wlEditSite_${r.id}" style="width:100%;">${siteSelectOptions(r.site_id)}</select>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label style="font-size:11px;">Заметка</label>
+              <input type="text" id="wlEditNote_${r.id}" maxlength="300" value="${escapeHtmlC(r.note || '')}" placeholder="Что делали...">
+            </div>
+            <button type="button" class="btn-save" style="padding:6px; font-size:12px;" onclick="saveWlDayEntry(${r.id})">Сохранить</button>
+          </div>`).join('');
+      }
+
+      // Быстрое добавление записи за этот день прямо из модалки.
+      body.innerHTML += `
+        <div style="border:1px dashed var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:12px; color:var(--text-secondary); font-weight:600;">Добавить запись за этот день</div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:11px;">Часов (0–24)</label>
+            <input type="number" id="wlAddHours" min="0.25" max="24" step="0.25" placeholder="8">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:11px;">Объект</label>
+            <select id="wlAddSite">${siteSelectOptions('')}</select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:11px;">Заметка</label>
+            <input type="text" id="wlAddNote" maxlength="300" placeholder="Что делали...">
+          </div>
+          <button type="button" class="btn-save" style="padding:6px; font-size:12px;" onclick="addWlDayEntry('${dateKey}')">Добавить</button>
+        </div>`;
+
+      document.getElementById('wlDayModalOverlay').style.display = 'flex';
+    }
+    function closeWlDayModal() {
+      document.getElementById('wlDayModalOverlay').style.display = 'none';
+    }
+
+    window.saveWlDayEntry = async (id) => {
+      const note = document.getElementById(`wlEditNote_${id}`).value;
+      const site_id = document.getElementById(`wlEditSite_${id}`).value;
+      try {
+        const res = await fetch('/api/worklogs?id=' + id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note, site_id: site_id || null })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Сохранено', 'success');
+          await loadMyWorkLogs();
+          const r = wlEntriesCache.find(x => x.id === id);
+          if (r) openWlDayModal(r.work_date);
+        } else showToast(d.message || 'Не удалось сохранить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.addWlDayEntry = async (dateKey) => {
+      const hours = document.getElementById('wlAddHours').value;
+      const site_id = document.getElementById('wlAddSite').value;
+      const note = document.getElementById('wlAddNote').value;
+      try {
+        const res = await fetch('/api/worklogs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ work_date: dateKey, hours, note, site_id: site_id || null })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Запись добавлена', 'success');
+          await loadMyWorkLogs();
+          openWlDayModal(dateKey);
+        } else showToast(d.message || 'Не удалось сохранить', 'error');
       } catch (_) { showToast('Ошибка сети', 'error'); }
     };
 
