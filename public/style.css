@@ -120,11 +120,18 @@ body {
 /* Admin Dashboard Layout */
 .app-container {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 280px 1fr;
+  /* Плавно сворачиваем колонку меню в 0, а не просто прячем сайдбар —
+     тогда контент сразу занимает освободившееся место. */
+  transition: grid-template-columns 0.25s ease;
   /* Фиксируем высоту окна: сайдбар и контент прокручиваются независимо
      (на мобильных сбрасывается — см. медиазапросы ниже). */
   height: 100vh;
   overflow: hidden;
+}
+
+.app-container.sidebar-collapsed {
+  grid-template-columns: 0px 1fr;
 }
 
 /* Sidebar */
@@ -138,6 +145,52 @@ aside.sidebar {
   top: 0;
   padding: 24px;
   overflow: hidden; /* прокручивается только список меню (.nav-list) */
+  transition: opacity 0.2s ease;
+}
+
+.app-container.sidebar-collapsed aside.sidebar {
+  padding: 24px 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Кнопка сворачивания/разворачивания меню — «прилипает» к правому краю
+   сайдбара и едет вместе с ним при сворачивании (transition на left). */
+.sidebar-collapse-toggle {
+  position: fixed;
+  top: 24px;
+  left: 280px;
+  z-index: 60;
+  width: 26px;
+  height: 40px;
+  border: 1px solid hsl(var(--border-color));
+  border-left: none;
+  border-radius: 0 var(--border-radius-sm) var(--border-radius-sm) 0;
+  background-color: hsl(var(--bg-sidebar));
+  color: hsl(var(--text-secondary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: left 0.25s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: hsl(var(--text-primary));
+}
+
+.sidebar-collapse-toggle i {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.25s ease;
+}
+
+.app-container.sidebar-collapsed .sidebar-collapse-toggle {
+  left: 0;
+}
+
+.app-container.sidebar-collapsed .sidebar-collapse-toggle i {
+  transform: rotate(180deg);
 }
 
 .brand {
@@ -204,6 +257,7 @@ aside.sidebar {
   text-decoration: none;
   border-radius: var(--border-radius-sm);
   font-weight: 500;
+  font-size: 14px;
   transition: var(--transition-smooth);
   white-space: nowrap;
 }
@@ -1403,6 +1457,15 @@ table.data-table tbody tr:hover {
 
   /* Бургер-меню: пункты — выпадающий вертикальный список под верхней панелью. */
   .nav-burger { display: inline-flex; }
+
+  /* На мобильных за скрытие/показ меню отвечает бургер, а не эта кнопка;
+     колонку меню тоже не сворачиваем — сброшена в 1fr выше. */
+  .sidebar-collapse-toggle { display: none; }
+  .app-container.sidebar-collapsed aside.sidebar {
+    padding: 16px 24px;
+    opacity: 1;
+    pointer-events: auto;
+  }
 
   .nav-list {
     position: absolute;
