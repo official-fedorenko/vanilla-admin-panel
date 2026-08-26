@@ -160,6 +160,21 @@ function setupNavigation() {
     });
   }
 
+  // Сворачивание/разворачивание меню (десктоп) — кнопка задвигает сайдбар
+  // влево, освобождая место под контент. Состояние сохраняется между визитами.
+  const appContainer = document.querySelector('.app-container');
+  const collapseToggle = document.getElementById('sidebarCollapseToggle');
+  if (appContainer && collapseToggle) {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('sidebarCollapsed') === '1'; } catch (e) { /* тихо */ }
+    appContainer.classList.toggle('sidebar-collapsed', collapsed);
+
+    collapseToggle.addEventListener('click', () => {
+      collapsed = appContainer.classList.toggle('sidebar-collapsed');
+      try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch (e) { /* тихо */ }
+    });
+  }
+
   const handleHashChange = () => {
     const hash = window.location.hash.replace('#', '') || 'employees';
     let targetSection = document.getElementById(`section-${hash}`);
