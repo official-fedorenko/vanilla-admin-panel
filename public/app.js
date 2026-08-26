@@ -2557,7 +2557,22 @@ async function loadSettings() {
   // Понятные подписи (не зависят от description в БД, который может теряться
   // при сохранении из-за INSERT OR REPLACE).
   const LABELS = {
+    site_name: 'Название сайта',
+    maintenance_mode: 'Режим обслуживания (сайт закрыт для посетителей)',
+    allow_registration: 'Разрешить самостоятельную регистрацию новых пользователей',
     two_factor_enabled: 'Разрешить двухфакторную аутентификацию (2FA)',
+    hero_title: 'Заголовок на главной странице',
+    site_description: 'Краткое описание сайта (под заголовком на главной)',
+    about_title: 'Заголовок блока «О блоге»',
+    about_subtitle: 'Подзаголовок блока «О блоге»',
+    about_card1_title: 'Заголовок первой карточки',
+    about_card1_text: 'Текст первой карточки',
+    about_card2_title: 'Заголовок второй карточки',
+    about_card2_text: 'Текст второй карточки',
+    contact_title: 'Заголовок блока «Контакты»',
+    contact_subtitle: 'Подзаголовок блока «Контакты»',
+    contact_email: 'Контактный email',
+    contact_address: 'Контактный адрес',
     public_card_enabled: 'Публичная карточка доступна всем (по QR)',
     public_card_show_photo: 'Показывать фото',
     public_card_show_brand: 'Показывать бренд',
@@ -2583,6 +2598,14 @@ async function loadSettings() {
     vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
     vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)',
     apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)'
+  };
+
+  // Короткие пояснения под некоторыми настройками — там, где одного названия
+  // недостаточно, чтобы понять последствия включения.
+  const HINTS = {
+    maintenance_mode: 'Пока включён, публичный сайт недоступен посетителям — админ-панель продолжает работать как обычно.',
+    allow_registration: 'Если выключить, новые аккаунты сможет создавать только администратор.',
+    two_factor_enabled: 'Если выключить, никто не сможет включить 2FA впервые; у кого уже включена — продолжит работать.'
   };
 
   const PUBLIC_CARD_KEYS = [...GROUPS['Публичная карточка инструмента (по QR)'], ...GROUPS['Публичная карточка авто (по QR)']];
@@ -2642,11 +2665,13 @@ async function loadSettings() {
           if (isCardGroup) {
             div.style.cssText = 'border: 1px solid hsl(var(--border-color)); border-radius: var(--border-radius-sm); padding: 10px 14px; margin-bottom: 8px; background: hsl(var(--bg-card));';
           }
+          const hint = HINTS[key] ? `<small style="display:block; margin:4px 0 0 28px; color: hsl(var(--text-muted)); font-size: 12px;">${escapeHtml(HINTS[key])}</small>` : '';
           div.innerHTML = `
             <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
               <input type="checkbox" name="${escapeHtml(key)}" ${checked} style="width:18px; height:18px; accent-color: var(--accent-purple);">
               <span>${labelText}</span>
             </label>
+            ${hint}
           `;
         } else if (fieldType === 'textarea') {
           div.innerHTML = `
