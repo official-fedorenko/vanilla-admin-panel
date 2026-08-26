@@ -346,6 +346,7 @@
                   <th style="width:150px;">Период</th>
                   <th style="width:130px;">Статус</th>
                   <th>Комментарий</th>
+                  <th style="width:110px; text-align:right;">Действия</th>
                 </tr>
               </thead>
               <tbody id="vacationsTableBody">
@@ -1026,6 +1027,43 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" onclick="closeVacationForm()">Отмена</button>
           <button type="submit" class="btn">Оформить отпуск</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT VACATION/SICK LEAVE MODAL -->
+  <div class="modal-overlay" id="editVacationModalOverlay">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h3 id="editVacationModalTitle">Редактировать отпуск</h3>
+        <button class="modal-close" onclick="closeEditVacationForm()">&times;</button>
+      </div>
+      <form id="editVacationForm" onsubmit="return submitEditVacation(event)">
+        <div class="modal-body">
+          <input type="hidden" id="editVacationId">
+          <div class="form-group">
+            <label>Сотрудник</label>
+            <div id="editVacationEmployeeName" style="padding:10px 14px; border:1px solid hsl(var(--border-color)); border-radius:var(--border-radius-md); background:hsl(var(--bg-input, var(--bg-card))); color:hsl(var(--text-secondary));">—</div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="form-group">
+              <label for="editVacationStart">С</label>
+              <input type="date" id="editVacationStart" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="editVacationEnd">По</label>
+              <input type="date" id="editVacationEnd" class="form-control" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="editVacationNotes">Комментарий (необязательно)</label>
+            <textarea id="editVacationNotes" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeEditVacationForm()">Отмена</button>
+          <button type="submit" class="btn">Сохранить</button>
         </div>
       </form>
     </div>
