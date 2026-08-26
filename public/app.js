@@ -836,15 +836,15 @@ async function loadVacations() {
   const tbody = document.getElementById('vacationsTableBody');
   const cal = document.getElementById('vacationsCalendar');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:hsl(var(--text-muted));padding:20px;">Загрузка...</td></tr>';
   try {
     const res = await fetch('/api/requests/vacations');
-    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Нет доступа</td></tr>'; return; }
     const data = await res.json();
     vacationsCache = data.vacations || [];
     renderVacations();
   } catch (e) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:hsl(var(--accent-red));padding:20px;">Ошибка загрузки</td></tr>';
     if (cal) cal.innerHTML = '';
   }
 }
@@ -895,6 +895,29 @@ window.submitVacation = async function (e) {
 };
 
 // --- Редактирование существующего отпуска/больничного (админ) ---
+// «Подробнее» по отпуску/больничному — дни, период, статус, комментарий,
+// вынесенные из таблицы (там остались только Сотрудник/Тип/С/По), плюс
+// кнопка «Редактировать» — тот же паттерн, что и в таблице «Заявления».
+window.openVacationMoreInfo = function (id) {
+  const v = vacationsCache.find(x => x.id === id);
+  if (!v) return;
+  const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
+  const isSick = v.type === 'sick_leave';
+  const typeBadge = `<span class="badge ${isSick ? 'badge-danger' : 'badge-purple'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
+  const statusBadge = `<span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span>`;
+  const days = vacDaysCount(v.start_date, v.end_date);
+  const editBtnHtml = `<button class="req-action req-action--green" onclick="closeRowDetail(); openEditVacationForm(${v.id})">Редактировать</button>`;
+  showRowDetail(v.name, [
+    ['Тип', typeBadge, true],
+    ['С', vacFmtDate(v.start_date)],
+    ['По', vacFmtDate(v.end_date)],
+    ['Дней', days !== '' ? String(days) : '—'],
+    ['Период', `<span class="badge ${ph.badge}">${ph.label}</span>`, true],
+    ['Статус', statusBadge, true],
+    ['Комментарий', v.notes]
+  ], editBtnHtml);
+};
+
 window.openEditVacationForm = function (id) {
   const v = vacationsCache.find(x => x.id === id);
   if (!v) return;
@@ -974,40 +997,29 @@ function renderVacations() {
   // --- Список ---
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="9" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="empty-state" style="text-align:center;color:hsl(var(--text-muted));padding:30px;">Отпусков и больничных нет</td></tr>';
     return;
   }
   list.forEach(v => {
-    const ph = VAC_PHASE[v.phase] || VAC_PHASE.unknown;
-    const days = vacDaysCount(v.start_date, v.end_date);
     const isSick = v.type === 'sick_leave';
     const typeBadge = `<span class="badge ${isSick ? 'badge-danger' : 'badge-purple'}">${isSick ? 'Больничный' : 'Отпуск'}</span>`;
     const pending = v.status === 'pending'
       ? ' <span class="badge badge-warning" style="font-size:10px;">заявка</span>'
       : '';
-    const statusBadge = `<span class="badge ${v.status === 'approved' ? 'badge-success' : 'badge-warning'}">${v.status === 'approved' ? 'Одобрен' : 'Ожидает'}</span>`;
     const tr = document.createElement('tr');
     if (v.phase === 'current' && v.status === 'approved') tr.style.background = 'hsl(var(--accent-cyan) / 0.06)';
-    const editBtnHtml = `<button class="req-action req-action--green" onclick="closeRowDetail(); openEditVacationForm(${v.id})">Редактировать</button>`;
-    tr.onclick = mobileRowTap(() => showRowDetail(v.name, [
-      ['Тип', typeBadge, true],
-      ['С', vacFmtDate(v.start_date)],
-      ['По', vacFmtDate(v.end_date)],
-      ['Дней', days !== '' ? String(days) : '—'],
-      ['Период', `<span class="badge ${ph.badge}">${ph.label}</span>`, true],
-      ['Статус', statusBadge, true],
-      ['Комментарий', v.notes]
-    ], editBtnHtml));
+    tr.onclick = mobileRowTap(() => openVacationMoreInfo(v.id));
     tr.innerHTML = `
       <td class="mobile-primary"><strong>${escapeHtml(v.name)}</strong>${pending}</td>
       <td class="mobile-hidden">${typeBadge}</td>
       <td class="mobile-hidden">${vacFmtDate(v.start_date)}</td>
       <td class="mobile-hidden">${vacFmtDate(v.end_date)}</td>
-      <td class="mobile-hidden">${days !== '' ? days : '—'}</td>
-      <td class="mobile-hidden"><span class="badge ${ph.badge}">${ph.label}</span></td>
-      <td>${statusBadge}</td>
-      <td class="mobile-hidden" style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(v.notes || '')}</td>
-      <td class="no-label" style="text-align:right;"><button class="req-action req-action--green" onclick="openEditVacationForm(${v.id})">Редактировать</button></td>`;
+      <td class="no-label" style="text-align:right;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+          <button class="req-action req-action--green" onclick="openVacationMoreInfo(${v.id})">Подробнее</button>
+          <button class="req-action req-action--green" onclick="openEditVacationForm(${v.id})">Редактировать</button>
+        </div>
+      </td>`;
     tbody.appendChild(tr);
   });
 }
