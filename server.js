@@ -17,6 +17,7 @@ const handleArticles = require('./src/routes/articles');
 const handleMedia = require('./src/routes/media');
 const handleSettings = require('./src/routes/settings');
 const handleSupport = require('./src/routes/support');
+const handleDirectMessages = require('./src/routes/directMessages');
 const handleUsers = require('./src/routes/users');
 const handleEmployees = require('./src/routes/employees');
 const handleTools = require('./src/routes/tools');
@@ -281,6 +282,11 @@ const server = http.createServer(async (req, res) => {
   // Support
   if (pathname.startsWith('/api/support/')) {
     return handleSupport(req, res, user, parsedUrl, method);
+  }
+
+  // Личные чаты между сотрудниками
+  if (pathname.startsWith('/api/dm/')) {
+    return handleDirectMessages(req, res, user, parsedUrl, method);
   }
 
   // Two-factor authentication (setup/verify/disable/status)
