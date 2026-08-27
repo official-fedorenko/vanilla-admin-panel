@@ -183,6 +183,39 @@ function getMyApartment(req, res, user) {
   });
 }
 
+// Соседи по квартире — сотрудники, сейчас заселённые в ту же квартиру, что
+// и текущий пользователь — для быстрого перехода в чат с ними.
+function getApartmentRoommates(req, res, user, parsedUrl) {
+  const apartmentId = parseInt(parsedUrl.searchParams.get('apartment_id'), 10);
+  if (!(apartmentId > 0)) return sendJson(res, 400, { success: false, message: 'Не указано жильё' });
+
+  // Убеждаемся, что сам пользователь сейчас заселён в эту квартиру.
+  const checkSql = `
+    SELECT 1 FROM apartment_assignments a
+    JOIN employees e ON e.id = a.employee_id
+    WHERE a.apartment_id = ? AND a.returned_at IS NULL AND e.user_id = ?`;
+  db.get(checkSql, [apartmentId, user.id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 403, { success: false, message: 'Вы сейчас не заселены в это жильё' });
+
+    const sql = `
+      SELECT e.user_id, e.first_name, e.last_name, e.position
+      FROM apartment_assignments a
+      JOIN employees e ON e.id = a.employee_id
+      WHERE a.apartment_id = ? AND a.returned_at IS NULL AND e.user_id IS NOT NULL AND e.user_id != ?
+      ORDER BY e.last_name COLLATE NOCASE, e.first_name COLLATE NOCASE`;
+    db.all(sql, [apartmentId, user.id], (e2, rows) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      const roommates = (rows || []).map(r => ({
+        user_id: r.user_id,
+        name: [r.last_name, r.first_name].filter(Boolean).join(' ') || '—',
+        position: r.position || ''
+      }));
+      sendJson(res, 200, { success: true, roommates });
+    });
+  });
+}
+
 // Строительные объекты, на которые сейчас направлен сотрудник, привязанный
 // к текущему аккаунту (можно работать на нескольких объектах одновременно).
 function getMyConstructionSites(req, res, user) {
@@ -559,6 +592,7 @@ module.exports = async function handleCabinet(req, res, user, parsedUrl, method)
   if (pathname === '/api/cabinet/tool-photo' && method === 'POST') return setToolPhoto(req, res, user);
   if (pathname === '/api/cabinet/my-vehicles' && method === 'GET') return getMyVehicles(req, res, user);
   if (pathname === '/api/cabinet/my-apartment' && method === 'GET') return getMyApartment(req, res, user);
+  if (pathname === '/api/cabinet/apartment-roommates' && method === 'GET') return getApartmentRoommates(req, res, user, parsedUrl);
   if (pathname === '/api/cabinet/my-construction-sites' && method === 'GET') return getMyConstructionSites(req, res, user);
   if (pathname === '/api/cabinet/site-colleagues' && method === 'GET') return getSiteColleagues(req, res, user, parsedUrl);
   if (pathname === '/api/cabinet/site-crews' && method === 'GET') return listSiteCrews(req, res, user, parsedUrl);

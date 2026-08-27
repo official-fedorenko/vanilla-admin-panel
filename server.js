@@ -200,7 +200,8 @@ const server = http.createServer(async (req, res) => {
       pathname === '/api/cabinet/my-card' || pathname === '/api/cabinet/employee-photo' ||
       pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
       pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo' ||
-      pathname === '/api/cabinet/my-apartment' || pathname === '/api/cabinet/my-construction-sites' ||
+      pathname === '/api/cabinet/my-apartment' || pathname === '/api/cabinet/apartment-roommates' ||
+      pathname === '/api/cabinet/my-construction-sites' ||
       pathname === '/api/cabinet/site-colleagues' || pathname === '/api/cabinet/site-crews' ||
       pathname === '/api/cabinet/site-crews/members') {
     return handleCabinet(req, res, user, parsedUrl, method);

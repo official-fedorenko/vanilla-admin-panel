@@ -875,7 +875,7 @@
             <span class="collapse-chev">▾</span>
           </div>
           <div class="cbody">
-            <form id="workLogForm" style="display:flex; flex-direction:column; gap:14px;">
+            <form id="workLogForm" style="display:flex; flex-direction:column; gap:14px; padding:0 12px;">
               <div class="form-group" style="margin:0; min-width:0;">
                 <label for="wlDate">Дата</label>
                 <input type="date" id="wlDate" required style="width:100%; max-width:100%; min-width:0; box-sizing:border-box;">
@@ -886,7 +886,7 @@
               </div>
               <button type="submit" class="btn-save" style="margin-top:2px;">Добавить запись</button>
             </form>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">Заметку и объект можно указать, открыв нужный день в «Этот месяц».</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:8px; padding:0 12px;">Заметку и объект можно указать, открыв нужный день в «Этот месяц».</div>
 
             <!-- Своя ставка в час + действия (календарь / прогноз) — единый блок -->
             <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.015);">
@@ -2047,6 +2047,9 @@
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Заселён ${issued}
             </div>` : ''}
+            <div style="margin-top:10px;">
+              <button type="button" class="wl-btn" style="width:100%;" onclick="openApartmentRoommatesModal(${a.id}, '${escapeHtml(a.name).replace(/'/g, "\\'")}')">С кем вы живёте</button>
+            </div>
           `;
           list.appendChild(item);
         });
@@ -2122,6 +2125,27 @@
     // --- «Коллеги по цеху»: список сотрудников на том же объекте, клик — в чат ---
     let siteColleaguesCurrentSiteId = null;
 
+    // Общий рендер списка «люди рядом со мной» (коллеги по объекту / соседи
+    // по квартире) — клик по человеку сразу открывает с ним чат.
+    function renderPeopleList(people, emptyText, personBadge) {
+      if (!people.length) {
+        return `<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:16px 0;">${escapeHtml(emptyText)}</div>`;
+      }
+      return people.map(c => `
+        <div onclick="location.href='/messages.html?with=${c.user_id}'" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-color)'">
+          <div style="width:34px; height:34px; border-radius:50%; background:var(--accent-purple, #7c5cff); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0;">${escapeHtml((c.name || '?').charAt(0).toUpperCase())}</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:6px;">
+              ${escapeHtml(c.name)}
+              ${personBadge && personBadge(c) ? personBadge(c) : ''}
+            </div>
+            ${c.position ? `<div style="font-size:12px; color:var(--text-muted);">${escapeHtml(c.position)}</div>` : ''}
+          </div>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16" style="flex-shrink:0; color:var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        </div>
+      `).join('');
+    }
+
     window.openSiteColleaguesModal = async function (siteId, siteName) {
       siteColleaguesCurrentSiteId = siteId;
       document.getElementById('siteColleaguesModalTitle').textContent = `Коллеги по цеху — ${siteName}`;
@@ -2133,24 +2157,25 @@
         const res = await fetch(`/api/cabinet/site-colleagues?site_id=${siteId}`);
         const data = res.ok ? await res.json() : { colleagues: [], is_foreman: false };
         if (data.is_foreman) document.getElementById('siteColleaguesForemanBtnWrap').style.display = '';
-        const colleagues = data.colleagues || [];
-        if (!colleagues.length) {
-          list.innerHTML = '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:16px 0;">На этом объекте больше никого нет.</div>';
-          return;
-        }
-        list.innerHTML = colleagues.map(c => `
-          <div onclick="location.href='/messages.html?with=${c.user_id}'" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-color)'">
-            <div style="width:34px; height:34px; border-radius:50%; background:var(--accent-purple, #7c5cff); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0;">${escapeHtml((c.name || '?').charAt(0).toUpperCase())}</div>
-            <div style="flex:1; min-width:0;">
-              <div style="font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:6px;">
-                ${escapeHtml(c.name)}
-                ${c.is_foreman ? '<span class="asset-chip asset-chip--amber" style="padding:1px 7px; font-size:10px;">Бригадир</span>' : ''}
-              </div>
-              ${c.position ? `<div style="font-size:12px; color:var(--text-muted);">${escapeHtml(c.position)}</div>` : ''}
-            </div>
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16" style="flex-shrink:0; color:var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-          </div>
-        `).join('');
+        list.innerHTML = renderPeopleList(
+          data.colleagues || [], 'На этом объекте больше никого нет.',
+          c => c.is_foreman ? '<span class="asset-chip asset-chip--amber" style="padding:1px 7px; font-size:10px;">Бригадир</span>' : ''
+        );
+      } catch (e) {
+        list.innerHTML = '<div style="color:var(--accent-red); font-size:13px;">Не удалось загрузить список.</div>';
+      }
+    };
+
+    window.openApartmentRoommatesModal = async function (apartmentId, apartmentName) {
+      document.getElementById('siteColleaguesModalTitle').textContent = `С кем вы живёте — ${apartmentName}`;
+      document.getElementById('siteColleaguesForemanBtnWrap').style.display = 'none';
+      const list = document.getElementById('siteColleaguesList');
+      list.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Загрузка...</div>';
+      document.getElementById('siteColleaguesModalOverlay').style.display = 'flex';
+      try {
+        const res = await fetch(`/api/cabinet/apartment-roommates?apartment_id=${apartmentId}`);
+        const data = res.ok ? await res.json() : { roommates: [] };
+        list.innerHTML = renderPeopleList(data.roommates || [], 'В этом жилье вы живёте один.');
       } catch (e) {
         list.innerHTML = '<div style="color:var(--accent-red); font-size:13px;">Не удалось загрузить список.</div>';
       }
