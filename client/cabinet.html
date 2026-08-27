@@ -443,7 +443,13 @@
       color: var(--text-muted);
       font-family: 'Inter', sans-serif;
     }
-    input[type="email"], input[type="password"] {
+    input[type="email"], input[type="password"],
+    /* Базовый стиль для любого текстового поля/селекта/textarea без явного
+       класса .form-input — раньше такие поля рендерились браузерным дефолтом
+       (белый фон), выбиваясь из тёмной темы. .form-input сохраняет свой вид
+       за счёт более высокой специфичности класса ниже по каскаду. */
+    input:not(.form-input):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]),
+    select:not(.form-input), textarea:not(.form-input) {
       width: 100%;
       background: var(--bg-input);
       border: 1px solid var(--border-color);
@@ -454,9 +460,14 @@
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
       font-family: 'Inter', sans-serif;
+      color-scheme: dark;
+      box-sizing: border-box;
     }
-    input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(138,43,226,0.12); }
-    input::placeholder { color: rgba(160,160,171,0.4); }
+    select:not(.form-input) { cursor: pointer; }
+    select:not(.form-input) option { color: #fff; background: #15151d; }
+    textarea:not(.form-input) { resize: vertical; }
+    input:focus, select:focus, textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(138,43,226,0.12); }
+    input::placeholder, textarea::placeholder { color: rgba(160,160,171,0.4); }
 
     /* Редактируемые поля (модалка заявления и т.п.) — читаемый текст, плотный фон */
     .form-input {
