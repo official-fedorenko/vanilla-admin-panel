@@ -922,7 +922,11 @@
             <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
               <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">По 10 часов в каждый будний день месяца.</div>
               <div id="wlForecastBody"></div>
-              <button type="button" id="wlForecastSaturdaysBtn" style="width:100%; margin-top:14px; padding:9px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">+ Субботы</button>
+              <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-top:14px;">
+                <button type="button" class="wl-btn" data-sat="0" onclick="setWlForecastSaturdays(0)">Без суббот</button>
+                <button type="button" class="wl-btn" data-sat="8" onclick="setWlForecastSaturdays(8)">Субботы 8ч</button>
+                <button type="button" class="wl-btn" data-sat="10" onclick="setWlForecastSaturdays(10)">Субботы 10ч</button>
+              </div>
             </div>
           </div>
         </div>
@@ -3798,10 +3802,6 @@
       document.getElementById('wlForecastModalOverlay').addEventListener('click', (e) => {
         if (e.target.id === 'wlForecastModalOverlay') closeWlForecast();
       });
-      document.getElementById('wlForecastSaturdaysBtn').onclick = () => {
-        wlForecastIncludeSaturdays = !wlForecastIncludeSaturdays;
-        renderWlForecast();
-      };
 
       document.getElementById('wlRateSaveBtn').onclick = saveWlRate;
 
@@ -3932,11 +3932,12 @@
 
     // === Модалка «Прогноз на месяц» ===
     // Гипотетический расчёт: по 10 часов на каждый будний день текущего
-    // (открытого в календаре) месяца, опционально + субботы. В базу данных
-    // ничего не сохраняется — это просто прикидка «сколько бы заработал».
-    let wlForecastIncludeSaturdays = false;
+    // (открытого в календаре) месяца, опционально + субботы — по 8 или по
+    // 10 часов (выбирается). В базу данных ничего не сохраняется — это
+    // просто прикидка «сколько бы заработал».
+    let wlForecastSaturdayHours = 0; // 0 — без суббот, иначе 8 или 10
 
-    function computeWlForecast(year, month, includeSaturdays) {
+    function computeWlForecast(year, month, saturdayHoursPerDay) {
       const daysInMonth = new Date(year, month + 1, 0).getDate();
       let weekdayCount = 0, saturdayCount = 0;
       for (let d = 1; d <= daysInMonth; d++) {
@@ -3946,13 +3947,13 @@
       }
       const HOURS_PER_DAY = 10;
       const weekdayHours = weekdayCount * HOURS_PER_DAY;
-      const saturdayHours = includeSaturdays ? saturdayCount * HOURS_PER_DAY : 0;
+      const saturdayHours = saturdayCount * saturdayHoursPerDay;
       const totalHours = weekdayHours + saturdayHours;
       return { weekdayCount, saturdayCount, weekdayHours, saturdayHours, totalHours };
     }
 
     function openWlForecast() {
-      wlForecastIncludeSaturdays = false;
+      wlForecastSaturdayHours = 0;
       renderWlForecast();
       document.getElementById('wlForecastModalOverlay').style.display = 'flex';
     }
@@ -3960,11 +3961,16 @@
       document.getElementById('wlForecastModalOverlay').style.display = 'none';
     }
 
+    window.setWlForecastSaturdays = (hours) => {
+      wlForecastSaturdayHours = hours;
+      renderWlForecast();
+    };
+
     function renderWlForecast() {
       const monthName = new Date(wlCalYear, wlCalMonth, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
       document.getElementById('wlForecastMonth').textContent = monthName;
 
-      const f = computeWlForecast(wlCalYear, wlCalMonth, wlForecastIncludeSaturdays);
+      const f = computeWlForecast(wlCalYear, wlCalMonth, wlForecastSaturdayHours);
       const earned = wlHourlyRate != null ? f.totalHours * wlHourlyRate : null;
 
       const row = (label, value) => `
@@ -3975,7 +3981,7 @@
 
       document.getElementById('wlForecastBody').innerHTML =
         row('Будних дней', `${f.weekdayCount} × ${10} ч = ${fmtHours(f.weekdayHours)}`) +
-        (wlForecastIncludeSaturdays ? row('Суббот', `${f.saturdayCount} × ${10} ч = ${fmtHours(f.saturdayHours)}`) : '') +
+        (wlForecastSaturdayHours > 0 ? row('Суббот', `${f.saturdayCount} × ${wlForecastSaturdayHours} ч = ${fmtHours(f.saturdayHours)}`) : '') +
         row('Итого часов', fmtHours(f.totalHours)) +
         (earned != null
           ? `<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 4px; font-size:15px;">
@@ -3984,7 +3990,12 @@
              </div>`
           : `<div style="padding:12px 0 4px; font-size:12px; color:var(--text-muted);">Укажите ставку в час выше, чтобы увидеть прогноз заработка.</div>`);
 
-      document.getElementById('wlForecastSaturdaysBtn').textContent = wlForecastIncludeSaturdays ? '− Убрать субботы' : '+ Субботы';
+      document.querySelectorAll('#wlForecastModalOverlay [data-sat]').forEach(btn => {
+        const active = parseInt(btn.dataset.sat, 10) === wlForecastSaturdayHours;
+        btn.style.background = active ? 'hsl(var(--accent-purple, 262 83% 58%) / 0.18)' : '';
+        btn.style.borderColor = active ? 'var(--accent-purple, #7c5cff)' : '';
+        btn.style.color = active ? 'var(--accent-purple, #7c5cff)' : '';
+      });
     }
 
     function wlDayKey(y, m, d) {
