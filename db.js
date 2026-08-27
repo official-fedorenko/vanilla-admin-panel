@@ -481,6 +481,14 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE employees ADD COLUMN photo_url TEXT", () => {});
     }
+  },
+  {
+    version: 31,
+    description: 'Apartments: контакт владельца/риелтора (contact_type, contact_info)',
+    up: () => {
+      db.run("ALTER TABLE apartments ADD COLUMN contact_type TEXT", () => {});
+      db.run("ALTER TABLE apartments ADD COLUMN contact_info TEXT", () => {});
+    }
   }
 ];
 

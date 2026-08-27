@@ -22,6 +22,7 @@ const { db } = require('../../db');
 
 const ALLOWED_STATUSES = ['available', 'occupied', 'repair', 'written_off'];
 const ALLOWED_OWNERSHIP = ['owned', 'rented'];
+const ALLOWED_CONTACT_TYPES = ['owner', 'realtor'];
 
 function parseId(parsedUrl, key = 'id') {
   const id = parseInt(parsedUrl.searchParams.get(key), 10);
@@ -76,7 +77,9 @@ function extractApartmentFields(body) {
       rent_from: rentFrom,
       rent_until: rentUntil,
       photo_url: photoUrl,
-      notes: str(body.notes, 2000)
+      notes: str(body.notes, 2000),
+      contact_type: ALLOWED_CONTACT_TYPES.includes(body.contact_type) ? body.contact_type : null,
+      contact_info: str(body.contact_info, 300)
     }
   };
 }
@@ -123,10 +126,11 @@ async function handleCrud(req, res, user, parsedUrl, method) {
       if (error) return sendJson(res, 400, { success: false, message: error });
 
       db.run(
-        `INSERT INTO apartments (name, category, address, house, floor, unit_number, rooms, area, status, ownership_type, rent_from, rent_until, photo_url, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO apartments (name, category, address, house, floor, unit_number, rooms, area, status, ownership_type, rent_from, rent_until, photo_url, notes, contact_type, contact_info)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [values.name, values.category, values.address, values.house, values.floor, values.unit_number, values.rooms, values.area,
-         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes],
+         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes,
+         values.contact_type, values.contact_info],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания квартиры' });
           logAction(user.username, `Добавлена квартира «${values.name}»`);
@@ -149,9 +153,10 @@ async function handleCrud(req, res, user, parsedUrl, method) {
 
       db.run(
         `UPDATE apartments SET name = ?, category = ?, address = ?, house = ?, floor = ?, unit_number = ?, rooms = ?, area = ?,
-           status = ?, ownership_type = ?, rent_from = ?, rent_until = ?, photo_url = ?, notes = ? WHERE id = ?`,
+           status = ?, ownership_type = ?, rent_from = ?, rent_until = ?, photo_url = ?, notes = ?, contact_type = ?, contact_info = ? WHERE id = ?`,
         [values.name, values.category, values.address, values.house, values.floor, values.unit_number, values.rooms, values.area,
-         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes, id],
+         values.status, values.ownership_type, values.rent_from, values.rent_until, values.photo_url, values.notes,
+         values.contact_type, values.contact_info, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
           if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Квартира не найдена' });

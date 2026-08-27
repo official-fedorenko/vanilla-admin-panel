@@ -2162,9 +2162,24 @@
             </div>
           </div>
           <div class="form-group">
-            <label for="apartmentNotes">Заметки</label>
-            <textarea id="apartmentNotes" class="form-control" rows="2" placeholder="Состояние, особенности..."></textarea>
+            <label for="apartmentNotes">Примечания</label>
+            <textarea id="apartmentNotes" class="form-control" rows="2" placeholder="Домофон, ринг-код, особенности входа..."></textarea>
           </div>
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 14px;">
+            <div class="form-group">
+              <label for="apartmentContactType">Контакт</label>
+              <select id="apartmentContactType" class="form-control">
+                <option value="">— не указан —</option>
+                <option value="owner">Владелец</option>
+                <option value="realtor">Риелтор</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="apartmentContactInfo">Контактные данные</label>
+              <input type="text" id="apartmentContactInfo" class="form-control" placeholder="Имя, телефон...">
+            </div>
+          </div>
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">Контакт виден сотрудникам, только если это разрешено в настройках недвижимости.</small><br>
           <small style="color: hsl(var(--text-muted)); font-size: 12px;">Статус «Заселена» ставится автоматически при заселении сотрудника — вручную обычно не нужно.</small>
         </div>
         <div class="modal-footer">
@@ -2234,6 +2249,13 @@
           <label for="apartmentRentSoonDaysInput">Уведомлять об окончании аренды за ** дней</label>
           <input type="number" id="apartmentRentSoonDaysInput" class="form-control" min="0" placeholder="30">
           <small style="color: hsl(var(--text-muted)); font-size: 12px;">0 — выключить напоминание.</small>
+        </div>
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="apartmentShowContactsInput" style="width:18px; height:18px; accent-color: var(--accent-purple);">
+            <span>Показывать сотрудникам контакты владельца/риелтора</span>
+          </label>
+          <small style="color: hsl(var(--text-muted)); font-size: 12px;">Контакт задаётся в карточке конкретного жилья (поле «Контактные данные»).</small>
         </div>
       </div>
       <div class="modal-footer">
