@@ -878,7 +878,16 @@
             <form id="workLogForm" style="display:flex; flex-direction:column; gap:14px; padding:0 12px;">
               <div class="form-group" style="margin:0; min-width:0;">
                 <label for="wlDate">Дата</label>
-                <input type="date" id="wlDate" required style="width:100%; max-width:100%; min-width:0; box-sizing:border-box;">
+                <!-- На реальных мобильных браузерах нативный <input type=date>
+                     рисует значение по-своему (иногда сырым "YYYY-MM-DD",
+                     крупным шрифтом без единого стиля с остальными полями) —
+                     в devtools-эмуляции этого не видно. Прячем нативный текст
+                     (но не сам контрол — календарь/тап по-прежнему работают)
+                     и поверх рисуем свою подпись с датой в привычном формате. -->
+                <div style="position:relative;">
+                  <input type="date" id="wlDate" required style="width:100%; max-width:100%; min-width:0; box-sizing:border-box; color:transparent; -webkit-text-fill-color:transparent;">
+                  <span id="wlDateDisplay" style="position:absolute; left:16px; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--text-primary); font-size:14px; font-family:'Inter', sans-serif;"></span>
+                </div>
               </div>
               <div class="form-group" style="margin:0; min-width:0;">
                 <label for="wlHours">Часов (0–24)</label>
@@ -3748,12 +3757,28 @@
     let wlCalYear = new Date().getFullYear();
     let wlCalMonth = new Date().getMonth(); // 0-based
 
+    // Обновляет собственную (не нативную) подпись поля даты — см. комментарий
+    // у #wlDate в разметке.
+    function updateWlDateDisplay() {
+      const input = document.getElementById('wlDate');
+      const span = document.getElementById('wlDateDisplay');
+      if (!input || !span) return;
+      span.textContent = input.value
+        ? new Date(input.value + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+    }
+
     function setupWorkLog() {
       const form = document.getElementById('workLogForm');
       if (!form) return;
       // Дата по умолчанию — сегодня.
       const dateInput = document.getElementById('wlDate');
       if (dateInput && !dateInput.value) dateInput.value = vilniusDateKey();
+      if (dateInput) {
+        updateWlDateDisplay();
+        dateInput.addEventListener('input', updateWlDateDisplay);
+        dateInput.addEventListener('change', updateWlDateDisplay);
+      }
 
       // Быстрая форма — только дата и часы; заметка/объект добавляются позже,
       // при открытии конкретного дня в календаре («Этот месяц»).
