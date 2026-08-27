@@ -1,6 +1,7 @@
 const { sendJson, getJsonBody, logAction, parsePagination } = require('../utils');
 const { db } = require('../../db');
 const tools = require('./tools');
+const apartments = require('./apartments');
 
 /**
  * Универсальные заявления пользователей.
@@ -19,7 +20,7 @@ const tools = require('./tools');
 // Реестр типов. fields.type: text | textarea | number | date | category | photo
 const REQUEST_TYPES = {
   tool_add: {
-    label: 'Добавить инструмент',
+    label: 'Я получил новый инструмент',
     icon: 'wrench',
     fields: [
       { name: 'name', label: 'Название', type: 'text', required: true },
@@ -78,6 +79,25 @@ const REQUEST_TYPES = {
       { name: 'last_day', label: 'Последний рабочий день', type: 'date' },
       { name: 'reason', label: 'Причина', type: 'textarea' }
     ]
+  },
+  relocation: {
+    label: 'Заявление на смену места жительства',
+    icon: 'home',
+    fields: [
+      { name: 'apartment_id', label: 'Выберите жильё', type: 'apartment', required: true },
+      { name: 'desired_date', label: 'Желаемая дата переезда', type: 'date' },
+      { name: 'reason', label: 'Причина', type: 'textarea' }
+    ]
+  },
+  tool_service: {
+    label: 'Заявление на замену/обслуживание электроинструмента',
+    icon: 'wrench',
+    fields: [
+      { name: 'tool_id', label: 'Выберите инструмент', type: 'assigned_tool', required: true },
+      { name: 'issue_type', label: 'Что требуется', type: 'select', options: ['Обслуживание', 'Ремонт', 'Замена'], required: true },
+      { name: 'description', label: 'Описание проблемы', type: 'textarea', required: true },
+      { name: 'photo_url', label: 'Фото проблемы', type: 'photo' }
+    ]
   }
 };
 
@@ -104,7 +124,7 @@ function buildPayload(typeDef, body) {
   for (const f of typeDef.fields) {
     let val = body[f.name];
     if (f.type === 'photo') val = cleanPhoto(val);
-    else if (f.type === 'number') { const n = parseInt(val, 10); val = Number.isFinite(n) ? n : ''; }
+    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
     else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
@@ -125,6 +145,8 @@ function buildTitle(type, payload) {
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
+    case 'relocation': return 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
+    case 'tool_service': return (payload.issue_type || 'Обслуживание') + ': ' + (payload.tool_name || ('id ' + payload.tool_id));
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
 }
@@ -140,16 +162,49 @@ async function createRequest(req, res, user) {
     const { payload, error } = buildPayload(typeDef, body.payload || body);
     if (error) return sendJson(res, 400, { success: false, message: error });
 
-    const title = buildTitle(type, payload);
-    db.run(
-      "INSERT INTO requests (type, title, payload, requested_by) VALUES (?, ?, ?, ?)",
-      [type, title, JSON.stringify(payload), user.id],
-      function (err) {
-        if (err) return sendJson(res, 500, { success: false, message: 'Не удалось создать заявление' });
-        logAction(user.username, `Создал заявление «${typeDef.label}»: ${title} (id=${this.lastID})`);
-        sendJson(res, 201, { success: true, id: this.lastID });
-      }
-    );
+    const insertRequest = (finalPayload) => {
+      const title = buildTitle(type, finalPayload);
+      db.run(
+        "INSERT INTO requests (type, title, payload, requested_by) VALUES (?, ?, ?, ?)",
+        [type, title, JSON.stringify(finalPayload), user.id],
+        function (err) {
+          if (err) return sendJson(res, 500, { success: false, message: 'Не удалось создать заявление' });
+          logAction(user.username, `Создал заявление «${typeDef.label}»: ${title} (id=${this.lastID})`);
+          sendJson(res, 201, { success: true, id: this.lastID });
+        }
+      );
+    };
+
+    if (type === 'relocation') {
+      db.get("SELECT id, name, address, status FROM apartments WHERE id = ?", [payload.apartment_id], (aErr, apt) => {
+        if (aErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!apt) return sendJson(res, 400, { success: false, message: 'Выбранное жильё не найдено' });
+        if (apt.status === 'written_off') return sendJson(res, 400, { success: false, message: 'Это жильё списано' });
+        insertRequest({ ...payload, apartment_name: [apt.name, apt.address].filter(Boolean).join(', ') });
+      });
+      return;
+    }
+
+    if (type === 'tool_service') {
+      db.get("SELECT id FROM employees WHERE user_id = ?", [user.id], (eErr, emp) => {
+        if (eErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!emp) return sendJson(res, 400, { success: false, message: 'За вами не закреплено ни одного инструмента' });
+        db.get(
+          `SELECT t.id, t.name FROM tool_assignments a
+           JOIN tools t ON t.id = a.tool_id
+           WHERE a.tool_id = ? AND a.employee_id = ? AND a.returned_at IS NULL`,
+          [payload.tool_id, emp.id],
+          (tErr, tool) => {
+            if (tErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            if (!tool) return sendJson(res, 400, { success: false, message: 'Этот инструмент за вами не закреплён' });
+            insertRequest({ ...payload, tool_name: tool.name });
+          }
+        );
+      });
+      return;
+    }
+
+    insertRequest(payload);
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
   }
@@ -181,7 +236,7 @@ function listAll(req, res, user, parsedUrl) {
   const status = parsedUrl.searchParams.get('status');
   const type = parsedUrl.searchParams.get('type');
   const where = [], params = [];
-  if (status && ['pending', 'approved', 'rejected'].includes(status)) { where.push('r.status = ?'); params.push(status); }
+  if (status && ['pending', 'approved', 'rejected', 'countered'].includes(status)) { where.push('r.status = ?'); params.push(status); }
   if (type && REQUEST_TYPES[type]) { where.push('r.type = ?'); params.push(type); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const sql = `
@@ -192,7 +247,7 @@ function listAll(req, res, user, parsedUrl) {
     LEFT JOIN users rv ON rv.id = r.reviewed_by
     LEFT JOIN employees e ON e.user_id = r.requested_by
     ${whereSql}
-    ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.id DESC
+    ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'countered' THEN 0 ELSE 1 END, r.id DESC
     LIMIT ? OFFSET ?`;
   db.all(sql, [...params, limit, offset], (err, rows) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
@@ -536,6 +591,72 @@ function approveSideEffect(type, payload, requestRow, reviewer, cb) {
     });
     return;
   }
+  if (type === 'relocation') {
+    const apartmentId = parseInt(payload.apartment_id, 10);
+    if (!Number.isInteger(apartmentId) || apartmentId <= 0) return cb({ message: 'Не указано жильё' });
+    db.get("SELECT id, name, status FROM apartments WHERE id = ?", [apartmentId], (aErr, apt) => {
+      if (aErr) return cb({ message: 'Ошибка базы данных' });
+      if (!apt) return cb({ message: 'Выбранное жильё не найдено' });
+      if (apt.status === 'written_off') return cb({ message: 'Это жильё списано' });
+
+      db.get("SELECT id FROM employees WHERE user_id = ?", [requestRow.requested_by], (eErr, emp) => {
+        if (eErr) return cb({ message: 'Ошибка базы данных' });
+        // Заявитель без карточки сотрудника — одобряем, но заселять некого.
+        if (!emp) return cb(null, String(apartmentId));
+
+        db.all(
+          "SELECT id, apartment_id FROM apartment_assignments WHERE employee_id = ? AND returned_at IS NULL",
+          [emp.id],
+          (oErr, openAssignments) => {
+            if (oErr) return cb({ message: 'Ошибка базы данных' });
+            const oldApartmentIds = [...new Set((openAssignments || []).map(a => a.apartment_id))];
+
+            const closeOld = (done) => {
+              if (!openAssignments || !openAssignments.length) return done();
+              let n = 0;
+              openAssignments.forEach(a => {
+                db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [a.id], () => {
+                  if (++n === openAssignments.length) done();
+                });
+              });
+            };
+
+            closeOld(() => {
+              db.run(
+                "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
+                [apartmentId, emp.id, reviewer.username, 'Смена места жительства (заявка)'],
+                function (insErr) {
+                  if (insErr) return cb({ message: 'Не удалось заселить' });
+                  const affectedIds = [...new Set([...oldApartmentIds, apartmentId])];
+                  let done = 0;
+                  affectedIds.forEach(id => {
+                    apartments.recomputeApartmentStatus(id, () => {
+                      if (++done === affectedIds.length) cb(null, String(apartmentId));
+                    });
+                  });
+                }
+              );
+            });
+          }
+        );
+      });
+    });
+    return;
+  }
+  if (type === 'tool_service') {
+    const toolId = parseInt(payload.tool_id, 10);
+    if (!Number.isInteger(toolId) || toolId <= 0) return cb({ message: 'Не указан инструмент' });
+    db.get("SELECT id, status FROM tools WHERE id = ?", [toolId], (tErr, tool) => {
+      if (tErr) return cb({ message: 'Ошибка базы данных' });
+      if (!tool) return cb({ message: 'Инструмент не найден' });
+      if (tool.status === 'written_off') return cb({ message: 'Этот инструмент списан' });
+      db.run("UPDATE tools SET status = 'repair' WHERE id = ?", [toolId], (uErr) => {
+        if (uErr) return cb({ message: 'Не удалось обновить статус инструмента' });
+        cb(null, String(toolId));
+      });
+    });
+    return;
+  }
   // Остальные типы: одобрение — просто отметка, без автосоздания сущностей.
   cb(null, null);
 }
@@ -590,6 +711,96 @@ async function reject(req, res, user, parsedUrl) {
   });
 }
 
+// --- Предложить другие даты (админ) вместо отклонения отпуска/больничного ---
+// Переводит заявление в статус 'countered': сохраняет предложенные даты и
+// комментарий в payload, оригинальные start_date/end_date не трогает — их
+// нужно показать сотруднику для сравнения. Решение — за сотрудником
+// (см. counterRespond).
+async function counterOffer(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  let body;
+  try { body = await getJsonBody(req); } catch (e) { return sendJson(res, 400, { success: false, message: 'Невалидный запрос' }); }
+  const altStart = /^\d{4}-\d{2}-\d{2}$/.test(String(body.alt_start_date || '')) ? body.alt_start_date : '';
+  const altEnd = /^\d{4}-\d{2}-\d{2}$/.test(String(body.alt_end_date || '')) ? body.alt_end_date : '';
+  if (!altStart || !altEnd) return sendJson(res, 400, { success: false, message: 'Укажите обе альтернативные даты' });
+  if (altEnd < altStart) return sendJson(res, 400, { success: false, message: 'Дата окончания раньше даты начала' });
+  const note = str(body.review_note, 500);
+
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.type !== 'vacation' && row.type !== 'sick_leave') {
+      return sendJson(res, 400, { success: false, message: 'Альтернативные даты применимы только к отпуску/больничному' });
+    }
+    if (row.status !== 'pending') return sendJson(res, 409, { success: false, message: 'Заявление уже обработано' });
+
+    let payload = {};
+    try { payload = JSON.parse(row.payload || '{}'); } catch (e) {}
+    payload.alt_start_date = altStart;
+    payload.alt_end_date = altEnd;
+    payload.counter_note = note;
+
+    db.run(
+      "UPDATE requests SET status='countered', payload=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP, review_note=? WHERE id=?",
+      [JSON.stringify(payload), user.id, note || null, id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Предложил другие даты по заявлению id=${id}: ${altStart} — ${altEnd}`);
+        sendJson(res, 200, { success: true });
+      }
+    );
+  });
+}
+
+// --- Ответ сотрудника на предложенные даты ---
+// accept=true: заявление одобряется с предложенными датами (start/end
+// заменяются на alt_*, значения alt_* остаются в payload для истории).
+// accept=false: заявление отклоняется как есть (сотрудник условия не принял).
+async function counterRespond(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  let body;
+  try { body = await getJsonBody(req); } catch (e) { return sendJson(res, 400, { success: false, message: 'Невалидный запрос' }); }
+  const accept = body.accept === true;
+
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.requested_by !== user.id) return sendJson(res, 403, { success: false, message: 'Это не ваша заявка' });
+    if (row.status !== 'countered') return sendJson(res, 409, { success: false, message: 'По этой заявке нет предложенных дат' });
+
+    let payload = {};
+    try { payload = JSON.parse(row.payload || '{}'); } catch (e) {}
+
+    if (!accept) {
+      return db.run(
+        "UPDATE requests SET status='rejected' WHERE id=?",
+        [id],
+        (uErr) => {
+          if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+          logAction(user.username, `Отклонил предложенные даты по заявлению id=${id}`);
+          sendJson(res, 200, { success: true });
+        }
+      );
+    }
+
+    payload.start_date = payload.alt_start_date;
+    payload.end_date = payload.alt_end_date;
+    const title = buildTitle(row.type, payload);
+    db.run(
+      "UPDATE requests SET status='approved', payload=?, title=? WHERE id=?",
+      [JSON.stringify(payload), title, id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Принял предложенные даты по заявлению id=${id}: ${payload.start_date} — ${payload.end_date}`);
+        syncEmployeeLeaveStatuses();
+        sendJson(res, 200, { success: true });
+      }
+    );
+  });
+}
+
 module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
   const p = parsedUrl.pathname;
@@ -634,6 +845,11 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return reject(req, res, user, parsedUrl);
   }
+  if (p === '/api/requests/counter' && method === 'POST') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return counterOffer(req, res, user, parsedUrl);
+  }
+  if (p === '/api/requests/counter-respond' && method === 'POST') return counterRespond(req, res, user, parsedUrl);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };

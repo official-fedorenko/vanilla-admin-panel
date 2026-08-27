@@ -31,6 +31,7 @@ const handleBrands = require('./src/routes/brands');
 const handleNotifications = require('./src/routes/notifications');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
+const handlePeerTransfers = require('./src/routes/peerTransfers');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
@@ -263,6 +264,11 @@ const server = http.createServer(async (req, res) => {
   // Учёт рабочего времени (пользователь вносит свои часы, админ видит всех)
   if (pathname.startsWith('/api/worklogs')) {
     return handleWorklogs(req, res, user, parsedUrl, method);
+  }
+
+  // Передача инструмента/авто между сотрудниками напрямую
+  if (pathname.startsWith('/api/peer-transfers')) {
+    return handlePeerTransfers(req, res, user, parsedUrl, method);
   }
 
   // Media

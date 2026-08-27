@@ -737,6 +737,8 @@ function loadSectionData(hash) {
     loadToolRequests();
   } else if (hash === 'worktime') {
     loadWorkTimeSummary();
+  } else if (hash === 'peertransfers') {
+    loadPeerTransfersAdmin();
   } else if (hash === 'vacations') {
     loadVacations();
   } else if (hash === 'toolorders') {
@@ -1207,6 +1209,67 @@ async function loadWorkTimeSummary() {
   }
 }
 
+// ==== Взаимодействия сотрудников: прямая передача инструмента/авто ====
+let peerTransfersAdminCache = [];
+const PEER_TRANSFER_STATUS_BADGE = {
+  pending: { label: 'Ожидает', badge: 'badge-warning' },
+  accepted: { label: 'Принято', badge: 'badge-success' },
+  declined: { label: 'Отклонено', badge: 'badge-danger' },
+  cancelled: { label: 'Отменено', badge: 'badge-danger' }
+};
+
+async function loadPeerTransfersAdmin() {
+  const tbody = document.getElementById('peerTransfersAdminTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Загрузка...</td></tr>`;
+  try {
+    const res = await fetch('/api/peer-transfers/all');
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff6b6b; padding:20px;">Нет доступа</td></tr>`; return; }
+    const d = await res.json();
+    peerTransfersAdminCache = (d && d.transfers) || [];
+    renderPeerTransfersAdminTable(peerTransfersAdminCache);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ff6b6b; padding:20px;">Ошибка загрузки</td></tr>`;
+  }
+}
+
+function renderPeerTransfersAdminTable(list) {
+  const tbody = document.getElementById('peerTransfersAdminTableBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Взаимодействий пока нет</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(t => {
+    const st = PEER_TRANSFER_STATUS_BADGE[t.status] || PEER_TRANSFER_STATUS_BADGE.pending;
+    const dateStr = new Date(t.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    return `
+      <tr>
+        <td data-label="Дата">${dateStr}</td>
+        <td data-label="Тип">${t.item_type === 'tool' ? 'Инструмент' : 'Авто'}</td>
+        <td data-label="Предмет">${escapeHtml(t.item_name || '—')}</td>
+        <td data-label="От кого">${escapeHtml(t.from_name)}</td>
+        <td data-label="Кому">${escapeHtml(t.to_name)}</td>
+        <td data-label="Статус"><span class="badge ${st.badge}">${st.label}</span></td>
+        <td data-label="Причина отказа">${t.decline_reason ? escapeHtml(t.decline_reason) : '—'}</td>
+      </tr>`;
+  }).join('');
+}
+
+(function setupPeerTransfersAdminSearch() {
+  const input = document.getElementById('peerTransfersAdminSearch');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { renderPeerTransfersAdminTable(peerTransfersAdminCache); return; }
+    const filtered = peerTransfersAdminCache.filter(t =>
+      (t.item_name || '').toLowerCase().includes(q) ||
+      (t.from_name || '').toLowerCase().includes(q) ||
+      (t.to_name || '').toLowerCase().includes(q)
+    );
+    renderPeerTransfersAdminTable(filtered);
+  });
+})();
+
 window.openWorkTimeUser = async (userId, username) => {
   document.getElementById('workTimeModalTitle').textContent = 'Время: ' + username;
   const box = document.getElementById('workTimeEntries');
@@ -1238,10 +1301,12 @@ window.closeWorkTimeModal = () => {
 
 // ==== Заявления (админ) ====
 const REQ_STATUS = {
-  pending:  { label: 'Ожидает',   badge: 'badge-warning' },
-  approved: { label: 'Одобрено',  badge: 'badge-success' },
-  rejected: { label: 'Отклонено', badge: 'badge-danger' }
+  pending:   { label: 'Ожидает',                    badge: 'badge-warning' },
+  approved:  { label: 'Одобрено',                   badge: 'badge-success' },
+  rejected:  { label: 'Отклонено',                  badge: 'badge-danger' },
+  countered: { label: 'Предложены другие даты',     badge: 'badge-warning' }
 };
+const COUNTERABLE_TYPES = ['vacation', 'sick_leave'];
 let requestTypesCache = null;
 
 async function ensureRequestTypes() {
@@ -1352,12 +1417,18 @@ function renderRequests(list, types) {
     const moreBtn = hasExtra
       ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Подробнее</button>`
       : '';
+    const counterBtn = (r.status === 'pending' && COUNTERABLE_TYPES.includes(r.type))
+      ? `<button class="req-action" onclick="openCounterModal(${r.id})">Другие даты</button>`
+      : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+         ${counterBtn}
          <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
-      : (r.review_note
-          ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
-          : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
+      : r.status === 'countered'
+        ? `<span style="font-size:12px;color:hsl(var(--text-muted));">Ждём ответа сотрудника (${escapeHtml(r.payload.alt_start_date || '?')} — ${escapeHtml(r.payload.alt_end_date || '?')})</span>`
+        : (r.review_note
+            ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
+            : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => {
       const def = types[r.type];
@@ -1378,9 +1449,13 @@ function renderRequests(list, types) {
       }
       const just = requestJustification(r, types);
       if (just.text) rows.push([just.label || 'Обоснование', just.text, 'block']);
+      if (r.status === 'countered' && r.payload.alt_start_date) {
+        rows.push(['Предложены даты', `${r.payload.alt_start_date} — ${r.payload.alt_end_date}`]);
+      }
       if (r.review_note) rows.push(['Комментарий администратора', r.review_note, 'block']);
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
+           ${COUNTERABLE_TYPES.includes(r.type) ? `<button class="btn btn-secondary" onclick="closeRowDetail(); openCounterModal(${r.id})">Другие даты</button>` : ''}
            <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
@@ -1448,6 +1523,37 @@ window.rejectRequest = async (id) => {
     });
     const d = await res.json().catch(() => ({}));
     if (res.ok) { showToast('Заявление отклонено', 'success'); loadRequests(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+let counterModalRequestId = null;
+window.openCounterModal = (id) => {
+  counterModalRequestId = id;
+  document.getElementById('counterStartDate').value = '';
+  document.getElementById('counterEndDate').value = '';
+  document.getElementById('counterNote').value = '';
+  document.getElementById('counterModalOverlay').classList.add('active');
+};
+window.closeCounterModal = () => {
+  document.getElementById('counterModalOverlay').classList.remove('active');
+  counterModalRequestId = null;
+};
+window.submitCounterOffer = async () => {
+  const id = counterModalRequestId;
+  if (!id) return;
+  const alt_start_date = document.getElementById('counterStartDate').value;
+  const alt_end_date = document.getElementById('counterEndDate').value;
+  const review_note = document.getElementById('counterNote').value;
+  if (!alt_start_date || !alt_end_date) { showToast('Укажите обе даты', 'error'); return; }
+  if (alt_end_date < alt_start_date) { showToast('Дата окончания раньше даты начала', 'error'); return; }
+  try {
+    const res = await fetch(`/api/requests/counter?id=${id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alt_start_date, alt_end_date, review_note })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { showToast('Альтернативные даты отправлены сотруднику', 'success'); closeCounterModal(); loadRequests(); }
     else showToast(d.message || 'Ошибка', 'error');
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };

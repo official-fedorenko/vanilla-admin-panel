@@ -943,6 +943,24 @@ db.serialize(() => {
     )
   `);
 
+  // Передача инструмента/авто между сотрудниками напрямую (без участия
+  // админа): отправитель предлагает — получатель принимает (тогда закрепление
+  // реально переходит) или отклоняет (с причиной). Админ видит всю историю
+  // этих взаимодействий в разделе «Взаимодействия сотрудников».
+  db.run(`
+    CREATE TABLE IF NOT EXISTS peer_transfers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_type TEXT NOT NULL CHECK(item_type IN ('tool','vehicle')),
+      item_id INTEGER NOT NULL,
+      from_employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      to_employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      decline_reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    )
+  `);
+
   // 6. Таблица сообщений техподдержки / обратной связи (Чат)
   db.run(`
     CREATE TABLE IF NOT EXISTS support_messages (
