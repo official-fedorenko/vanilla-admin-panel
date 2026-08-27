@@ -1622,7 +1622,7 @@ function renderRequests(list, types) {
       <td class="mobile-hidden">${escapeHtml(toDate)}</td>
       <td class="mobile-hidden">${escapeHtml(r.requested_by_name || '—')}</td>
       <td><span class="badge ${st.badge}">${st.label}</span></td>
-      <td class="no-label"><div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">${moreBtn}${justBtn}${decide}</div></td>`;
+      <td class="no-label"><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;justify-items:stretch;">${moreBtn}${justBtn}${decide}</div></td>`;
     tbody.appendChild(tr);
   });
 }
