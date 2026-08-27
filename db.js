@@ -467,6 +467,20 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE users ADD COLUMN hourly_rate REAL", () => {});
     }
+  },
+  {
+    version: 29,
+    description: 'Notifications: связать с задачей планировщика (task_id) для авто-напоминаний',
+    up: () => {
+      db.run("ALTER TABLE notifications ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE", () => {});
+    }
+  },
+  {
+    version: 30,
+    description: 'Employees: фото карточки сотрудника (photo_url)',
+    up: () => {
+      db.run("ALTER TABLE employees ADD COLUMN photo_url TEXT", () => {});
+    }
   }
 ];
 
@@ -958,6 +972,24 @@ db.serialize(() => {
       decline_reason TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       resolved_at DATETIME
+    )
+  `);
+
+  // Планировщик задач сотрудников: сотрудник ставит себе задачи в личном
+  // календаре, админ видит все задачи по всем сотрудникам и может добавлять
+  // задачи сам (assigned_by показывает, кто её создал). Уведомления за 1 и
+  // 2 дня до due_date создаются как обычные строки в notifications со
+  // scheduled_at — существующая логика кабинета уже фильтрует по времени.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      notes TEXT,
+      due_date DATE NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 

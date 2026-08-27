@@ -78,10 +78,10 @@
           </a>
         </li>
         <li class="nav-item" data-section="toolorders">
-          <a href="#toolorders" title="Заказы инструмента">
+          <a href="#toolorders" title="Заказы от сотрудников">
             <i data-lucide="shopping-cart"></i>
             <span id="toolOrdersBadge" class="nav-badge" style="display:none;">0</span>
-            <span>Заказы инструмента</span>
+            <span>Заказы от сотрудников</span>
           </a>
         </li>
         <li class="nav-item" data-section="vehicleorders">
@@ -101,6 +101,12 @@
           <a href="#peertransfers" title="Взаимодействия сотрудников">
             <i data-lucide="repeat"></i>
             <span>Взаимодействия сотрудников</span>
+          </a>
+        </li>
+        <li class="nav-item" data-section="taskplanner">
+          <a href="#taskplanner" title="Планировщик задач сотрудников">
+            <i data-lucide="calendar-check"></i>
+            <span>Планировщик задач сотрудников</span>
           </a>
         </li>
         <li class="nav-item" data-section="articles">
@@ -477,7 +483,7 @@
       <section id="section-toolorders" class="app-section">
         <div class="page-header">
           <div class="page-title">
-            <h2>Заказы инструмента</h2>
+            <h2>Заказы от сотрудников</h2>
             <p>Одобренные заказы: кому и что выдать. Пока сотрудник не нажал «Получил» — заказ в ожидании получения.</p>
           </div>
           <div class="page-header-actions">
@@ -796,6 +802,84 @@
           </div>
         </div>
       </section>
+
+      <!-- TASK PLANNER SECTION (планировщик задач сотрудников) -->
+      <section id="section-taskplanner" class="app-section">
+        <div class="page-header">
+          <div class="page-title">
+            <h2>Планировщик задач сотрудников</h2>
+            <p>Кто что себе запланировал, и задачи, поставленные администрацией напрямую</p>
+          </div>
+          <div class="page-header-actions">
+            <button class="btn" id="addTaskBtn">
+              <i data-lucide="plus"></i>
+              <span>Добавить задачу</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <div class="table-toolbar">
+            <div class="table-search">
+              <input type="text" id="tasksAdminSearch" class="form-control" placeholder="Поиск по сотруднику или названию...">
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table cards-mobile">
+              <thead>
+                <tr>
+                  <th style="width: 120px;">Срок</th>
+                  <th>Сотрудник</th>
+                  <th>Задача</th>
+                  <th style="width: 100px;">Статус</th>
+                  <th style="width: 140px;">Поставил</th>
+                </tr>
+              </thead>
+              <tbody id="tasksAdminTableBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TASK MODAL DIALOG (админ ставит задачу сотруднику) -->
+      <div class="modal-overlay" id="taskModalOverlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Добавить задачу</h3>
+            <button class="modal-close" id="closeTaskModalBtn">&times;</button>
+          </div>
+          <form id="taskForm">
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="taskEmployeeSearch">Сотрудник</label>
+                <input type="text" id="taskEmployeeSearch" class="form-control" placeholder="Поиск по имени, должности, отделу..." autocomplete="off" style="margin-bottom: 8px;">
+                <div class="emp-picker">
+                  <div class="emp-picker-list" id="taskEmployeeList"></div>
+                </div>
+                <input type="hidden" id="taskEmployeeId">
+              </div>
+              <div class="form-group">
+                <label for="taskTitle">Название задачи</label>
+                <input type="text" id="taskTitle" class="form-control" placeholder="Что нужно сделать" required>
+              </div>
+              <div class="form-group">
+                <label for="taskDueDate">Срок</label>
+                <input type="date" id="taskDueDate" class="form-control" required>
+              </div>
+              <div class="form-group">
+                <label for="taskNotes">Заметка</label>
+                <textarea id="taskNotes" class="form-control" rows="2" placeholder="Подробности (необязательно)"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" id="cancelTaskModalBtn">Отмена</button>
+              <button type="submit" class="btn">Поставить задачу</button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <!-- SETTINGS SECTION -->
       <section id="section-settings" class="app-section">
@@ -1509,6 +1593,20 @@
         <input type="hidden" id="employeeId">
         <div class="modal-body">
           <div id="empAccountPanel"></div>
+          <div class="form-group">
+            <label>Фото сотрудника</label>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div id="empPhotoPreview" style="width:72px; height:72px; border-radius:50%; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                <i data-lucide="user" style="color:hsl(var(--text-muted));"></i>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="empPhotoBtn">Загрузить</button>
+                <button type="button" class="btn btn-secondary" id="empPhotoClearBtn" style="display:none;">Убрать</button>
+              </div>
+              <input type="file" id="empPhotoInput" accept="image/*" style="display:none;">
+              <input type="hidden" id="empPhotoUrl">
+            </div>
+          </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div class="form-group">
               <label for="empFirstName">Имя</label>

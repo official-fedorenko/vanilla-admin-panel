@@ -12,6 +12,7 @@ const { db } = require('../../db');
  *    GET  /api/peer-transfers/incoming    — входящие предложения (ожидающие моего решения)
  *    GET  /api/peer-transfers/outgoing    — мои отправленные предложения (все статусы)
  *    POST /api/peer-transfers/respond     — принять/отклонить { id, action: 'accept'|'decline', reason? }
+ *    POST /api/peer-transfers/cancel      — отправитель отменяет своё же предложение, пока оно ожидает { id }
  *
  *  Админ (Admin/Superadmin):
  *    GET  /api/peer-transfers/all         — вся история для раздела «Взаимодействия сотрудников»
@@ -262,6 +263,35 @@ async function respond(req, res, user) {
   }
 }
 
+async function cancelTransfer(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const id = parseInt(body.id, 10);
+    if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+
+    myEmployeeId(user.id, (err, empId) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!empId) return sendJson(res, 403, { success: false, message: 'Доступно только сотрудникам' });
+
+      db.get("SELECT * FROM peer_transfers WHERE id = ? AND from_employee_id = ? AND status = 'pending'", [id, empId], (e2, pt) => {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!pt) return sendJson(res, 404, { success: false, message: 'Предложение не найдено или уже обработано' });
+
+        db.run("UPDATE peer_transfers SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP WHERE id = ?", [id], (e3) => {
+          if (e3) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+          itemName(pt.item_type, pt.item_id, (e4, name) => {
+            logAction(user.username, `Отменил своё предложение передать ${pt.item_type === 'tool' ? 'инструмент' : 'авто'} «${name || pt.item_id}»`);
+            notifyUserOfEmployee(pt.to_employee_id, `Сотрудник отменил предложение передать «${name || ''}».`, user.id);
+            sendJson(res, 200, { success: true });
+          });
+        });
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
+  }
+}
+
 function listAll(req, res, user) {
   if (!isAdmin(user)) return sendJson(res, 403, { success: false, message: 'Недостаточно прав' });
   const sql = `
@@ -294,6 +324,7 @@ module.exports = async function handlePeerTransfers(req, res, user, parsedUrl, m
   if (p === '/api/peer-transfers/incoming' && method === 'GET') return listIncoming(req, res, user);
   if (p === '/api/peer-transfers/outgoing' && method === 'GET') return listOutgoing(req, res, user);
   if (p === '/api/peer-transfers/respond' && method === 'POST') return respond(req, res, user);
+  if (p === '/api/peer-transfers/cancel' && method === 'POST') return cancelTransfer(req, res, user);
   if (p === '/api/peer-transfers/all' && method === 'GET') return listAll(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });

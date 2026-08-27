@@ -425,6 +425,13 @@
     .asset-chip--red { background: rgba(255,74,110,0.10); border-color: rgba(255,74,110,0.32); color: var(--red); }
     .asset-item-footer { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
     .asset-item-actions { display: flex; flex-direction: column; gap: 6px; margin-left: auto; flex-shrink: 0; }
+    /* Кнопки в этом блоке (Скачать QR / Передать инструмент-авто) —
+       одинаковая ширина независимо от длины подписи, чтобы карточки
+       инструмента и авто выглядели одинаково. */
+    .asset-item-actions button {
+      width: 168px; box-sizing: border-box; padding: 6px 12px; border-radius: 8px;
+      font-size: 12px; white-space: nowrap; cursor: pointer; text-align: center;
+    }
     .asset-empty {
       display: flex; align-items: center; gap: 10px; padding: 16px;
       border: 1px dashed var(--border-color); border-radius: 14px;
@@ -824,6 +831,34 @@
           </div>
           </div><!-- /cbody -->
         </div>
+
+        <!-- Планировщик задач (только для сотрудников) -->
+        <div class="card mobile-collapse" id="taskPlannerCard" style="margin-top: 28px; display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg> Планировщик задач</span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+              <button type="button" id="taskCalPrev" style="background:none; border:1px solid var(--border-color); color:var(--text-primary); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:16px; flex-shrink:0;">‹</button>
+              <div id="taskCalTitle" style="font-weight:600; color:var(--text-primary); font-size:15px; text-transform:capitalize; text-align:center;"></div>
+              <button type="button" id="taskCalNext" style="background:none; border:1px solid var(--border-color); color:var(--text-primary); width:30px; height:30px; border-radius:8px; cursor:pointer; font-size:16px; flex-shrink:0;">›</button>
+            </div>
+            <div id="taskCalWeekdays" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; font-size:11px; color:var(--text-muted); text-align:center;"></div>
+            <div id="taskCalGrid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Модалка деталей дня планировщика задач -->
+      <div id="taskDayModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(3px); z-index:1100; overflow-y:auto; padding:24px 12px;">
+        <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(420px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+          <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+            <div id="taskDayModalTitle" style="font-weight:600; color:var(--text-primary); font-size:16px;"></div>
+            <button type="button" id="taskDayModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+          </div>
+          <div id="taskDayModalBody" style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0; display:flex; flex-direction:column; gap:12px;"></div>
+        </div>
       </div>
 
       <!-- Правая колонка: статьи -->
@@ -853,10 +888,10 @@
             <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.015);">
               <div>
                 <label for="wlRateInput" style="margin:0 0 6px; font-size:12px;">Ставка, €/ч:</label>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="flex:1; min-width:0; padding:8px 10px; font-size:13px;">
+                <div style="display:flex; align-items:stretch; gap:8px;">
+                  <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="flex:1; min-width:0; padding:9px 10px; font-size:12px; box-sizing:border-box;">
                   <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex-shrink:0;">Сохранить</button>
-                  <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0;"></span>
+                  <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0; align-self:center;"></span>
                 </div>
               </div>
               <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
@@ -1283,6 +1318,8 @@
           loadMyVehicles();
           document.getElementById('peerTransfersCard').style.display = '';
           loadPeerTransfers();
+          document.getElementById('taskPlannerCard').style.display = '';
+          setupTaskPlanner();
           document.getElementById('myApartmentCard').style.display = '';
           loadMyApartment();
           document.getElementById('myConstructionSiteCard').style.display = '';
@@ -1355,11 +1392,18 @@
         const hire = c.hire_date ? new Date(c.hire_date).toLocaleDateString('ru-RU') : '';
 
         body.className = 'asset-item';
+        const photoInner = c.photo_url
+          ? `<img src="${c.photo_url}" class="asset-item-photo">`
+          : `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>`;
         body.innerHTML = `
           <div class="asset-item-head">
-            <div class="asset-item-photo-empty">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <div class="${c.photo_url ? '' : 'asset-item-photo-empty'}" style="position:relative;cursor:pointer;" onclick="document.getElementById('myEmployeePhotoInput').click()" title="Загрузить фото">
+              ${photoInner}
+              <div style="position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;background:var(--accent-purple, #7c5cff);display:flex;align-items:center;justify-content:center;border:2px solid var(--card-bg, #fff);">
+                <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="11" height="11"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              </div>
             </div>
+            <input type="file" id="myEmployeePhotoInput" accept="image/*" style="display:none;">
             <div style="flex:1;min-width:0;">
               <div class="asset-item-title">${escapeHtml(fio)}</div>
               ${c.position ? `<div class="asset-item-sub">${escapeHtml(c.position)}</div>` : ''}
@@ -1377,6 +1421,44 @@
             <span>${escapeHtml(c.notes)}</span>
           </div>` : ''}
         `;
+        const photoInput = document.getElementById('myEmployeePhotoInput');
+        if (photoInput) {
+          photoInput.addEventListener('change', async () => {
+            const file = photoInput.files[0];
+            if (!file) return;
+            try {
+              const prepared = await prepareUploadFile(file);
+              const upRes = await fetch('/api/media', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: [prepared], category: 'avatars' })
+              });
+              if (!upRes.ok) {
+                const e2 = await upRes.json().catch(() => ({}));
+                showToast(e2.message || 'Ошибка загрузки фото', 'error'); return;
+              }
+              const upData = await upRes.json();
+              const url = upData.urls && upData.urls[0];
+              if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
+              const linkRes = await fetch('/api/cabinet/employee-photo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photo_url: url })
+              });
+              const linkData = await linkRes.json().catch(() => ({}));
+              if (linkRes.ok) {
+                showToast('Фото сохранено', 'success');
+                await loadMyCard();
+              } else {
+                showToast(linkData.message || 'Не удалось сохранить фото', 'error');
+              }
+            } catch (e2) {
+              showToast('Ошибка при загрузке', 'error');
+            } finally {
+              photoInput.value = '';
+            }
+          });
+        }
       } catch (e) {
         body.className = '';
         body.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить карточку.');
@@ -1482,7 +1564,8 @@
 
     window.saveMyVehicleQr = async (id) => {
       const vehicle = myVehiclesCache.find(v => v.id === id) || {};
-      const base = `qr-${String(vehicle.plate_number || vehicle.name || 'vehicle').replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+      const vehicleName = [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicle.name || 'vehicle';
+      const base = `qr-${String(vehicle.plate_number || vehicleName).replace(/[^A-Za-z0-9._-]+/g, '_')}`;
       try {
         const res = await fetch(`/api/vehicles/qr?id=${id}`);
         const svgText = await res.text();
@@ -1566,16 +1649,35 @@
       }
       box.innerHTML = list.map(t => {
         const st = PEER_STATUS_LABEL[t.status] || PEER_STATUS_LABEL.pending;
+        const cancelBtn = t.status === 'pending'
+          ? `<button type="button" onclick="cancelPeerTransfer(${t.id})" style="padding:4px 10px; font-size:11px; border-radius:8px; background:rgba(255,74,110,0.10); border:1px solid rgba(255,74,110,0.32); color:var(--red); cursor:pointer; white-space:nowrap;">Отменить</button>`
+          : '';
         return `
         <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);">
           <div style="min-width:0;">
             <div style="font-size:13px;">${escapeHtml(t.item_name || '—')} → ${escapeHtml(t.to_name)}</div>
             ${t.status === 'declined' && t.decline_reason ? `<div style="font-size:11px; color:var(--text-muted);">Причина: ${escapeHtml(t.decline_reason)}</div>` : ''}
           </div>
-          <span class="asset-chip asset-chip--${st.variant}" style="flex-shrink:0;"><b>${st.label}</b></span>
+          <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+            ${cancelBtn}
+            <span class="asset-chip asset-chip--${st.variant}"><b>${st.label}</b></span>
+          </div>
         </div>`;
       }).join('');
     }
+
+    window.cancelPeerTransfer = async (id) => {
+      if (!await confirmDialog('Отменить это предложение передачи?', { okText: 'Отменить', danger: true })) return;
+      try {
+        const res = await fetch('/api/peer-transfers/cancel', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { showToast('Предложение отменено', 'success'); loadPeerTransfers(); }
+        else showToast(d.message || 'Не удалось отменить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
 
     window.acceptPeerTransfer = async (id) => {
       try {
@@ -1676,6 +1778,178 @@
       } catch (_) { showToast('Ошибка сети', 'error'); }
     };
 
+    // === Планировщик задач ===
+    let myTasksCache = [];
+    let taskCalYear = new Date().getFullYear();
+    let taskCalMonth = new Date().getMonth();
+
+    function setupTaskPlanner() {
+      document.getElementById('taskCalPrev').onclick = () => { shiftTaskCalMonth(-1); };
+      document.getElementById('taskCalNext').onclick = () => { shiftTaskCalMonth(1); };
+      document.getElementById('taskDayModalClose').onclick = closeTaskDayModal;
+      ['taskDayModalOverlay'].forEach(mid => {
+        const m = document.getElementById(mid);
+        if (m && m.parentElement !== document.body) document.body.appendChild(m);
+      });
+      document.getElementById('taskDayModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'taskDayModalOverlay') closeTaskDayModal();
+      });
+      loadMyTasks();
+    }
+
+    async function loadMyTasks() {
+      try {
+        const res = await fetch('/api/tasks/mine');
+        const d = await res.json();
+        myTasksCache = (d && d.tasks) || [];
+        renderTaskCalendar();
+      } catch (_) { /* тихо оставляем предыдущее состояние */ }
+    }
+
+    function shiftTaskCalMonth(delta) {
+      taskCalMonth += delta;
+      if (taskCalMonth < 0) { taskCalMonth = 11; taskCalYear--; }
+      if (taskCalMonth > 11) { taskCalMonth = 0; taskCalYear++; }
+      renderTaskCalendar();
+    }
+
+    function taskDayKey(y, m, d) {
+      return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    function renderTaskCalendar() {
+      const title = document.getElementById('taskCalTitle');
+      if (!title) return;
+      title.textContent = new Date(taskCalYear, taskCalMonth, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+      const byDay = {};
+      myTasksCache.forEach(t => {
+        if (!byDay[t.due_date]) byDay[t.due_date] = [];
+        byDay[t.due_date].push(t);
+      });
+
+      const weekdaysBox = document.getElementById('taskCalWeekdays');
+      weekdaysBox.innerHTML = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(w => `<div>${w}</div>`).join('');
+
+      const grid = document.getElementById('taskCalGrid');
+      grid.innerHTML = '';
+
+      const firstOfMonth = new Date(taskCalYear, taskCalMonth, 1);
+      const leadingBlanks = (firstOfMonth.getDay() + 6) % 7;
+      const daysInMonth = new Date(taskCalYear, taskCalMonth + 1, 0).getDate();
+      const todayKey = new Date().toISOString().slice(0, 10);
+
+      for (let i = 0; i < leadingBlanks; i++) grid.appendChild(document.createElement('div'));
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = taskDayKey(taskCalYear, taskCalMonth, d);
+        const dayTasks = byDay[key] || [];
+        const isToday = key === todayKey;
+        const isPast = key < todayKey;
+        const openCount = dayTasks.filter(t => !t.done).length;
+        let bg = 'rgba(255,255,255,0.02)';
+        if (openCount > 0) bg = isPast ? 'rgba(255,74,110,0.14)' : 'rgba(138,43,226,0.14)';
+        else if (dayTasks.length > 0) bg = 'rgba(0,229,160,0.10)';
+
+        const cell = document.createElement('div');
+        cell.style.cssText = `position:relative; aspect-ratio:1; border-radius:8px; border:1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-color)'}; background:${bg}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; padding:2px;`;
+        cell.innerHTML = `
+          <div style="font-size:12px; color:var(--text-secondary);">${d}</div>
+          ${dayTasks.length ? `<div style="font-size:10px; font-weight:700; color:${openCount ? 'var(--accent-purple)' : 'var(--green)'};">${dayTasks.length}</div>` : ''}`;
+        cell.onclick = () => openTaskDayModal(key);
+        grid.appendChild(cell);
+      }
+    }
+
+    function openTaskDayModal(dateKey) {
+      const tasks = myTasksCache.filter(t => t.due_date === dateKey);
+      const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+      document.getElementById('taskDayModalTitle').textContent = dateStr;
+
+      const body = document.getElementById('taskDayModalBody');
+      body.innerHTML = tasks.map(t => `
+        <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; ${t.done ? 'opacity:0.6;' : ''}">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+            <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; flex:1; min-width:0;">
+              <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTaskDone(${t.id}, this.checked)" style="margin-top:3px; width:16px; height:16px; accent-color:var(--accent-purple); flex-shrink:0;">
+              <span style="font-size:14px; font-weight:600; ${t.done ? 'text-decoration:line-through;' : ''}">${escapeHtml(t.title)}</span>
+            </label>
+            <button type="button" title="Удалить" onclick="deleteMyTask(${t.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; flex-shrink:0;">&times;</button>
+          </div>
+          ${t.notes ? `<div style="font-size:12px; color:var(--text-muted); padding-left:24px;">${escapeHtml(t.notes)}</div>` : ''}
+          ${t.created_by_username && t.created_by_username !== currentUserData?.username ? `<div style="font-size:11px; color:var(--accent-cyan); padding-left:24px;">Поставил: ${escapeHtml(t.created_by_username)}</div>` : ''}
+        </div>`).join('');
+
+      body.innerHTML += `
+        <button type="button" class="wl-btn" style="width:100%;" onclick="toggleTaskAddForm()">+ Добавить задачу</button>
+        <div id="taskAddForm" style="display:none; border:1px dashed var(--border-color); border-radius:10px; padding:12px; flex-direction:column; gap:8px;">
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:11px;">Название</label>
+            <input type="text" id="taskAddTitle" maxlength="200" placeholder="Что нужно сделать...">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:11px;">Заметка</label>
+            <input type="text" id="taskAddNotes" maxlength="1000" placeholder="Подробности (необязательно)...">
+          </div>
+          <button type="button" class="btn-save" style="padding:6px; font-size:12px;" onclick="addMyTask('${dateKey}')">Добавить</button>
+        </div>`;
+
+      document.getElementById('taskDayModalOverlay').style.display = 'flex';
+    }
+    function closeTaskDayModal() {
+      document.getElementById('taskDayModalOverlay').style.display = 'none';
+    }
+    window.toggleTaskAddForm = () => {
+      const el = document.getElementById('taskAddForm');
+      if (!el) return;
+      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    };
+
+    window.addMyTask = async (dateKey) => {
+      const title = document.getElementById('taskAddTitle').value.trim();
+      const notes = document.getElementById('taskAddNotes').value.trim();
+      if (!title) { showToast('Укажите название задачи', 'error'); return; }
+      try {
+        const res = await fetch('/api/tasks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, notes, due_date: dateKey })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Задача добавлена', 'success');
+          await loadMyTasks();
+          openTaskDayModal(dateKey);
+        } else showToast(d.message || 'Не удалось добавить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.toggleTaskDone = async (id, done) => {
+      try {
+        const res = await fetch('/api/tasks?id=' + id, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ done })
+        });
+        if (res.ok) {
+          const t = myTasksCache.find(x => x.id === id);
+          await loadMyTasks();
+          if (t) openTaskDayModal(t.due_date);
+        } else showToast('Не удалось сохранить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.deleteMyTask = async (id) => {
+      if (!await confirmDialog('Удалить задачу?', { okText: 'Удалить', danger: true })) return;
+      const t = myTasksCache.find(x => x.id === id);
+      try {
+        const res = await fetch('/api/tasks?id=' + id, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Задача удалена', 'success');
+          await loadMyTasks();
+          if (t) openTaskDayModal(t.due_date);
+        } else showToast('Не удалось удалить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
     async function loadMyApartment() {
       const list = document.getElementById('myApartmentList');
       try {
@@ -1753,7 +2027,10 @@
           item.innerHTML = `
             <div>
               <div class="asset-item-title">${escapeHtml(s.name)}</div>
-              ${s.address ? `<div class="asset-item-sub">${escapeHtml(s.address)}</div>` : ''}
+              ${s.address ? `<div class="asset-item-sub" style="display:flex; align-items:center; gap:5px;" title="Адрес объекта">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Адрес объекта: ${escapeHtml(s.address)}</span>
+              </div>` : ''}
             </div>
             <div class="asset-item-divider"></div>
             <div class="asset-chips">
@@ -1791,7 +2068,7 @@
             ? `<img src="${v.photo_url}" class="asset-item-photo">`
             : `<div class="asset-item-photo-empty"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg></div>`;
           const photo = `<button type="button" onclick="openItemPhotoModal('vehicle', ${v.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
-          const sub = [v.brand, v.model].filter(Boolean).join(' · ');
+          const displayName = [v.brand, v.model].filter(Boolean).join(' ') || v.name || 'Авто';
 
           const item = document.createElement('div');
           item.className = 'asset-item';
@@ -1799,8 +2076,7 @@
             <div class="asset-item-head">
               ${photo}
               <div style="flex:1;min-width:0;">
-                <div class="asset-item-title">${escapeHtml(v.name)}</div>
-                ${sub ? `<div class="asset-item-sub">${escapeHtml(sub)}</div>` : ''}
+                <div class="asset-item-title">${escapeHtml(displayName)}</div>
               </div>
               <div class="asset-item-actions">
                 <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
@@ -2806,6 +3082,7 @@
     let vehicleCategoriesCab = [];
     let apartmentsCab = [];
     let myAssignedToolsCab = [];
+    let allToolsCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -2814,12 +3091,13 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat, vcat, apts, myTools] = await Promise.all([
+        const [rt, cat, vcat, apts, myTools, allTools] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
           fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
           fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => []),
           fetch('/api/crud/apartments?limit=1000').then(r => r.json()).catch(() => []),
-          fetch('/api/cabinet/my-tools').then(r => r.json()).catch(() => ({}))
+          fetch('/api/cabinet/my-tools').then(r => r.json()).catch(() => ({})),
+          fetch('/api/crud/tools?limit=2000').then(r => r.json()).catch(() => [])
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
@@ -2829,6 +3107,8 @@
           a.status !== 'written_off' && !['Офис', 'Земля'].includes(a.category)
         );
         myAssignedToolsCab = (myTools && myTools.tools) || [];
+        // Для «Выдали инструмент» — весь инструмент компании, кроме списанного.
+        allToolsCab = (Array.isArray(allTools) ? allTools : []).filter(t => t.status !== 'written_off');
       } catch (e) { requestTypes = {}; }
 
       // Скрытый select хранит выбранный тип (для submitRequest)
@@ -2920,9 +3200,11 @@
       box.innerHTML = '';
       if (!def) return;
 
-      // Для «Добавить инструмент» — подбор из каталога, как в админке
+      // Для «Я получил новый инструмент» — подбор из каталога (только когда
+      // источник = «Получил новый»), как в админке.
       if (typeKey === 'tool_add') {
         const picker = document.createElement('div');
+        picker.dataset.reqGroup = 'new';
         picker.innerHTML = `
           <button type="button" id="catPickBtn" style="width:100%; padding:9px; background:rgba(138,43,226,0.12); border:1px solid var(--accent-purple); color:var(--text-primary); border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">📖 Подобрать из каталога</button>
           <input id="catPickSearch" class="form-input" placeholder="Поиск по каталогу…" style="display:none; margin-top:8px;">
@@ -2930,6 +3212,10 @@
         box.appendChild(picker);
         wireCatalogPicker();
       }
+
+      // Поля, нужные только когда «Как получен» = «Получил новый» —
+      // остальное (объект со склада) скрыто/показано через data-req-group.
+      const TOOL_ADD_NEW_ONLY = ['name', 'category', 'brand', 'model', 'serial_number', 'inventory_number', 'photo_url'];
 
       def.fields.forEach(f => {
         const wrap = document.createElement('div');
@@ -2969,6 +3255,15 @@
             .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`
             + (myAssignedToolsCab.length ? '' : '<div style="font-size:12px; color:var(--text-muted); margin-top:4px;">За вами не закреплён инструмент</div>');
+        } else if (f.type === 'existing_tool') {
+          const opts = ['<option value="">Выберите инструмент</option>']
+            .concat(allToolsCab.map(t => {
+              const labelText = [t.name, t.brand, t.model].filter(Boolean).join(' ')
+                + (t.inventory_number ? ` (№ ${t.inventory_number})` : '');
+              return `<option value="${t.id}">${escapeHtmlC(labelText)}</option>`;
+            }))
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
           wrap.innerHTML = label + `<div style="display:flex; align-items:center; gap:12px;">
@@ -2980,6 +3275,11 @@
           const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
           wrap.innerHTML = label + `<input id="${fid}" type="${inputType}" class="form-input" placeholder="${escapeHtmlC(f.label)}">`;
         }
+        if (typeKey === 'tool_add') {
+          if (f.name === 'existing_tool_id') wrap.dataset.reqGroup = 'existing';
+          else if (TOOL_ADD_NEW_ONLY.includes(f.name)) wrap.dataset.reqGroup = 'new';
+        }
+        if (typeKey === 'relocation' && f.name === 'apartment_id') wrap.dataset.reqGroup = 'company_housing';
         box.appendChild(wrap);
         if (f.type === 'photo') wirePhotoField(f.name, fid);
         // Инвентарный номер для «Добавить инструмент» — подставляем сразу
@@ -2988,6 +3288,32 @@
           if (el && !el.value) el.value = genInventoryNumberCab();
         }
       });
+
+      // «Я получил новый инструмент»: показываем либо поля нового
+      // инструмента (+ подбор из каталога), либо выбор со склада —
+      // в зависимости от значения «Как получен».
+      if (typeKey === 'tool_add') {
+        const sourceSel = document.getElementById('reqf_source');
+        const applyToolAddVisibility = () => {
+          const val = sourceSel.value;
+          box.querySelectorAll('[data-req-group="new"]').forEach(el => { el.style.display = val === 'Получил новый' ? '' : 'none'; });
+          box.querySelectorAll('[data-req-group="existing"]').forEach(el => { el.style.display = val === 'Выдали инструмент' ? '' : 'none'; });
+        };
+        sourceSel.addEventListener('change', applyToolAddVisibility);
+        applyToolAddVisibility();
+      }
+
+      // «Заявление на место жительства»: поле выбора жилья от компании
+      // нужно только если тип жилья — «От компании».
+      if (typeKey === 'relocation') {
+        const housingSel = document.getElementById('reqf_housing_type');
+        const applyHousingVisibility = () => {
+          const val = housingSel.value;
+          box.querySelectorAll('[data-req-group="company_housing"]').forEach(el => { el.style.display = val === 'От компании' ? '' : 'none'; });
+        };
+        housingSel.addEventListener('change', applyHousingVisibility);
+        applyHousingVisibility();
+      }
     }
 
     // Клиентская генерация инвентарного номера (тот же формат, что на сервере)
@@ -3120,6 +3446,17 @@
         if (f.required && !String(payload[f.name]).trim()) {
           showToast(`Заполните: ${f.label}`, 'error'); return;
         }
+      }
+      if (typeKey === 'tool_add') {
+        if (payload.source === 'Выдали инструмент' && !String(payload.existing_tool_id || '').trim()) {
+          showToast('Выберите инструмент со склада', 'error'); return;
+        }
+        if (payload.source === 'Получил новый' && !String(payload.name || '').trim()) {
+          showToast('Заполните: Название', 'error'); return;
+        }
+      }
+      if (typeKey === 'relocation' && payload.housing_type === 'От компании' && !String(payload.apartment_id || '').trim()) {
+        showToast('Выберите жильё', 'error'); return;
       }
       try {
         const res = await fetch('/api/requests', {
@@ -3598,6 +3935,13 @@
         const d = await res.json();
         const list = (d && d.requests) || [];
         if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Заявлений пока нет</div>'; return; }
+        // Заявления, требующие моего действия («Получил» / ответ на
+        // предложенные даты), — наверх списка, чтобы их не пропустить.
+        const needsAction = (r) => {
+          const isOrderType = r.type === 'tool_order' || r.type === 'vehicle_order';
+          return (isOrderType && r.status === 'approved' && !r.received_at) || r.status === 'countered';
+        };
+        list.sort((a, b) => (needsAction(b) ? 1 : 0) - (needsAction(a) ? 1 : 0));
         box.innerHTML = '';
         list.forEach(r => {
           const st = TR_STATUS[r.status] || TR_STATUS.pending;

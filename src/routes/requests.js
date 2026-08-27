@@ -23,7 +23,9 @@ const REQUEST_TYPES = {
     label: 'Я получил новый инструмент',
     icon: 'wrench',
     fields: [
-      { name: 'name', label: 'Название', type: 'text', required: true },
+      { name: 'source', label: 'Как получен', type: 'select', options: ['Получил новый', 'Выдали инструмент'], required: true },
+      { name: 'existing_tool_id', label: 'Выберите инструмент со склада', type: 'existing_tool' },
+      { name: 'name', label: 'Название', type: 'text' },
       { name: 'category', label: 'Категория', type: 'category' },
       { name: 'brand', label: 'Бренд', type: 'text' },
       { name: 'model', label: 'Модель', type: 'text' },
@@ -44,7 +46,7 @@ const REQUEST_TYPES = {
     ]
   },
   vehicle_order: {
-    label: 'Заказать авто',
+    label: 'Заявление на автомобиль',
     icon: 'car',
     fields: [
       { name: 'purpose', label: 'Цель', type: 'select', options: ['По работе', 'В личное пользование'], required: true },
@@ -81,10 +83,11 @@ const REQUEST_TYPES = {
     ]
   },
   relocation: {
-    label: 'Заявление на смену места жительства',
+    label: 'Заявление на место жительства',
     icon: 'home',
     fields: [
-      { name: 'apartment_id', label: 'Выберите жильё', type: 'apartment', required: true },
+      { name: 'housing_type', label: 'Тип жилья', type: 'select', options: ['От компании', 'Собственное жильё'], required: true },
+      { name: 'apartment_id', label: 'Выберите жильё', type: 'apartment' },
       { name: 'desired_date', label: 'Желаемая дата переезда', type: 'date' },
       { name: 'reason', label: 'Причина', type: 'textarea' }
     ]
@@ -124,7 +127,7 @@ function buildPayload(typeDef, body) {
   for (const f of typeDef.fields) {
     let val = body[f.name];
     if (f.type === 'photo') val = cleanPhoto(val);
-    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
+    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool' || f.type === 'existing_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
     else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
@@ -145,7 +148,9 @@ function buildTitle(type, payload) {
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
-    case 'relocation': return 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
+    case 'relocation': return payload.housing_type === 'Собственное жильё'
+      ? 'Переезд в собственное жильё'
+      : 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
     case 'tool_service': return (payload.issue_type || 'Обслуживание') + ': ' + (payload.tool_name || ('id ' + payload.tool_id));
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
@@ -176,6 +181,11 @@ async function createRequest(req, res, user) {
     };
 
     if (type === 'relocation') {
+      if (payload.housing_type === 'Собственное жильё') {
+        insertRequest({ ...payload, apartment_id: '', apartment_name: '' });
+        return;
+      }
+      if (!payload.apartment_id) return sendJson(res, 400, { success: false, message: 'Выберите жильё' });
       db.get("SELECT id, name, address, status FROM apartments WHERE id = ?", [payload.apartment_id], (aErr, apt) => {
         if (aErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
         if (!apt) return sendJson(res, 400, { success: false, message: 'Выбранное жильё не найдено' });
@@ -201,6 +211,23 @@ async function createRequest(req, res, user) {
           }
         );
       });
+      return;
+    }
+
+    if (type === 'tool_add') {
+      if (payload.source === 'Выдали инструмент') {
+        if (!payload.existing_tool_id) return sendJson(res, 400, { success: false, message: 'Выберите инструмент со склада' });
+        db.get("SELECT id, name, status FROM tools WHERE id = ?", [payload.existing_tool_id], (tErr, tool) => {
+          if (tErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          if (!tool) return sendJson(res, 400, { success: false, message: 'Инструмент не найден' });
+          if (tool.status === 'written_off') return sendJson(res, 400, { success: false, message: 'Этот инструмент списан' });
+          insertRequest({ ...payload, name: tool.name });
+        });
+        return;
+      }
+      // 'Получил новый' — та же ветка, что раньше: обязательно название нового инструмента.
+      if (!payload.name) return sendJson(res, 400, { success: false, message: 'Поле «Название» обязательно' });
+      insertRequest(payload);
       return;
     }
 
@@ -556,6 +583,35 @@ function receiveRequest(req, res, user, parsedUrl) {
 // requestRow нужен, чтобы узнать заявителя (requested_by) и закрепить за ним
 // инструмент, если он сотрудник.
 function approveSideEffect(type, payload, requestRow, reviewer, cb) {
+  if (type === 'tool_add' && payload.existing_tool_id) {
+    // «Выдали инструмент» — предмет уже есть в инвентаре, просто закрепляем
+    // его за заявителем вместо создания дубликата записи.
+    const toolId = parseInt(payload.existing_tool_id, 10);
+    return db.get("SELECT id, status FROM tools WHERE id = ?", [toolId], (tErr, tool) => {
+      if (tErr) return cb({ message: 'Ошибка базы данных' });
+      if (!tool) return cb({ message: 'Инструмент не найден' });
+      if (tool.status === 'written_off') return cb({ message: 'Этот инструмент списан' });
+      db.get("SELECT id FROM employees WHERE user_id = ?", [requestRow.requested_by], (empErr, emp) => {
+        if (empErr || !emp) return cb({ message: 'Заявитель не найден среди сотрудников' });
+        db.get(
+          "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
+          [toolId, emp.id],
+          (chkErr, already) => {
+            if (chkErr) return cb({ message: 'Ошибка базы данных' });
+            if (already) return cb(null, String(toolId));
+            db.run(
+              "INSERT INTO tool_assignments (tool_id, employee_id, issued_by) VALUES (?, ?, ?)",
+              [toolId, emp.id, reviewer.username],
+              (asgErr) => {
+                if (asgErr) return cb({ message: 'Не удалось выдать инструмент' });
+                db.run("UPDATE tools SET status = 'assigned' WHERE id = ? AND status != 'written_off'", [toolId], () => cb(null, String(toolId)));
+              }
+            );
+          }
+        );
+      });
+    });
+  }
   if (type === 'tool_add') {
     const { error, values } = tools.extractToolFields(payload);
     if (error) return cb({ message: error });
@@ -585,6 +641,44 @@ function approveSideEffect(type, payload, requestRow, reviewer, cb) {
                 });
               }
             );
+          });
+        }
+      );
+    });
+    return;
+  }
+  if (type === 'relocation' && payload.housing_type === 'Собственное жильё') {
+    // Переезд в своё жильё — выселяем из компанейского (если было заселён)
+    // и отмечаем сотрудника как «живёт в своей квартире».
+    db.get("SELECT id FROM employees WHERE user_id = ?", [requestRow.requested_by], (eErr, emp) => {
+      if (eErr) return cb({ message: 'Ошибка базы данных' });
+      if (!emp) return cb(null, null);
+      db.all(
+        "SELECT id, apartment_id FROM apartment_assignments WHERE employee_id = ? AND returned_at IS NULL",
+        [emp.id],
+        (oErr, openAssignments) => {
+          if (oErr) return cb({ message: 'Ошибка базы данных' });
+          const affectedIds = [...new Set((openAssignments || []).map(a => a.apartment_id))];
+          const closeOld = (done) => {
+            if (!openAssignments || !openAssignments.length) return done();
+            let n = 0;
+            openAssignments.forEach(a => {
+              db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [a.id], () => {
+                if (++n === openAssignments.length) done();
+              });
+            });
+          };
+          closeOld(() => {
+            db.run("UPDATE employees SET own_housing = 1 WHERE id = ?", [emp.id], (uErr) => {
+              if (uErr) return cb({ message: 'Не удалось сохранить' });
+              if (!affectedIds.length) return cb(null, null);
+              let done = 0;
+              affectedIds.forEach(id => {
+                apartments.recomputeApartmentStatus(id, () => {
+                  if (++done === affectedIds.length) cb(null, null);
+                });
+              });
+            });
           });
         }
       );
@@ -622,6 +716,7 @@ function approveSideEffect(type, payload, requestRow, reviewer, cb) {
             };
 
             closeOld(() => {
+              db.run("UPDATE employees SET own_housing = 0 WHERE id = ?", [emp.id], () => {});
               db.run(
                 "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
                 [apartmentId, emp.id, reviewer.username, 'Смена места жительства (заявка)'],

@@ -14,7 +14,7 @@ function getMe(req, res, user) {
 function getMyCard(req, res, user) {
   db.get(
     `SELECT id, first_name, last_name, position, department, phone, email,
-            hire_date, status, notes, created_at
+            hire_date, status, notes, photo_url, created_at
      FROM employees WHERE user_id = ?`,
     [user.id],
     (err, row) => {
@@ -22,6 +22,26 @@ function getMyCard(req, res, user) {
       sendJson(res, 200, { success: true, card: row || null });
     }
   );
+}
+
+// Сотрудник загружает своё фото в собственную карточку (файл заранее
+// загружен через /api/media, сюда приходит готовый внутренний URL).
+async function setMyEmployeePhoto(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const rawPhoto = (body.photo_url == null ? '' : String(body.photo_url)).trim();
+    if (!/^\/uploads\/[A-Za-z0-9._-]+$/.test(rawPhoto)) {
+      return sendJson(res, 400, { success: false, message: 'Некорректный адрес фото' });
+    }
+    db.run("UPDATE employees SET photo_url = ? WHERE user_id = ?", [rawPhoto, user.id], function (err) {
+      if (err) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить фото' });
+      if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'У вас нет карточки сотрудника' });
+      logAction(user.username, 'Обновил фото своей карточки сотрудника');
+      sendJson(res, 200, { success: true, photo_url: rawPhoto });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
 }
 
 // Инструмент, закреплённый за сотрудником, привязанным к текущему аккаунту.
@@ -282,6 +302,7 @@ module.exports = async function handleCabinet(req, res, user, parsedUrl, method)
   if (pathname === '/api/cabinet/me' && method === 'GET') return getMe(req, res, user);
   if (pathname === '/api/cabinet/profile' && method === 'PUT') return updateProfile(req, res, user);
   if (pathname === '/api/cabinet/my-card' && method === 'GET') return getMyCard(req, res, user);
+  if (pathname === '/api/cabinet/employee-photo' && method === 'POST') return setMyEmployeePhoto(req, res, user);
   if (pathname === '/api/cabinet/my-tools' && method === 'GET') return getMyTools(req, res, user);
   if (pathname === '/api/cabinet/tool-photo' && method === 'POST') return setToolPhoto(req, res, user);
   if (pathname === '/api/cabinet/my-vehicles' && method === 'GET') return getMyVehicles(req, res, user);

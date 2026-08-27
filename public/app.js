@@ -739,6 +739,8 @@ function loadSectionData(hash) {
     loadWorkTimeSummary();
   } else if (hash === 'peertransfers') {
     loadPeerTransfersAdmin();
+  } else if (hash === 'taskplanner') {
+    loadTasksAdmin();
   } else if (hash === 'vacations') {
     loadVacations();
   } else if (hash === 'toolorders') {
@@ -1236,23 +1238,35 @@ async function loadPeerTransfersAdmin() {
 function renderPeerTransfersAdminTable(list) {
   const tbody = document.getElementById('peerTransfersAdminTableBody');
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Взаимодействий пока нет</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Взаимодействий пока нет</td></tr>`;
     return;
   }
-  tbody.innerHTML = list.map(t => {
+  tbody.innerHTML = '';
+  list.forEach(t => {
     const st = PEER_TRANSFER_STATUS_BADGE[t.status] || PEER_TRANSFER_STATUS_BADGE.pending;
     const dateStr = new Date(t.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `
-      <tr>
-        <td data-label="Дата">${dateStr}</td>
-        <td data-label="Тип">${t.item_type === 'tool' ? 'Инструмент' : 'Авто'}</td>
-        <td data-label="Предмет">${escapeHtml(t.item_name || '—')}</td>
-        <td data-label="От кого">${escapeHtml(t.from_name)}</td>
-        <td data-label="Кому">${escapeHtml(t.to_name)}</td>
-        <td data-label="Статус"><span class="badge ${st.badge}">${st.label}</span></td>
-        <td data-label="Причина отказа">${t.decline_reason ? escapeHtml(t.decline_reason) : '—'}</td>
-      </tr>`;
-  }).join('');
+    const typeLabel = t.item_type === 'tool' ? 'Инструмент' : 'Авто';
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => showRowDetail('Передача имущества', [
+      ['Дата', dateStr],
+      ['Тип', typeLabel],
+      ['Предмет', escapeHtml(t.item_name || '—')],
+      ['От кого', escapeHtml(t.from_name)],
+      ['Кому', escapeHtml(t.to_name)],
+      ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
+      ['Причина отказа', t.decline_reason ? escapeHtml(t.decline_reason) : '—']
+    ]));
+    tr.innerHTML = `
+      <td class="hide-mobile">${dateStr}</td>
+      <td class="mobile-hidden">${typeLabel}</td>
+      <td class="mobile-primary">${escapeHtml(t.item_name || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(t.from_name)}</td>
+      <td class="mobile-hidden">${escapeHtml(t.to_name)}</td>
+      <td>${`<span class="badge ${st.badge}">${st.label}</span>`}</td>
+      <td class="mobile-hidden">${t.decline_reason ? escapeHtml(t.decline_reason) : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 (function setupPeerTransfersAdminSearch() {
@@ -1267,6 +1281,125 @@ function renderPeerTransfersAdminTable(list) {
       (t.to_name || '').toLowerCase().includes(q)
     );
     renderPeerTransfersAdminTable(filtered);
+  });
+})();
+
+// ==== Планировщик задач сотрудников (админ) ====
+let tasksAdminCache = [];
+
+async function loadTasksAdmin() {
+  const tbody = document.getElementById('tasksAdminTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Загрузка...</td></tr>`;
+  try {
+    const res = await fetch('/api/tasks/all');
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff6b6b; padding:20px;">Нет доступа</td></tr>`; return; }
+    const d = await res.json();
+    tasksAdminCache = (d && d.tasks) || [];
+    renderTasksAdminTable(tasksAdminCache);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff6b6b; padding:20px;">Ошибка загрузки</td></tr>`;
+  }
+}
+
+function renderTasksAdminTable(list) {
+  const tbody = document.getElementById('tasksAdminTableBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5" class="empty-state" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Задач пока нет</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  const todayKey = new Date().toISOString().slice(0, 10);
+  list.forEach(t => {
+    const dateStr = new Date(t.due_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    const overdue = !t.done && t.due_date < todayKey;
+    const statusBadge = t.done
+      ? '<span class="badge badge-success">Выполнено</span>'
+      : (overdue ? '<span class="badge badge-danger">Просрочена</span>' : '<span class="badge badge-warning">Ожидает</span>');
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => showRowDetail('Задача', [
+      ['Срок', dateStr],
+      ['Сотрудник', escapeHtml(t.employee_name)],
+      ['Задача', escapeHtml(t.title)],
+      ['Заметка', t.notes ? escapeHtml(t.notes) : '—'],
+      ['Статус', statusBadge, true],
+      ['Поставил', escapeHtml(t.created_by_username || '—')]
+    ]));
+    tr.innerHTML = `
+      <td class="hide-mobile">${dateStr}</td>
+      <td class="mobile-primary"><strong>${escapeHtml(t.employee_name)}</strong></td>
+      <td class="mobile-hidden">${escapeHtml(t.title)}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${escapeHtml(t.created_by_username || '—')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+(function setupTasksAdminSearch() {
+  const input = document.getElementById('tasksAdminSearch');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { renderTasksAdminTable(tasksAdminCache); return; }
+    const filtered = tasksAdminCache.filter(t =>
+      (t.employee_name || '').toLowerCase().includes(q) ||
+      (t.title || '').toLowerCase().includes(q)
+    );
+    renderTasksAdminTable(filtered);
+  });
+})();
+
+(function setupTaskModal() {
+  const btn = document.getElementById('addTaskBtn');
+  const modal = document.getElementById('taskModalOverlay');
+  const form = document.getElementById('taskForm');
+  if (!btn || !modal || !form) return;
+
+  const closeModal = () => { modal.classList.remove('active'); form.reset(); document.getElementById('taskEmployeeId').value = ''; };
+
+  btn.addEventListener('click', async () => {
+    if (!employeesList.length) { try { await loadEmployees(); } catch (e) {} }
+    document.getElementById('taskEmployeeSearch').value = '';
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, '', '', 'selectTaskEmployee');
+    document.getElementById('taskEmployeeId').value = '';
+    document.getElementById('taskDueDate').value = new Date().toISOString().slice(0, 10);
+    modal.classList.add('active');
+  });
+  document.getElementById('closeTaskModalBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelTaskModalBtn').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  document.getElementById('taskEmployeeSearch').addEventListener('input', (e) => {
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, e.target.value, document.getElementById('taskEmployeeId').value, 'selectTaskEmployee');
+  });
+  window.selectTaskEmployee = (id) => {
+    document.getElementById('taskEmployeeId').value = id;
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, document.getElementById('taskEmployeeSearch').value, id, 'selectTaskEmployee');
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const employeeId = document.getElementById('taskEmployeeId').value;
+    if (!employeeId) { showToast('Выберите сотрудника', 'error'); return; }
+    const payload = {
+      employee_id: employeeId,
+      title: document.getElementById('taskTitle').value,
+      due_date: document.getElementById('taskDueDate').value,
+      notes: document.getElementById('taskNotes').value
+    };
+    try {
+      const res = await fetch('/api/tasks/assign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Задача поставлена', 'success');
+        closeModal();
+        loadTasksAdmin();
+      } else showToast(d.message || 'Не удалось поставить задачу', 'error');
+    } catch (err) { showToast('Ошибка сети', 'error'); }
   });
 })();
 
@@ -1376,7 +1509,9 @@ function requestDateFields(def) {
 // информации», а не отдельными колонками таблицы.
 function requestExtraFields(def) {
   if (!def) return [];
-  return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea');
+  // existing_tool — служебная ссылка на id инструмента со склада; человекочитаемое
+  // название уже попадает в поле name на сервере при создании заявления.
+  return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea' && f.type !== 'existing_tool');
 }
 
 // Шапка таблицы заявок — фиксированный набор колонок вне зависимости от
@@ -3163,6 +3298,33 @@ function setupEmployees() {
     search.addEventListener('input', (e) => renderEmployees(e.target.value));
   }
 
+  const empPhotoBtn = document.getElementById('empPhotoBtn');
+  const empPhotoClearBtn = document.getElementById('empPhotoClearBtn');
+  const empPhotoInput = document.getElementById('empPhotoInput');
+  if (empPhotoBtn && empPhotoInput) {
+    empPhotoBtn.addEventListener('click', () => empPhotoInput.click());
+    empPhotoInput.addEventListener('change', async () => {
+      const file = empPhotoInput.files[0];
+      if (!file) return;
+      empPhotoBtn.disabled = true;
+      empPhotoBtn.textContent = 'Загрузка...';
+      try {
+        const url = await uploadImageToMedia(file, 'avatars');
+        if (!url) { showToast('Не удалось загрузить фото', 'error'); return; }
+        setEmpPhotoPreview(url);
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        empPhotoBtn.disabled = false;
+        empPhotoBtn.textContent = 'Загрузить';
+        empPhotoInput.value = '';
+      }
+    });
+  }
+  if (empPhotoClearBtn) {
+    empPhotoClearBtn.addEventListener('click', () => setEmpPhotoPreview(''));
+  }
+
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -3177,7 +3339,8 @@ function setupEmployees() {
         hire_date: document.getElementById('empHireDate').value,
         status: document.getElementById('empStatus').value,
         notes: document.getElementById('empNotes').value,
-        own_housing: document.getElementById('empOwnHousing').checked
+        own_housing: document.getElementById('empOwnHousing').checked,
+        photo_url: document.getElementById('empPhotoUrl').value
       };
 
       const url = id ? `/api/crud/employees?id=${id}` : '/api/crud/employees';
@@ -3218,6 +3381,7 @@ function openEmployeeModal(emp = null) {
   document.getElementById('empStatus').value = emp ? emp.status : 'active';
   document.getElementById('empOwnHousing').checked = !!(emp && emp.own_housing);
   document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
+  setEmpPhotoPreview(emp ? (emp.photo_url || '') : '');
   renderEmpAccountPanel(emp ? emp.id : null);
   modal.classList.add('active');
 }
@@ -3837,6 +4001,20 @@ function populateCategorySelect(selectedValue = '') {
   }
   select.innerHTML = html;
   select.value = selectedValue || '';
+}
+
+function setEmpPhotoPreview(url) {
+  document.getElementById('empPhotoUrl').value = url || '';
+  const preview = document.getElementById('empPhotoPreview');
+  const clearBtn = document.getElementById('empPhotoClearBtn');
+  if (url) {
+    preview.innerHTML = `<img src="${iconVer(url)}" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    preview.innerHTML = `<i data-lucide="user" style="color:hsl(var(--text-muted));"></i>`;
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 }
 
 function setToolPhotoPreview(url) {
@@ -5195,6 +5373,13 @@ const VEHICLE_STATUS = {
 
 const VEHICLE_PLACEHOLDER_ICON = '<i data-lucide="car" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i>';
 
+// Отображаемое название авто — всегда марка + модель, а не старое поле
+// «Название» (убрано из формы, но могло остаться в старых записях).
+function vehicleDisplayName(v) {
+  if (!v) return 'Авто';
+  return [v.brand, v.model].filter(Boolean).join(' ') || v.name || 'Авто';
+}
+
 async function loadVehicles() {
   try {
     await loadVehicleExpirySettings();
@@ -5305,7 +5490,7 @@ function renderVehicles(filterQuery = '') {
     const expiry = vehicleExpiryStatus(v);
     const insuranceBadge = vehicleExpiryBadge('Страховка', expiry.insurance);
     const inspectionBadge = vehicleExpiryBadge('ТО', expiry.inspection);
-    const brandModel = [v.brand, v.model].filter(Boolean).map(escapeHtml).join(' ') || escapeHtml(v.name || '') || '—';
+    const brandModel = escapeHtml(vehicleDisplayName(v));
     const holder = v.current_holder
       ? `<strong>${escapeHtml(v.current_holder)}</strong>`
       : `<span style="color: hsl(var(--text-muted));">—</span>`;
@@ -5716,7 +5901,7 @@ window.editVehicle = (id) => {
 
 window.deleteVehicle = async (id) => {
   const vehicle = vehiclesList.find(v => v.id === id);
-  const name = vehicle ? vehicle.name : `id=${id}`;
+  const name = vehicle ? vehicleDisplayName(vehicle) : `id=${id}`;
   if (!await confirmDialog(`Удалить авто «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/vehicles?id=${id}`, { method: 'DELETE' });
@@ -5739,7 +5924,6 @@ function buildVehicleCard(vehicle) {
   const thumb = vehicle.photo_url
     ? `<img class="issue-tool-thumb" src="${vehicle.photo_url}">`
     : `<div class="issue-tool-thumb placeholder"><i data-lucide="car"></i></div>`;
-  const sub = [vehicle.brand, vehicle.model].filter(Boolean).join(' · ');
   const chips = [];
   if (vehicle.category) chips.push(escapeHtml(vehicle.category));
   if (vehicle.plate_number) chips.push('Номер: ' + escapeHtml(vehicle.plate_number));
@@ -5747,8 +5931,7 @@ function buildVehicleCard(vehicle) {
   return `
     ${thumb}
     <div class="issue-tool-meta">
-      <div class="t-name">${escapeHtml(vehicle.name)}</div>
-      ${sub ? `<div class="t-sub">${escapeHtml(sub)}</div>` : ''}
+      <div class="t-name">${escapeHtml(vehicleDisplayName(vehicle))}</div>
       <div class="t-chips">
         ${chips.map(c => `<span class="t-chip">${c}</span>`).join('')}
         <span class="badge ${st.badge}">${st.label}</span>
@@ -5878,7 +6061,7 @@ window.openVehicleDetail = async (vehicleId) => {
 
 function renderVehicleDetail(data) {
   const { vehicle, photos, history, stats } = data;
-  document.getElementById('vehicleDetailTitle').textContent = vehicle.name || 'Карточка авто';
+  document.getElementById('vehicleDetailTitle').textContent = vehicleDisplayName(vehicle) || 'Карточка авто';
   const st = VEHICLE_STATUS[vehicle.status] || VEHICLE_STATUS.available;
 
   const mainImgHtml = vehicle.photo_url
@@ -6096,12 +6279,12 @@ window.printVehicleQr = (id) => {
   const vehicle = vehiclesList.find(v => v.id === id) || {};
   const w = window.open('', '_blank', 'width=420,height=560');
   if (!w) { showToast('Разрешите всплывающие окна для печати', 'error'); return; }
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(vehicle.name || '')}</title>
+  const displayName = vehicleDisplayName(vehicle);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(displayName)}</title>
     <body style="font-family:sans-serif;text-align:center;padding:24px;">
       <img src="/api/vehicles/qr?id=${id}&_=${Date.now()}" style="width:260px;height:260px;">
-      <h2 style="margin:12px 0 4px;">${escapeHtml(vehicle.name || '')}</h2>
+      <h2 style="margin:12px 0 4px;">${escapeHtml(displayName)}</h2>
       <div style="color:#555;">${escapeHtml(vehicle.plate_number || '')}</div>
-      <div style="color:#888;font-size:13px;">${escapeHtml([vehicle.brand, vehicle.model].filter(Boolean).join(' · '))}</div>
       <script>window.onload=()=>{setTimeout(()=>window.print(),300)}<\/script>
     </body>`);
   w.document.close();
@@ -6109,7 +6292,7 @@ window.printVehicleQr = (id) => {
 
 window.saveVehicleQr = async (id) => {
   const vehicle = vehiclesList.find(v => v.id === id) || {};
-  const base = `qr-${(vehicle.plate_number || vehicle.name || 'vehicle').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+  const base = `qr-${(vehicle.plate_number || vehicleDisplayName(vehicle) || 'vehicle').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
   try {
     const res = await fetch(`/api/vehicles/qr?id=${id}&_=${Date.now()}`);
     const svgText = await res.text();

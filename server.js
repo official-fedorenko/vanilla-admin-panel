@@ -32,6 +32,7 @@ const handleNotifications = require('./src/routes/notifications');
 const handleRequests = require('./src/routes/requests');
 const handleWorklogs = require('./src/routes/worklogs');
 const handlePeerTransfers = require('./src/routes/peerTransfers');
+const handleTasks = require('./src/routes/tasks');
 const handleStandardAvatars = require('./src/routes/standardAvatars');
 const handleLogs = require('./src/routes/logs');
 const handleResetDemo = require('./src/routes/resetDemo');
@@ -190,7 +191,7 @@ const server = http.createServer(async (req, res) => {
 
   // Cabinet (own profile / мой инструмент / моё авто — needed for cabinet.html after login)
   if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
-      pathname === '/api/cabinet/my-card' ||
+      pathname === '/api/cabinet/my-card' || pathname === '/api/cabinet/employee-photo' ||
       pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
       pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo' ||
       pathname === '/api/cabinet/my-apartment' || pathname === '/api/cabinet/my-construction-sites') {
@@ -269,6 +270,11 @@ const server = http.createServer(async (req, res) => {
   // Передача инструмента/авто между сотрудниками напрямую
   if (pathname.startsWith('/api/peer-transfers')) {
     return handlePeerTransfers(req, res, user, parsedUrl, method);
+  }
+
+  // Планировщик задач сотрудников
+  if (pathname.startsWith('/api/tasks')) {
+    return handleTasks(req, res, user, parsedUrl, method);
   }
 
   // Media
