@@ -1236,23 +1236,35 @@ async function loadPeerTransfersAdmin() {
 function renderPeerTransfersAdminTable(list) {
   const tbody = document.getElementById('peerTransfersAdminTableBody');
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Взаимодействий пока нет</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7" class="empty-state" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Взаимодействий пока нет</td></tr>`;
     return;
   }
-  tbody.innerHTML = list.map(t => {
+  tbody.innerHTML = '';
+  list.forEach(t => {
     const st = PEER_TRANSFER_STATUS_BADGE[t.status] || PEER_TRANSFER_STATUS_BADGE.pending;
     const dateStr = new Date(t.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-    return `
-      <tr>
-        <td data-label="Дата">${dateStr}</td>
-        <td data-label="Тип">${t.item_type === 'tool' ? 'Инструмент' : 'Авто'}</td>
-        <td data-label="Предмет">${escapeHtml(t.item_name || '—')}</td>
-        <td data-label="От кого">${escapeHtml(t.from_name)}</td>
-        <td data-label="Кому">${escapeHtml(t.to_name)}</td>
-        <td data-label="Статус"><span class="badge ${st.badge}">${st.label}</span></td>
-        <td data-label="Причина отказа">${t.decline_reason ? escapeHtml(t.decline_reason) : '—'}</td>
-      </tr>`;
-  }).join('');
+    const typeLabel = t.item_type === 'tool' ? 'Инструмент' : 'Авто';
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => showRowDetail('Передача имущества', [
+      ['Дата', dateStr],
+      ['Тип', typeLabel],
+      ['Предмет', escapeHtml(t.item_name || '—')],
+      ['От кого', escapeHtml(t.from_name)],
+      ['Кому', escapeHtml(t.to_name)],
+      ['Статус', `<span class="badge ${st.badge}">${st.label}</span>`, true],
+      ['Причина отказа', t.decline_reason ? escapeHtml(t.decline_reason) : '—']
+    ]));
+    tr.innerHTML = `
+      <td class="hide-mobile">${dateStr}</td>
+      <td class="mobile-hidden">${typeLabel}</td>
+      <td class="mobile-primary">${escapeHtml(t.item_name || '—')}</td>
+      <td class="mobile-hidden">${escapeHtml(t.from_name)}</td>
+      <td class="mobile-hidden">${escapeHtml(t.to_name)}</td>
+      <td>${`<span class="badge ${st.badge}">${st.label}</span>`}</td>
+      <td class="mobile-hidden">${t.decline_reason ? escapeHtml(t.decline_reason) : '—'}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 (function setupPeerTransfersAdminSearch() {

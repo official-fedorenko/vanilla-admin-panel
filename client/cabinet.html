@@ -1567,16 +1567,35 @@
       }
       box.innerHTML = list.map(t => {
         const st = PEER_STATUS_LABEL[t.status] || PEER_STATUS_LABEL.pending;
+        const cancelBtn = t.status === 'pending'
+          ? `<button type="button" onclick="cancelPeerTransfer(${t.id})" style="padding:4px 10px; font-size:11px; border-radius:8px; background:rgba(255,74,110,0.10); border:1px solid rgba(255,74,110,0.32); color:var(--red); cursor:pointer; white-space:nowrap;">Отменить</button>`
+          : '';
         return `
         <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);">
           <div style="min-width:0;">
             <div style="font-size:13px;">${escapeHtml(t.item_name || '—')} → ${escapeHtml(t.to_name)}</div>
             ${t.status === 'declined' && t.decline_reason ? `<div style="font-size:11px; color:var(--text-muted);">Причина: ${escapeHtml(t.decline_reason)}</div>` : ''}
           </div>
-          <span class="asset-chip asset-chip--${st.variant}" style="flex-shrink:0;"><b>${st.label}</b></span>
+          <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+            ${cancelBtn}
+            <span class="asset-chip asset-chip--${st.variant}"><b>${st.label}</b></span>
+          </div>
         </div>`;
       }).join('');
     }
+
+    window.cancelPeerTransfer = async (id) => {
+      if (!await confirmDialog('Отменить это предложение передачи?', { okText: 'Отменить', danger: true })) return;
+      try {
+        const res = await fetch('/api/peer-transfers/cancel', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { showToast('Предложение отменено', 'success'); loadPeerTransfers(); }
+        else showToast(d.message || 'Не удалось отменить', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
 
     window.acceptPeerTransfer = async (id) => {
       try {
@@ -1754,7 +1773,10 @@
           item.innerHTML = `
             <div>
               <div class="asset-item-title">${escapeHtml(s.name)}</div>
-              ${s.address ? `<div class="asset-item-sub">${escapeHtml(s.address)}</div>` : ''}
+              ${s.address ? `<div class="asset-item-sub" style="display:flex; align-items:center; gap:5px;" title="Адрес объекта">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Адрес объекта: ${escapeHtml(s.address)}</span>
+              </div>` : ''}
             </div>
             <div class="asset-item-divider"></div>
             <div class="asset-chips">
@@ -3003,6 +3025,7 @@
           if (f.name === 'existing_tool_id') wrap.dataset.reqGroup = 'existing';
           else if (TOOL_ADD_NEW_ONLY.includes(f.name)) wrap.dataset.reqGroup = 'new';
         }
+        if (typeKey === 'relocation' && f.name === 'apartment_id') wrap.dataset.reqGroup = 'company_housing';
         box.appendChild(wrap);
         if (f.type === 'photo') wirePhotoField(f.name, fid);
         // Инвентарный номер для «Добавить инструмент» — подставляем сразу
@@ -3024,6 +3047,18 @@
         };
         sourceSel.addEventListener('change', applyToolAddVisibility);
         applyToolAddVisibility();
+      }
+
+      // «Заявление на место жительства»: поле выбора жилья от компании
+      // нужно только если тип жилья — «От компании».
+      if (typeKey === 'relocation') {
+        const housingSel = document.getElementById('reqf_housing_type');
+        const applyHousingVisibility = () => {
+          const val = housingSel.value;
+          box.querySelectorAll('[data-req-group="company_housing"]').forEach(el => { el.style.display = val === 'От компании' ? '' : 'none'; });
+        };
+        housingSel.addEventListener('change', applyHousingVisibility);
+        applyHousingVisibility();
       }
     }
 
@@ -3165,6 +3200,9 @@
         if (payload.source === 'Получил новый' && !String(payload.name || '').trim()) {
           showToast('Заполните: Название', 'error'); return;
         }
+      }
+      if (typeKey === 'relocation' && payload.housing_type === 'От компании' && !String(payload.apartment_id || '').trim()) {
+        showToast('Выберите жильё', 'error'); return;
       }
       try {
         const res = await fetch('/api/requests', {
