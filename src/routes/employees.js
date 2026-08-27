@@ -19,6 +19,14 @@ function parseId(parsedUrl) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+// Фото карточки загружается заранее через /api/media, сюда приходит уже
+// готовый внутренний путь — тот же формат, что у фото инструментов/авто.
+function parsePhotoUrl(raw) {
+  const s = (raw == null ? '' : String(raw)).trim();
+  if (!s) return null;
+  return /^\/uploads\/[A-Za-z0-9._-]+$/.test(s) ? s : undefined;
+}
+
 function canWrite(user) {
   return user && (user.role === 'Admin' || user.role === 'Superadmin');
 }
@@ -48,6 +56,9 @@ function extractEmployeeFields(body) {
     return s.length ? s.slice(0, 500) : null;
   };
 
+  const photoUrl = parsePhotoUrl(body.photo_url);
+  if (photoUrl === undefined) return { error: 'Некорректный адрес фото' };
+
   return {
     values: {
       first_name: firstName.slice(0, 120),
@@ -60,7 +71,8 @@ function extractEmployeeFields(body) {
       status,
       user_id: userId,
       notes: str(body.notes),
-      own_housing: body.own_housing ? 1 : 0
+      own_housing: body.own_housing ? 1 : 0,
+      photo_url: photoUrl
     }
   };
 }
@@ -267,10 +279,10 @@ async function handleEmployees(req, res, user, parsedUrl, method) {
 
       db.run(
         `INSERT INTO employees
-          (first_name, last_name, position, department, phone, email, hire_date, status, user_id, notes, own_housing)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (first_name, last_name, position, department, phone, email, hire_date, status, user_id, notes, own_housing, photo_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [values.first_name, values.last_name, values.position, values.department,
-         values.phone, values.email, values.hire_date, values.status, values.user_id, values.notes, values.own_housing],
+         values.phone, values.email, values.hire_date, values.status, values.user_id, values.notes, values.own_housing, values.photo_url],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка создания сотрудника' });
           logAction(user.username, `Добавлен сотрудник ${values.last_name} ${values.first_name}`);
@@ -298,10 +310,10 @@ async function handleEmployees(req, res, user, parsedUrl, method) {
       db.run(
         `UPDATE employees SET
           first_name = ?, last_name = ?, position = ?, department = ?,
-          phone = ?, email = ?, hire_date = ?, status = ?, notes = ?, own_housing = ?
+          phone = ?, email = ?, hire_date = ?, status = ?, notes = ?, own_housing = ?, photo_url = ?
          WHERE id = ?`,
         [values.first_name, values.last_name, values.position, values.department,
-         values.phone, values.email, values.hire_date, values.status, values.notes, values.own_housing, id],
+         values.phone, values.email, values.hire_date, values.status, values.notes, values.own_housing, values.photo_url, id],
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
           if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Сотрудник не найден' });

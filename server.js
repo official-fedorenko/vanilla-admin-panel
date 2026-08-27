@@ -191,7 +191,7 @@ const server = http.createServer(async (req, res) => {
 
   // Cabinet (own profile / мой инструмент / моё авто — needed for cabinet.html after login)
   if (pathname === '/api/cabinet/me' || pathname === '/api/cabinet/profile' ||
-      pathname === '/api/cabinet/my-card' ||
+      pathname === '/api/cabinet/my-card' || pathname === '/api/cabinet/employee-photo' ||
       pathname === '/api/cabinet/my-tools' || pathname === '/api/cabinet/tool-photo' ||
       pathname === '/api/cabinet/my-vehicles' || pathname === '/api/cabinet/vehicle-photo' ||
       pathname === '/api/cabinet/my-apartment' || pathname === '/api/cabinet/my-construction-sites') {

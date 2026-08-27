@@ -1593,6 +1593,20 @@
         <input type="hidden" id="employeeId">
         <div class="modal-body">
           <div id="empAccountPanel"></div>
+          <div class="form-group">
+            <label>Фото сотрудника</label>
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div id="empPhotoPreview" style="width:72px; height:72px; border-radius:50%; background:hsl(var(--bg-main)); border:1px solid hsl(var(--border-color)); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+                <i data-lucide="user" style="color:hsl(var(--text-muted));"></i>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="empPhotoBtn">Загрузить</button>
+                <button type="button" class="btn btn-secondary" id="empPhotoClearBtn" style="display:none;">Убрать</button>
+              </div>
+              <input type="file" id="empPhotoInput" accept="image/*" style="display:none;">
+              <input type="hidden" id="empPhotoUrl">
+            </div>
+          </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
             <div class="form-group">
               <label for="empFirstName">Имя</label>

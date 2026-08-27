@@ -3298,6 +3298,33 @@ function setupEmployees() {
     search.addEventListener('input', (e) => renderEmployees(e.target.value));
   }
 
+  const empPhotoBtn = document.getElementById('empPhotoBtn');
+  const empPhotoClearBtn = document.getElementById('empPhotoClearBtn');
+  const empPhotoInput = document.getElementById('empPhotoInput');
+  if (empPhotoBtn && empPhotoInput) {
+    empPhotoBtn.addEventListener('click', () => empPhotoInput.click());
+    empPhotoInput.addEventListener('change', async () => {
+      const file = empPhotoInput.files[0];
+      if (!file) return;
+      empPhotoBtn.disabled = true;
+      empPhotoBtn.textContent = 'Загрузка...';
+      try {
+        const url = await uploadImageToMedia(file, 'avatars');
+        if (!url) { showToast('Не удалось загрузить фото', 'error'); return; }
+        setEmpPhotoPreview(url);
+      } catch (e) {
+        showToast('Ошибка загрузки фото', 'error');
+      } finally {
+        empPhotoBtn.disabled = false;
+        empPhotoBtn.textContent = 'Загрузить';
+        empPhotoInput.value = '';
+      }
+    });
+  }
+  if (empPhotoClearBtn) {
+    empPhotoClearBtn.addEventListener('click', () => setEmpPhotoPreview(''));
+  }
+
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -3312,7 +3339,8 @@ function setupEmployees() {
         hire_date: document.getElementById('empHireDate').value,
         status: document.getElementById('empStatus').value,
         notes: document.getElementById('empNotes').value,
-        own_housing: document.getElementById('empOwnHousing').checked
+        own_housing: document.getElementById('empOwnHousing').checked,
+        photo_url: document.getElementById('empPhotoUrl').value
       };
 
       const url = id ? `/api/crud/employees?id=${id}` : '/api/crud/employees';
@@ -3353,6 +3381,7 @@ function openEmployeeModal(emp = null) {
   document.getElementById('empStatus').value = emp ? emp.status : 'active';
   document.getElementById('empOwnHousing').checked = !!(emp && emp.own_housing);
   document.getElementById('empNotes').value = emp ? (emp.notes || '') : '';
+  setEmpPhotoPreview(emp ? (emp.photo_url || '') : '');
   renderEmpAccountPanel(emp ? emp.id : null);
   modal.classList.add('active');
 }
@@ -3972,6 +4001,20 @@ function populateCategorySelect(selectedValue = '') {
   }
   select.innerHTML = html;
   select.value = selectedValue || '';
+}
+
+function setEmpPhotoPreview(url) {
+  document.getElementById('empPhotoUrl').value = url || '';
+  const preview = document.getElementById('empPhotoPreview');
+  const clearBtn = document.getElementById('empPhotoClearBtn');
+  if (url) {
+    preview.innerHTML = `<img src="${iconVer(url)}" style="width:100%;height:100%;object-fit:cover;">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    preview.innerHTML = `<i data-lucide="user" style="color:hsl(var(--text-muted));"></i>`;
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 }
 
 function setToolPhotoPreview(url) {

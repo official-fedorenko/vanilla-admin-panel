@@ -474,6 +474,13 @@ const MIGRATIONS = [
     up: () => {
       db.run("ALTER TABLE notifications ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE", () => {});
     }
+  },
+  {
+    version: 30,
+    description: 'Employees: фото карточки сотрудника (photo_url)',
+    up: () => {
+      db.run("ALTER TABLE employees ADD COLUMN photo_url TEXT", () => {});
+    }
   }
 ];
 

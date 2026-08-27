@@ -1392,11 +1392,18 @@
         const hire = c.hire_date ? new Date(c.hire_date).toLocaleDateString('ru-RU') : '';
 
         body.className = 'asset-item';
+        const photoInner = c.photo_url
+          ? `<img src="${c.photo_url}" class="asset-item-photo">`
+          : `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>`;
         body.innerHTML = `
           <div class="asset-item-head">
-            <div class="asset-item-photo-empty">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="22" height="22"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <div class="${c.photo_url ? '' : 'asset-item-photo-empty'}" style="position:relative;cursor:pointer;" onclick="document.getElementById('myEmployeePhotoInput').click()" title="Загрузить фото">
+              ${photoInner}
+              <div style="position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;background:var(--accent-purple, #7c5cff);display:flex;align-items:center;justify-content:center;border:2px solid var(--card-bg, #fff);">
+                <svg fill="none" stroke="#fff" viewBox="0 0 24 24" width="11" height="11"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              </div>
             </div>
+            <input type="file" id="myEmployeePhotoInput" accept="image/*" style="display:none;">
             <div style="flex:1;min-width:0;">
               <div class="asset-item-title">${escapeHtml(fio)}</div>
               ${c.position ? `<div class="asset-item-sub">${escapeHtml(c.position)}</div>` : ''}
@@ -1414,6 +1421,44 @@
             <span>${escapeHtml(c.notes)}</span>
           </div>` : ''}
         `;
+        const photoInput = document.getElementById('myEmployeePhotoInput');
+        if (photoInput) {
+          photoInput.addEventListener('change', async () => {
+            const file = photoInput.files[0];
+            if (!file) return;
+            try {
+              const prepared = await prepareUploadFile(file);
+              const upRes = await fetch('/api/media', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: [prepared], category: 'avatars' })
+              });
+              if (!upRes.ok) {
+                const e2 = await upRes.json().catch(() => ({}));
+                showToast(e2.message || 'Ошибка загрузки фото', 'error'); return;
+              }
+              const upData = await upRes.json();
+              const url = upData.urls && upData.urls[0];
+              if (!url) { showToast('Ошибка загрузки фото', 'error'); return; }
+              const linkRes = await fetch('/api/cabinet/employee-photo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photo_url: url })
+              });
+              const linkData = await linkRes.json().catch(() => ({}));
+              if (linkRes.ok) {
+                showToast('Фото сохранено', 'success');
+                await loadMyCard();
+              } else {
+                showToast(linkData.message || 'Не удалось сохранить фото', 'error');
+              }
+            } catch (e2) {
+              showToast('Ошибка при загрузке', 'error');
+            } finally {
+              photoInput.value = '';
+            }
+          });
+        }
       } catch (e) {
         body.className = '';
         body.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить карточку.');
