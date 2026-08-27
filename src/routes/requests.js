@@ -88,6 +88,16 @@ const REQUEST_TYPES = {
       { name: 'desired_date', label: 'Желаемая дата переезда', type: 'date' },
       { name: 'reason', label: 'Причина', type: 'textarea' }
     ]
+  },
+  tool_service: {
+    label: 'Заявление на замену/обслуживание электроинструмента',
+    icon: 'wrench',
+    fields: [
+      { name: 'tool_id', label: 'Выберите инструмент', type: 'assigned_tool', required: true },
+      { name: 'issue_type', label: 'Что требуется', type: 'select', options: ['Обслуживание', 'Ремонт', 'Замена'], required: true },
+      { name: 'description', label: 'Описание проблемы', type: 'textarea', required: true },
+      { name: 'photo_url', label: 'Фото проблемы', type: 'photo' }
+    ]
   }
 };
 
@@ -114,7 +124,7 @@ function buildPayload(typeDef, body) {
   for (const f of typeDef.fields) {
     let val = body[f.name];
     if (f.type === 'photo') val = cleanPhoto(val);
-    else if (f.type === 'number' || f.type === 'apartment') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
+    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
     else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
@@ -136,6 +146,7 @@ function buildTitle(type, payload) {
     case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
     case 'relocation': return 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
+    case 'tool_service': return (payload.issue_type || 'Обслуживание') + ': ' + (payload.tool_name || ('id ' + payload.tool_id));
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
 }
@@ -170,6 +181,25 @@ async function createRequest(req, res, user) {
         if (!apt) return sendJson(res, 400, { success: false, message: 'Выбранное жильё не найдено' });
         if (apt.status === 'written_off') return sendJson(res, 400, { success: false, message: 'Это жильё списано' });
         insertRequest({ ...payload, apartment_name: [apt.name, apt.address].filter(Boolean).join(', ') });
+      });
+      return;
+    }
+
+    if (type === 'tool_service') {
+      db.get("SELECT id FROM employees WHERE user_id = ?", [user.id], (eErr, emp) => {
+        if (eErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!emp) return sendJson(res, 400, { success: false, message: 'За вами не закреплено ни одного инструмента' });
+        db.get(
+          `SELECT t.id, t.name FROM tool_assignments a
+           JOIN tools t ON t.id = a.tool_id
+           WHERE a.tool_id = ? AND a.employee_id = ? AND a.returned_at IS NULL`,
+          [payload.tool_id, emp.id],
+          (tErr, tool) => {
+            if (tErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            if (!tool) return sendJson(res, 400, { success: false, message: 'Этот инструмент за вами не закреплён' });
+            insertRequest({ ...payload, tool_name: tool.name });
+          }
+        );
       });
       return;
     }
@@ -609,6 +639,20 @@ function approveSideEffect(type, payload, requestRow, reviewer, cb) {
             });
           }
         );
+      });
+    });
+    return;
+  }
+  if (type === 'tool_service') {
+    const toolId = parseInt(payload.tool_id, 10);
+    if (!Number.isInteger(toolId) || toolId <= 0) return cb({ message: 'Не указан инструмент' });
+    db.get("SELECT id, status FROM tools WHERE id = ?", [toolId], (tErr, tool) => {
+      if (tErr) return cb({ message: 'Ошибка базы данных' });
+      if (!tool) return cb({ message: 'Инструмент не найден' });
+      if (tool.status === 'written_off') return cb({ message: 'Этот инструмент списан' });
+      db.run("UPDATE tools SET status = 'repair' WHERE id = ?", [toolId], (uErr) => {
+        if (uErr) return cb({ message: 'Не удалось обновить статус инструмента' });
+        cb(null, String(toolId));
       });
     });
     return;

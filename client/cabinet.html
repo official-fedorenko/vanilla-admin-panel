@@ -2804,6 +2804,7 @@
     let toolCategories = [];
     let vehicleCategoriesCab = [];
     let apartmentsCab = [];
+    let myAssignedToolsCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -2812,11 +2813,12 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat, vcat, apts] = await Promise.all([
+        const [rt, cat, vcat, apts, myTools] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
           fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
           fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => []),
-          fetch('/api/crud/apartments?limit=1000').then(r => r.json()).catch(() => [])
+          fetch('/api/crud/apartments?limit=1000').then(r => r.json()).catch(() => []),
+          fetch('/api/cabinet/my-tools').then(r => r.json()).catch(() => ({}))
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
@@ -2825,6 +2827,7 @@
         apartmentsCab = (Array.isArray(apts) ? apts : []).filter(a =>
           a.status !== 'written_off' && !['Офис', 'Земля'].includes(a.category)
         );
+        myAssignedToolsCab = (myTools && myTools.tools) || [];
       } catch (e) { requestTypes = {}; }
 
       // Скрытый select хранит выбранный тип (для submitRequest)
@@ -2955,6 +2958,16 @@
             }))
             .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
+        } else if (f.type === 'assigned_tool') {
+          const opts = ['<option value="">Выберите инструмент</option>']
+            .concat(myAssignedToolsCab.map(t => {
+              const labelText = [t.name, t.brand, t.model].filter(Boolean).join(' ')
+                + (t.inventory_number ? ` (№ ${t.inventory_number})` : '');
+              return `<option value="${t.id}">${escapeHtmlC(labelText)}</option>`;
+            }))
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`
+            + (myAssignedToolsCab.length ? '' : '<div style="font-size:12px; color:var(--text-muted); margin-top:4px;">За вами не закреплён инструмент</div>');
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
           wrap.innerHTML = label + `<div style="display:flex; align-items:center; gap:12px;">
