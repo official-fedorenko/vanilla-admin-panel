@@ -851,11 +851,13 @@
 
             <!-- Своя ставка в час + действия (календарь / прогноз) — единый блок -->
             <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.015);">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <label for="wlRateInput" style="margin:0; font-size:12px; white-space:nowrap;">Ставка, €/ч:</label>
-                <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="flex:1; min-width:0; padding:8px 10px; font-size:13px;">
-                <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex-shrink:0;">Сохранить</button>
-                <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0;"></span>
+              <div>
+                <label for="wlRateInput" style="margin:0 0 6px; font-size:12px;">Ставка, €/ч:</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="flex:1; min-width:0; padding:8px 10px; font-size:13px;">
+                  <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex-shrink:0;">Сохранить</button>
+                  <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0;"></span>
+                </div>
               </div>
               <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
                 <button type="button" id="wlOpenCalendarBtn" class="wl-btn">Этот месяц</button>
@@ -3233,28 +3235,42 @@
       if (!entries.length) {
         body.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">В этот день записей нет.</div>';
       } else {
+        // Карточка записи — сводка (часы/объект/заметка) + кнопки «Заметка» и
+        // «Редактировать», которые открывают одну и ту же панель редактирования
+        // (объект + заметка); просто у кнопки «Заметка» подпись меняется в
+        // зависимости от того, есть ли уже заметка.
         body.innerHTML = entries.map(r => `
           <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
               <span style="font-size:14px; font-weight:700; color:var(--accent-cyan);">${fmtHours(r.hours)}</span>
-              <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id}); closeWlDayModal();" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px;">&times;</button>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                <button type="button" class="wl-btn" style="padding:5px 9px; font-size:11px;" onclick="toggleWlEntryEdit(${r.id})">${r.note ? 'Заметка' : '+ Заметка'}</button>
+                <button type="button" class="wl-btn" style="padding:5px 9px; font-size:11px;" onclick="toggleWlEntryEdit(${r.id})">Редактировать</button>
+                <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id}); closeWlDayModal();" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1;">&times;</button>
+              </div>
             </div>
-            <div class="form-group" style="margin:0;">
-              <label style="font-size:11px;">Объект</label>
-              <select id="wlEditSite_${r.id}" style="width:100%;">${siteSelectOptions(r.site_id)}</select>
+            <div style="font-size:12px; color:var(--text-secondary);">${escapeHtmlC(r.site_name || 'Объект не указан')}</div>
+            ${r.note ? `<div style="font-size:12px; color:var(--text-muted);">${escapeHtmlC(r.note)}</div>` : ''}
+            <div id="wlEntryEdit_${r.id}" style="display:none; flex-direction:column; gap:8px;">
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:11px;">Объект</label>
+                <select id="wlEditSite_${r.id}" style="width:100%;">${siteSelectOptions(r.site_id)}</select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="font-size:11px;">Заметка</label>
+                <input type="text" id="wlEditNote_${r.id}" maxlength="300" value="${escapeHtmlC(r.note || '')}" placeholder="Что делали...">
+              </div>
+              <button type="button" class="btn-save" style="padding:6px; font-size:12px;" onclick="saveWlDayEntry(${r.id})">Сохранить</button>
             </div>
-            <div class="form-group" style="margin:0;">
-              <label style="font-size:11px;">Заметка</label>
-              <input type="text" id="wlEditNote_${r.id}" maxlength="300" value="${escapeHtmlC(r.note || '')}" placeholder="Что делали...">
-            </div>
-            <button type="button" class="btn-save" style="padding:6px; font-size:12px;" onclick="saveWlDayEntry(${r.id})">Сохранить</button>
           </div>`).join('');
       }
 
-      // Быстрое добавление записи за этот день прямо из модалки.
+      // Добавление ещё одной записи (объекта) за этот день — форма скрыта
+      // по умолчанию, открывается кнопкой «Добавить объект/второй объект».
+      const addLabel = entries.length ? 'Добавить второй объект' : 'Добавить объект';
       body.innerHTML += `
-        <div style="border:1px dashed var(--border-color); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
-          <div style="font-size:12px; color:var(--text-secondary); font-weight:600;">Добавить запись за этот день</div>
+        <button type="button" class="wl-btn" style="width:100%;" onclick="toggleWlAddForm()">${addLabel}</button>
+        <div id="wlAddForm" style="display:none; border:1px dashed var(--border-color); border-radius:10px; padding:12px; margin-top:8px; flex-direction:column; gap:8px;">
           <div class="form-group" style="margin:0;">
             <label style="font-size:11px;">Часов (0–24)</label>
             <input type="number" id="wlAddHours" min="0.25" max="24" step="0.25" placeholder="8">
@@ -3275,6 +3291,17 @@
     function closeWlDayModal() {
       document.getElementById('wlDayModalOverlay').style.display = 'none';
     }
+
+    window.toggleWlEntryEdit = (id) => {
+      const el = document.getElementById(`wlEntryEdit_${id}`);
+      if (!el) return;
+      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    };
+    window.toggleWlAddForm = () => {
+      const el = document.getElementById('wlAddForm');
+      if (!el) return;
+      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+    };
 
     window.saveWlDayEntry = async (id) => {
       const note = document.getElementById(`wlEditNote_${id}`).value;
