@@ -19,7 +19,7 @@ const tools = require('./tools');
 // Реестр типов. fields.type: text | textarea | number | date | category | photo
 const REQUEST_TYPES = {
   tool_add: {
-    label: 'Добавить инструмент',
+    label: 'Я получил новый инструмент',
     icon: 'wrench',
     fields: [
       { name: 'name', label: 'Название', type: 'text', required: true },

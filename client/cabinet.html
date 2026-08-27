@@ -968,6 +968,53 @@
           </div><!-- /cbody -->
         </div>
 
+        <!-- Передачи имущества между сотрудниками (только для сотрудников) -->
+        <div class="card mobile-collapse" id="peerTransfersCard" style="display: none;">
+          <div class="card-title collapse-toggle">
+            <span style="display:flex;align-items:center;gap:10px;"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg> Передачи имущества
+              <span id="peerTransfersBadge" class="nav-badge" style="display:none; position:static; margin-left:2px;">0</span>
+            </span>
+            <span class="collapse-chev">▾</span>
+          </div>
+          <div class="cbody">
+            <div id="peerTransfersIncoming" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div id="peerTransfersOutgoingWrap" style="margin-top:14px;">
+              <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Мои отправленные предложения</div>
+              <div id="peerTransfersOutgoing" style="display:flex; flex-direction:column; gap:8px;">
+                <div style="color: var(--text-muted); font-size: 13px;">Загрузка...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка выбора сотрудника для передачи инструмента/авто -->
+        <div id="peerTransferModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(420px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div id="peerTransferModalTitle" style="font-weight:600; color:var(--text-primary); font-size:16px;">Передать</div>
+              <button type="button" id="peerTransferModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <input type="text" id="peerTransferSearch" placeholder="Поиск сотрудника по имени…" style="margin-bottom:10px;">
+              <div id="peerTransferEmployeeList" style="display:flex; flex-direction:column; gap:6px; max-height:320px; overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка причины отказа при отклонении предложенной передачи -->
+        <div id="peerTransferDeclineModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(3px); z-index:1100; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(400px, 94vw); margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Причина отказа</div>
+              <button type="button" id="peerTransferDeclineModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px;">
+              <textarea id="peerTransferDeclineReason" maxlength="300" rows="3" placeholder="Почему вы отказываетесь принять?" style="width:100%;"></textarea>
+              <button type="button" id="peerTransferDeclineSubmit" class="btn-save" style="margin-top:12px;">Отправить отказ</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Заселён (закреплённая за мной квартира, только для сотрудников) -->
         <div class="card mobile-collapse" id="myApartmentCard" style="display: none;">
           <div class="card-title collapse-toggle">
@@ -1234,6 +1281,8 @@
           loadMyTools();
           document.getElementById('myVehiclesCard').style.display = '';
           loadMyVehicles();
+          document.getElementById('peerTransfersCard').style.display = '';
+          loadPeerTransfers();
           document.getElementById('myApartmentCard').style.display = '';
           loadMyApartment();
           document.getElementById('myConstructionSiteCard').style.display = '';
@@ -1406,6 +1455,7 @@
               </div>
               <div class="asset-item-actions">
                 <button type="button" onclick="saveMyToolQr(${t.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
+                <button type="button" onclick="openPeerTransferModal('tool', ${t.id})" style="padding:6px 12px;background:rgba(0,210,255,0.10);border:1px solid rgba(0,210,255,0.3);color:var(--accent-cyan);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Передать инструмент</button>
               </div>
             </div>
             ${(t.serial_number || t.inventory_number) ? `
@@ -1456,6 +1506,174 @@
         img.onerror = () => { URL.revokeObjectURL(url); downloadBlob(URL.createObjectURL(new Blob([svgText], { type: 'image/svg+xml' })), base + '.svg'); showToast('QR сохранён (SVG)', 'success'); };
         img.src = url;
       } catch (e) { showToast('Не удалось сохранить QR', 'error'); }
+    };
+
+    // === Передачи имущества между сотрудниками ===
+    const PEER_ITEM_LABEL = { tool: 'инструмент', vehicle: 'авто' };
+    let peerTransferEmployeesCache = [];
+    let peerTransferCtx = null; // { itemType, itemId }
+    let peerTransferDeclineId = null;
+
+    async function loadPeerTransfers() {
+      try {
+        const [incRes, outRes] = await Promise.all([
+          fetch('/api/peer-transfers/incoming'),
+          fetch('/api/peer-transfers/outgoing')
+        ]);
+        const incData = incRes.ok ? await incRes.json() : { transfers: [] };
+        const outData = outRes.ok ? await outRes.json() : { transfers: [] };
+        renderPeerTransfersIncoming(incData.transfers || []);
+        renderPeerTransfersOutgoing(outData.transfers || []);
+      } catch (e) {
+        document.getElementById('peerTransfersOutgoing').innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    const PEER_STATUS_LABEL = {
+      pending: { label: 'Ожидает', variant: '' },
+      accepted: { label: 'Принято', variant: 'green' },
+      declined: { label: 'Отклонено', variant: 'red' },
+      cancelled: { label: 'Отменено', variant: 'red' }
+    };
+
+    function renderPeerTransfersIncoming(list) {
+      const box = document.getElementById('peerTransfersIncoming');
+      const badge = document.getElementById('peerTransfersBadge');
+      if (list.length) { badge.textContent = list.length; badge.style.display = ''; }
+      else { badge.style.display = 'none'; }
+
+      if (!list.length) {
+        box.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Входящих предложений нет.</div>';
+        return;
+      }
+      box.innerHTML = list.map(t => `
+        <div class="asset-item">
+          <div class="asset-item-title">${escapeHtml(t.item_name || '—')}</div>
+          <div class="asset-item-sub">От: ${escapeHtml(t.from_name)} · ${PEER_ITEM_LABEL[t.item_type]}</div>
+          <div class="asset-item-divider"></div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn-save" style="padding:8px; font-size:12px; flex:1;" onclick="acceptPeerTransfer(${t.id})">Принять</button>
+            <button type="button" style="padding:8px; font-size:12px; flex:1; background:rgba(255,74,110,0.10); border:1px solid rgba(255,74,110,0.32); color:var(--red); border-radius:8px; cursor:pointer;" onclick="openPeerTransferDecline(${t.id})">Отказаться</button>
+          </div>
+        </div>`).join('');
+    }
+
+    function renderPeerTransfersOutgoing(list) {
+      const box = document.getElementById('peerTransfersOutgoing');
+      if (!list.length) {
+        box.innerHTML = '<div style="color: var(--text-muted); font-size: 13px;">Отправленных предложений нет.</div>';
+        return;
+      }
+      box.innerHTML = list.map(t => {
+        const st = PEER_STATUS_LABEL[t.status] || PEER_STATUS_LABEL.pending;
+        return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);">
+          <div style="min-width:0;">
+            <div style="font-size:13px;">${escapeHtml(t.item_name || '—')} → ${escapeHtml(t.to_name)}</div>
+            ${t.status === 'declined' && t.decline_reason ? `<div style="font-size:11px; color:var(--text-muted);">Причина: ${escapeHtml(t.decline_reason)}</div>` : ''}
+          </div>
+          <span class="asset-chip asset-chip--${st.variant}" style="flex-shrink:0;"><b>${st.label}</b></span>
+        </div>`;
+      }).join('');
+    }
+
+    window.acceptPeerTransfer = async (id) => {
+      try {
+        const res = await fetch('/api/peer-transfers/respond', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, action: 'accept' })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Принято', 'success');
+          loadPeerTransfers();
+          loadMyTools();
+          loadMyVehicles();
+        } else showToast(d.message || 'Не удалось принять', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.openPeerTransferDecline = (id) => {
+      peerTransferDeclineId = id;
+      document.getElementById('peerTransferDeclineReason').value = '';
+      document.getElementById('peerTransferDeclineModalOverlay').style.display = 'flex';
+    };
+    function closePeerTransferDeclineModal() {
+      document.getElementById('peerTransferDeclineModalOverlay').style.display = 'none';
+      peerTransferDeclineId = null;
+    }
+
+    async function submitPeerTransferDecline() {
+      const reason = document.getElementById('peerTransferDeclineReason').value.trim();
+      if (!reason) { showToast('Укажите причину отказа', 'error'); return; }
+      if (!peerTransferDeclineId) return;
+      try {
+        const res = await fetch('/api/peer-transfers/respond', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: peerTransferDeclineId, action: 'decline', reason })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Отказ отправлен', 'success');
+          closePeerTransferDeclineModal();
+          loadPeerTransfers();
+        } else showToast(d.message || 'Не удалось отправить отказ', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    }
+
+    // Модалка выбора сотрудника — открывается кнопкой «Передать» на карточке
+    // закреплённого инструмента/авто.
+    window.openPeerTransferModal = async (itemType, itemId) => {
+      peerTransferCtx = { itemType, itemId };
+      document.getElementById('peerTransferModalTitle').textContent =
+        `Передать ${PEER_ITEM_LABEL[itemType]}`;
+      document.getElementById('peerTransferSearch').value = '';
+      document.getElementById('peerTransferEmployeeList').innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>';
+      document.getElementById('peerTransferModalOverlay').style.display = 'flex';
+      if (!peerTransferEmployeesCache.length) {
+        try {
+          const res = await fetch('/api/crud/employees?limit=1000');
+          const list = await res.json();
+          peerTransferEmployeesCache = (Array.isArray(list) ? list : [])
+            .filter(e => !currentUserData || e.account_username !== currentUserData.username);
+        } catch (_) { peerTransferEmployeesCache = []; }
+      }
+      renderPeerTransferEmployeeList('');
+    };
+
+    function renderPeerTransferEmployeeList(query) {
+      const box = document.getElementById('peerTransferEmployeeList');
+      const q = query.trim().toLowerCase();
+      const filtered = peerTransferEmployeesCache.filter(e => {
+        if (!q) return true;
+        const fio = `${e.last_name || ''} ${e.first_name || ''}`.toLowerCase();
+        return fio.includes(q) || (e.position || '').toLowerCase().includes(q);
+      });
+      if (!filtered.length) {
+        box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Никого не найдено</div>';
+        return;
+      }
+      box.innerHTML = filtered.map(e => `
+        <button type="button" onclick="submitPeerTransfer(${e.id})" style="display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:10px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px; cursor:pointer; text-align:left; color:var(--text-primary); font-family:inherit;">
+          <span style="font-size:13px; font-weight:600;">${escapeHtml([e.last_name, e.first_name].filter(Boolean).join(' ') || e.account_username || ('#' + e.id))}</span>
+          ${e.position ? `<span style="font-size:11px; color:var(--text-muted);">${escapeHtml(e.position)}</span>` : ''}
+        </button>`).join('');
+    }
+
+    window.submitPeerTransfer = async (toEmployeeId) => {
+      if (!peerTransferCtx) return;
+      try {
+        const res = await fetch('/api/peer-transfers', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_type: peerTransferCtx.itemType, item_id: peerTransferCtx.itemId, to_employee_id: toEmployeeId })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          showToast('Предложение отправлено', 'success');
+          document.getElementById('peerTransferModalOverlay').style.display = 'none';
+          loadPeerTransfers();
+        } else showToast(d.message || 'Не удалось отправить предложение', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
     };
 
     async function loadMyApartment() {
@@ -1586,6 +1804,7 @@
               </div>
               <div class="asset-item-actions">
                 <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
+                <button type="button" onclick="openPeerTransferModal('vehicle', ${v.id})" style="padding:6px 12px;background:rgba(0,210,255,0.10);border:1px solid rgba(0,210,255,0.3);color:var(--accent-cyan);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Передать авто</button>
               </div>
             </div>
             ${(v.plate_number || v.year) ? `
@@ -3504,6 +3723,24 @@
           }
         });
       });
+
+      // Модалки передачи имущества — тоже переносим в <body> и вешаем обработчики.
+      ['peerTransferModalOverlay', 'peerTransferDeclineModalOverlay'].forEach(mid => {
+        const m = document.getElementById(mid);
+        if (m && m.parentElement !== document.body) document.body.appendChild(m);
+      });
+      document.getElementById('peerTransferModalClose').onclick = () => {
+        document.getElementById('peerTransferModalOverlay').style.display = 'none';
+      };
+      document.getElementById('peerTransferModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'peerTransferModalOverlay') document.getElementById('peerTransferModalOverlay').style.display = 'none';
+      });
+      document.getElementById('peerTransferSearch').addEventListener('input', (e) => renderPeerTransferEmployeeList(e.target.value));
+      document.getElementById('peerTransferDeclineModalClose').onclick = closePeerTransferDeclineModal;
+      document.getElementById('peerTransferDeclineModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'peerTransferDeclineModalOverlay') closePeerTransferDeclineModal();
+      });
+      document.getElementById('peerTransferDeclineSubmit').onclick = submitPeerTransferDecline;
 
       // Init
       (async () => {
