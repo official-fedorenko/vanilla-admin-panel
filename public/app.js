@@ -1483,7 +1483,7 @@ async function ensureRequestTypes() {
 function requestJustification(r, types) {
   const def = types[r.type];
   const f = def && (def.fields || []).find(x => x.type === 'textarea');
-  if (!f) return { label: 'Обоснование', text: '' };
+  if (!f) return { label: 'Пояснение', text: '' };
   return { label: f.label, text: String(r.payload[f.name] ?? '').trim() };
 }
 
@@ -1562,8 +1562,8 @@ function renderRequests(list, types) {
     const st = REQ_STATUS[r.status] || REQ_STATUS.pending;
     const just = requestJustification(r, types);
     const justBtn = just.text
-      ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
-      : `<button class="req-action" disabled title="Обоснование не указано">Обоснование</button>`;
+      ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Пояснение</button>`
+      : `<button class="req-action" disabled title="Пояснение не указано">Пояснение</button>`;
     const hasExtra = requestExtraFields(types[r.type])
       .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
     const moreBtn = hasExtra
@@ -1600,7 +1600,7 @@ function renderRequests(list, types) {
         rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
       }
       const just = requestJustification(r, types);
-      if (just.text) rows.push([just.label || 'Обоснование', just.text, 'block']);
+      if (just.text) rows.push([just.label || 'Пояснение', just.text, 'block']);
       if (r.status === 'countered' && r.payload.alt_start_date) {
         rows.push(['Предложены даты', `${r.payload.alt_start_date} — ${r.payload.alt_end_date}`]);
       }
@@ -1644,7 +1644,7 @@ window.openJustification = function (id) {
   const r = requestsRenderCache.find(x => x.id === id);
   if (!r) return;
   const just = requestJustification(r, requestsTypesCacheForRender);
-  document.getElementById('justificationModalTitle').textContent = just.label || 'Обоснование';
+  document.getElementById('justificationModalTitle').textContent = just.label || 'Пояснение';
   document.getElementById('justificationModalMeta').textContent =
     `${r.type_label || r.type} · ${r.requested_by_name || '—'}`;
   document.getElementById('justificationModalText').textContent = just.text || '—';
