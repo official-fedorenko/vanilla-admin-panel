@@ -32,7 +32,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {
     console.warn('Lucide icons failed to load:', e);
   }
+
+  startSidebarClock();
 });
+
+// Текущие дата/время по Литве (Europe/Vilnius) — независимо от часового
+// пояса устройства зрителя, под логотипом в сайдбаре.
+function startSidebarClock() {
+  const el = document.getElementById('sidebarClockText');
+  if (!el) return;
+  const tick = () => {
+    const now = new Date();
+    const datePart = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const timePart = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
+    el.textContent = `${datePart}, ${timePart}`;
+  };
+  tick();
+  setInterval(tick, 30000);
+}
 
 // Toast notification helper
 function showToast(message, type = 'success') {
@@ -1556,7 +1573,7 @@ function renderRequests(list, types) {
       ? `<button class="req-action" onclick="openCounterModal(${r.id})">Другие даты</button>`
       : '';
     const decide = r.status === 'pending'
-      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Подтвердить утерю' : 'Одобрить'}</button>
          ${counterBtn}
          <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
       : r.status === 'countered'
@@ -1591,7 +1608,7 @@ function renderRequests(list, types) {
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
            ${COUNTERABLE_TYPES.includes(r.type) ? `<button class="btn btn-secondary" onclick="closeRowDetail(); openCounterModal(${r.id})">Другие даты</button>` : ''}
-           <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
+           <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Подтвердить утерю' : 'Одобрить'}</button>`
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
     });
@@ -3682,6 +3699,7 @@ const TOOL_STATUS = {
   available:   { label: 'На складе',  badge: 'badge-success' },
   assigned:    { label: 'Выдан',      badge: 'badge-warning' },
   repair:      { label: 'В ремонте',  badge: 'badge-warning' },
+  lost:        { label: 'Утерян',     badge: 'badge-danger' },
   written_off: { label: 'Списан',     badge: 'badge-danger' }
 };
 
@@ -3891,7 +3909,10 @@ function renderTools(filterQuery = '') {
   tbody.innerHTML = '';
 
   const q = filterQuery.toLowerCase();
+  const statusFilterEl = document.getElementById('toolsStatusFilter');
+  const statusFilter = statusFilterEl ? statusFilterEl.value : '';
   const filtered = toolsList.filter(t => {
+    if (statusFilter && t.status !== statusFilter) return false;
     const occupantNames = parseToolOccupants(t).map(o => o.name).join(' ');
     const hay = `${t.name} ${t.category || ''} ${t.brand || ''} ${t.model || ''} ${t.serial_number || ''} ${t.inventory_number || ''} ${occupantNames}`.toLowerCase();
     return hay.includes(q);
@@ -4514,6 +4535,8 @@ function setupTools() {
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   if (search) search.addEventListener('input', (e) => renderTools(e.target.value));
+  const statusFilter = document.getElementById('toolsStatusFilter');
+  if (statusFilter) statusFilter.addEventListener('change', () => renderTools(search ? search.value : ''));
 
   // Проверка дублей серийного/инвентарного номера в реальном времени
   const serialInput = document.getElementById('toolSerial');
@@ -4981,6 +5004,7 @@ const TOOL_STATUS_LABEL = {
   available: { label: 'На складе', badge: 'badge-success' },
   assigned:  { label: 'Выдан',     badge: 'badge-warning' },
   repair:    { label: 'В ремонте', badge: 'badge-danger' },
+  lost:      { label: 'Утерян',    badge: 'badge-danger' },
   written_off: { label: 'Списан',  badge: 'badge-danger' }
 };
 
@@ -5006,6 +5030,38 @@ window.openToolDetail = async (toolId) => {
     body.innerHTML = '<div style="text-align:center;color:hsl(var(--accent-red));padding:30px;">Ошибка сети</div>';
   }
 };
+
+// Кто и когда менял статус инструмента (вручную из админки или по одобренному
+// заявлению сотрудника — тогда показываем и того, кто заявление подал).
+async function loadToolStatusLog(toolId) {
+  const box = document.getElementById('toolStatusLogList');
+  if (!box) return;
+  try {
+    const res = await fetch(`/api/tools/status-log?tool_id=${toolId}`);
+    const rows = res.ok ? await res.json() : [];
+    if (!rows.length) {
+      box.innerHTML = '<div style="color:hsl(var(--text-muted));font-size:13px;">Изменений статуса ещё не было</div>';
+      return;
+    }
+    box.innerHTML = rows.map(r => {
+      const st = TOOL_STATUS_LABEL[r.status] || TOOL_STATUS_LABEL.available;
+      const when = r.created_at ? new Date(r.created_at.replace(' ', 'T') + 'Z').toLocaleString('ru-RU') : '';
+      const who = r.source === 'request'
+        ? `по заявлению сотрудника ${escapeHtml(r.requested_by_username || '—')}, подтвердил ${escapeHtml(r.changed_by || '—')}`
+        : `изменил ${escapeHtml(r.changed_by || '—')}`;
+      return `
+        <div style="display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid hsl(var(--border-color));">
+          <span class="badge ${st.badge}" style="flex-shrink:0;">${st.label}</span>
+          <div style="min-width:0;">
+            <div style="font-size:12.5px;">${who}</div>
+            <div style="font-size:11px; color:hsl(var(--text-muted));">${when}${r.note ? ' · ' + escapeHtml(r.note) : ''}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div style="color:hsl(var(--accent-red));font-size:13px;">Не удалось загрузить историю статуса</div>';
+  }
+}
 
 function renderToolDetail(data) {
   const { tool, photos, history, stats } = data;
@@ -5109,7 +5165,7 @@ function renderToolDetail(data) {
 
   // Кнопки действий (закрывают карточку и открывают нужную модалку)
   const btns = [];
-  if (tool.status !== 'written_off') {
+  if (tool.status !== 'written_off' && tool.status !== 'lost') {
     if (stats.is_out) btns.push(`<button class="btn btn-secondary" onclick="toolDetailAction('return', ${tool.id})"><i data-lucide="corner-down-left"></i><span>Держатели: вернуть / передать</span></button>`);
     btns.push(`<button class="btn" onclick="toolDetailAction('issue', ${tool.id})"><i data-lucide="hand-helping"></i><span>Выдать</span></button>`);
   }
@@ -5157,8 +5213,12 @@ function renderToolDetail(data) {
 
     <h4 style="margin:22px 0 12px;font-size:14px;">История закреплений</h4>
     <div id="toolHistoryList" style="overflow-y:auto;">${timeline}</div>
+
+    <h4 style="margin:22px 0 12px;font-size:14px;">История статуса</h4>
+    <div id="toolStatusLogList" style="overflow-y:auto;"><div style="color:hsl(var(--text-muted));font-size:13px;">Загрузка...</div></div>
   `;
   if (typeof lucide !== 'undefined') lucide.createIcons();
+  loadToolStatusLog(tool.id);
 
   // Загрузка нового фото в галерею (первое станет аватаром автоматически)
   const galInput = document.getElementById('toolGalleryInput');

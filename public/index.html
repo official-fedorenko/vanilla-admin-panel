@@ -23,7 +23,11 @@
           <small>Elektros instaliacija</small>
         </span>
       </a>
-      
+      <div id="sidebarClock" class="sidebar-clock">
+        <i data-lucide="clock" style="width: 13px; height: 13px; flex-shrink: 0;"></i>
+        <span id="sidebarClockText">—</span>
+      </div>
+
       <ul class="nav-list">
         <li class="nav-item active" data-section="employees">
           <a href="#employees" title="Сотрудники">
@@ -238,6 +242,14 @@
             <div class="table-search">
               <input type="text" id="toolsSearch" class="form-control" placeholder="Поиск по названию, категории, серийнику, держателю...">
             </div>
+            <select id="toolsStatusFilter" class="form-control" style="max-width:180px;">
+              <option value="">Все статусы</option>
+              <option value="available">На складе</option>
+              <option value="assigned">Выдан</option>
+              <option value="repair">В ремонте</option>
+              <option value="lost">Утерян</option>
+              <option value="written_off">Списан</option>
+            </select>
           </div>
           <div class="table-scroll">
             <table class="data-table cards-mobile">
@@ -1702,6 +1714,7 @@
                 <option value="available">На складе</option>
                 <option value="assigned">Выдан</option>
                 <option value="repair">В ремонте</option>
+                <option value="lost">Утерян</option>
                 <option value="written_off">Списан</option>
               </select>
             </div>

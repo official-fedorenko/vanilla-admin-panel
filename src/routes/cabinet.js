@@ -181,15 +181,221 @@ function getMyApartment(req, res, user) {
 // к текущему аккаунту (можно работать на нескольких объектах одновременно).
 function getMyConstructionSites(req, res, user) {
   const sql = `
-    SELECT s.id, s.name, s.category, s.address, s.customer, s.status, a.issued_at
+    SELECT s.id, s.name, s.category, s.address, s.customer, s.status, a.issued_at,
+           f.id AS foreman_id, f.first_name AS foreman_first_name, f.last_name AS foreman_last_name
     FROM employees e
     JOIN construction_site_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
     JOIN construction_sites s ON s.id = a.site_id
+    LEFT JOIN employees f ON f.id = s.foreman_id
     WHERE e.user_id = ?
     ORDER BY a.issued_at DESC`;
   db.all(sql, [user.id], (err, sites) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    sendJson(res, 200, { success: true, sites: sites || [] });
+    const withForeman = (sites || []).map(s => ({
+      ...s,
+      foreman_name: s.foreman_id ? [s.foreman_last_name, s.foreman_first_name].filter(Boolean).join(' ') : null
+    }));
+    sendJson(res, 200, { success: true, sites: withForeman });
+  });
+}
+
+// Коллеги, направленные на тот же объект, что и текущий пользователь —
+// для быстрого перехода в чат с ними. Возвращает только тех, у кого есть
+// личный аккаунт (иначе не с кем открыть переписку).
+function getSiteColleagues(req, res, user, parsedUrl) {
+  const siteId = parseInt(parsedUrl.searchParams.get('site_id'), 10);
+  if (!(siteId > 0)) return sendJson(res, 400, { success: false, message: 'Не указан объект' });
+
+  // Убеждаемся, что сам пользователь сейчас направлен на этот объект —
+  // иначе список коллег по чужому объекту утекал бы кому угодно. Заодно
+  // узнаём его employee.id и является ли он бригадиром объекта (нужно
+  // фронту, чтобы показать кнопку «Бригады» только бригадиру).
+  const checkSql = `
+    SELECT e.id AS my_employee_id, s.foreman_id
+    FROM construction_site_assignments a
+    JOIN employees e ON e.id = a.employee_id
+    JOIN construction_sites s ON s.id = a.site_id
+    WHERE a.site_id = ? AND a.returned_at IS NULL AND e.user_id = ?`;
+  db.get(checkSql, [siteId, user.id], (err, me) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!me) return sendJson(res, 403, { success: false, message: 'Вы сейчас не направлены на этот объект' });
+    const isForeman = !!(me.foreman_id && me.foreman_id === me.my_employee_id);
+
+    const sql = `
+      SELECT e.id AS employee_id, e.user_id, e.first_name, e.last_name, e.position,
+             CASE WHEN s.foreman_id = e.id THEN 1 ELSE 0 END AS is_foreman
+      FROM construction_site_assignments a
+      JOIN employees e ON e.id = a.employee_id
+      JOIN construction_sites s ON s.id = a.site_id
+      WHERE a.site_id = ? AND a.returned_at IS NULL AND e.user_id IS NOT NULL AND e.user_id != ?
+      ORDER BY is_foreman DESC, e.last_name COLLATE NOCASE, e.first_name COLLATE NOCASE`;
+    db.all(sql, [siteId, user.id], (e2, rows) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      const colleagues = (rows || []).map(r => ({
+        employee_id: r.employee_id,
+        user_id: r.user_id,
+        name: [r.last_name, r.first_name].filter(Boolean).join(' ') || '—',
+        position: r.position || '',
+        is_foreman: !!r.is_foreman
+      }));
+      sendJson(res, 200, { success: true, colleagues, is_foreman: isForeman, my_employee_id: me.my_employee_id });
+    });
+  });
+}
+
+// ================= Бригады объекта (только бригадир) =================
+
+function requireForeman(siteId, user, cb) {
+  db.get("SELECT id FROM employees WHERE id = (SELECT foreman_id FROM construction_sites WHERE id = ?) AND user_id = ?",
+    [siteId, user.id], (err, row) => cb(err, !!row));
+}
+
+function listSiteCrews(req, res, user, parsedUrl) {
+  const siteId = parseInt(parsedUrl.searchParams.get('site_id'), 10);
+  if (!(siteId > 0)) return sendJson(res, 400, { success: false, message: 'Не указан объект' });
+  // Смотреть бригады может любой, кто сейчас направлен на объект.
+  const checkSql = `
+    SELECT 1 FROM construction_site_assignments a
+    JOIN employees e ON e.id = a.employee_id
+    WHERE a.site_id = ? AND a.returned_at IS NULL AND e.user_id = ?`;
+  db.get(checkSql, [siteId, user.id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 403, { success: false, message: 'Вы сейчас не направлены на этот объект' });
+
+    db.all("SELECT id, name FROM site_crews WHERE site_id = ? ORDER BY id ASC", [siteId], (e2, crews) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!crews || !crews.length) return sendJson(res, 200, { success: true, crews: [] });
+      const crewIds = crews.map(c => c.id);
+      const ph = crewIds.map(() => '?').join(',');
+      db.all(
+        `SELECT m.crew_id, e.id AS employee_id, e.first_name, e.last_name
+         FROM site_crew_members m JOIN employees e ON e.id = m.employee_id
+         WHERE m.crew_id IN (${ph}) ORDER BY e.last_name COLLATE NOCASE, e.first_name COLLATE NOCASE`,
+        crewIds,
+        (e3, members) => {
+          if (e3) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          const empIds = [...new Set((members || []).map(m => m.employee_id))];
+          // Электроинструмент, сейчас закреплённый за каждым членом бригады —
+          // чтобы бригадир видел, чей инструмент собран у бригады и на ком он числится.
+          const attachTools = (toolsByEmp) => {
+            const byCrew = {};
+            (members || []).forEach(m => {
+              (byCrew[m.crew_id] = byCrew[m.crew_id] || []).push({
+                employee_id: m.employee_id,
+                name: [m.last_name, m.first_name].filter(Boolean).join(' ') || '—',
+                tools: toolsByEmp[m.employee_id] || []
+              });
+            });
+            sendJson(res, 200, { success: true, crews: crews.map(c => ({ ...c, members: byCrew[c.id] || [] })) });
+          };
+          if (!empIds.length) return attachTools({});
+          const ph2 = empIds.map(() => '?').join(',');
+          db.all(
+            `SELECT a.employee_id, t.name, t.brand, t.model
+             FROM tool_assignments a JOIN tools t ON t.id = a.tool_id
+             WHERE a.employee_id IN (${ph2}) AND a.returned_at IS NULL`,
+            empIds,
+            (e4, toolRows) => {
+              if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+              const toolsByEmp = {};
+              (toolRows || []).forEach(t => {
+                const label = [t.brand, t.model].filter(Boolean).join(' ') || t.name;
+                (toolsByEmp[t.employee_id] = toolsByEmp[t.employee_id] || []).push(label);
+              });
+              attachTools(toolsByEmp);
+            }
+          );
+        }
+      );
+    });
+  });
+}
+
+async function createSiteCrew(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const siteId = parseInt(body.site_id, 10);
+    const name = (body.name || '').trim().slice(0, 100);
+    if (!(siteId > 0)) return sendJson(res, 400, { success: false, message: 'Не указан объект' });
+    if (!name) return sendJson(res, 400, { success: false, message: 'Укажите название бригады' });
+    requireForeman(siteId, user, (err, ok) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!ok) return sendJson(res, 403, { success: false, message: 'Бригады формирует только бригадир объекта' });
+      db.run("INSERT INTO site_crews (site_id, name, created_by) VALUES (?, ?, ?)", [siteId, name, user.id], function (insErr) {
+        if (insErr) return sendJson(res, 500, { success: false, message: 'Не удалось создать бригаду' });
+        logAction(user.username, `Создал бригаду «${name}» на объекте id=${siteId}`);
+        sendJson(res, 201, { success: true, id: this.lastID });
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
+}
+
+function deleteSiteCrew(req, res, user, parsedUrl) {
+  const id = parseInt(parsedUrl.searchParams.get('id'), 10);
+  if (!(id > 0)) return sendJson(res, 400, { success: false, message: 'Не указана бригада' });
+  db.get("SELECT site_id, name FROM site_crews WHERE id = ?", [id], (err, crew) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!crew) return sendJson(res, 404, { success: false, message: 'Бригада не найдена' });
+    requireForeman(crew.site_id, user, (e2, ok) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!ok) return sendJson(res, 403, { success: false, message: 'Бригады управляет только бригадир объекта' });
+      db.run("DELETE FROM site_crews WHERE id = ?", [id], (dErr) => {
+        if (dErr) return sendJson(res, 500, { success: false, message: 'Не удалось удалить бригаду' });
+        logAction(user.username, `Удалил бригаду «${crew.name}»`);
+        sendJson(res, 200, { success: true });
+      });
+    });
+  });
+}
+
+async function addSiteCrewMember(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const crewId = parseInt(body.crew_id, 10);
+    const employeeId = parseInt(body.employee_id, 10);
+    if (!(crewId > 0) || !(employeeId > 0)) return sendJson(res, 400, { success: false, message: 'Некорректные данные' });
+    db.get("SELECT site_id FROM site_crews WHERE id = ?", [crewId], (err, crew) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!crew) return sendJson(res, 404, { success: false, message: 'Бригада не найдена' });
+      requireForeman(crew.site_id, user, (e2, ok) => {
+        if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!ok) return sendJson(res, 403, { success: false, message: 'Бригады управляет только бригадир объекта' });
+        // Сотрудник должен реально быть направлен на этот же объект.
+        const memberCheckSql = `
+          SELECT 1 FROM construction_site_assignments
+          WHERE site_id = ? AND employee_id = ? AND returned_at IS NULL`;
+        db.get(memberCheckSql, [crew.site_id, employeeId], (e3, onSite) => {
+          if (e3) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          if (!onSite) return sendJson(res, 400, { success: false, message: 'Сотрудник не направлен на этот объект' });
+          db.run("INSERT OR IGNORE INTO site_crew_members (crew_id, employee_id) VALUES (?, ?)", [crewId, employeeId], (iErr) => {
+            if (iErr) return sendJson(res, 500, { success: false, message: 'Не удалось добавить в бригаду' });
+            sendJson(res, 200, { success: true });
+          });
+        });
+      });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
+  }
+}
+
+function removeSiteCrewMember(req, res, user, parsedUrl) {
+  const crewId = parseInt(parsedUrl.searchParams.get('crew_id'), 10);
+  const employeeId = parseInt(parsedUrl.searchParams.get('employee_id'), 10);
+  if (!(crewId > 0) || !(employeeId > 0)) return sendJson(res, 400, { success: false, message: 'Некорректные данные' });
+  db.get("SELECT site_id FROM site_crews WHERE id = ?", [crewId], (err, crew) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!crew) return sendJson(res, 404, { success: false, message: 'Бригада не найдена' });
+    requireForeman(crew.site_id, user, (e2, ok) => {
+      if (e2) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!ok) return sendJson(res, 403, { success: false, message: 'Бригады управляет только бригадир объекта' });
+      db.run("DELETE FROM site_crew_members WHERE crew_id = ? AND employee_id = ?", [crewId, employeeId], (dErr) => {
+        if (dErr) return sendJson(res, 500, { success: false, message: 'Не удалось убрать из бригады' });
+        sendJson(res, 200, { success: true });
+      });
+    });
   });
 }
 
@@ -308,6 +514,12 @@ module.exports = async function handleCabinet(req, res, user, parsedUrl, method)
   if (pathname === '/api/cabinet/my-vehicles' && method === 'GET') return getMyVehicles(req, res, user);
   if (pathname === '/api/cabinet/my-apartment' && method === 'GET') return getMyApartment(req, res, user);
   if (pathname === '/api/cabinet/my-construction-sites' && method === 'GET') return getMyConstructionSites(req, res, user);
+  if (pathname === '/api/cabinet/site-colleagues' && method === 'GET') return getSiteColleagues(req, res, user, parsedUrl);
+  if (pathname === '/api/cabinet/site-crews' && method === 'GET') return listSiteCrews(req, res, user, parsedUrl);
+  if (pathname === '/api/cabinet/site-crews' && method === 'POST') return createSiteCrew(req, res, user);
+  if (pathname === '/api/cabinet/site-crews' && method === 'DELETE') return deleteSiteCrew(req, res, user, parsedUrl);
+  if (pathname === '/api/cabinet/site-crews/members' && method === 'POST') return addSiteCrewMember(req, res, user);
+  if (pathname === '/api/cabinet/site-crews/members' && method === 'DELETE') return removeSiteCrewMember(req, res, user, parsedUrl);
   if (pathname === '/api/cabinet/vehicle-photo' && method === 'POST') return setVehiclePhoto(req, res, user);
 
   return sendJson(res, 404, { success: false, message: 'API endpoint не найден' });

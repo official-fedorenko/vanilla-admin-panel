@@ -716,6 +716,10 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             <span id="heroEmail">...</span>
           </div>
+          <div class="meta-item">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="heroClock">—</span>
+          </div>
           <span class="badge-role" id="heroRole">User</span>
         </div>
       </div>
@@ -872,13 +876,13 @@
           </div>
           <div class="cbody">
             <form id="workLogForm" style="display:flex; flex-direction:column; gap:14px;">
-              <div class="form-group" style="margin:0;">
+              <div class="form-group" style="margin:0; min-width:0;">
                 <label for="wlDate">Дата</label>
-                <input type="date" id="wlDate" required>
+                <input type="date" id="wlDate" required style="width:100%; max-width:100%; min-width:0; box-sizing:border-box;">
               </div>
-              <div class="form-group" style="margin:0;">
+              <div class="form-group" style="margin:0; min-width:0;">
                 <label for="wlHours">Часов (0–24)</label>
-                <input type="number" id="wlHours" min="0.25" max="24" step="0.25" placeholder="8" required>
+                <input type="number" id="wlHours" min="0.25" max="24" step="0.25" placeholder="8" required style="width:100%; max-width:100%; min-width:0; box-sizing:border-box;">
               </div>
               <button type="submit" class="btn-save" style="margin-top:2px;">Добавить запись</button>
             </form>
@@ -896,7 +900,7 @@
               </div>
               <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
                 <button type="button" id="wlOpenCalendarBtn" class="wl-btn">Этот месяц</button>
-                <button type="button" id="wlOpenForecastBtn" class="wl-btn wl-btn--accent">Прогноз на месяц</button>
+                <button type="button" id="wlOpenForecastBtn" class="wl-btn">Прогноз на месяц</button>
               </div>
             </div>
             <div style="margin-top:10px; font-size:13px;">
@@ -1046,6 +1050,39 @@
             <div style="padding:16px 20px;">
               <textarea id="peerTransferDeclineReason" maxlength="300" rows="3" placeholder="Почему вы отказываетесь принять?" style="width:100%;"></textarea>
               <button type="button" id="peerTransferDeclineSubmit" class="btn-save" style="margin-top:12px;">Отправить отказ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка «Коллеги по цеху» — сотрудники того же объекта, клик открывает чат -->
+        <div id="siteColleaguesModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(420px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div id="siteColleaguesModalTitle" style="font-weight:600; color:var(--text-primary); font-size:16px;">Коллеги по цеху</div>
+              <button type="button" id="siteColleaguesModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <div id="siteColleaguesForemanBtnWrap" style="display:none; margin-bottom:12px;">
+                <button type="button" class="btn btn-secondary" style="width:100%;" onclick="openSiteCrewsModal()">Бригады</button>
+              </div>
+              <div id="siteColleaguesList" style="display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка «Бригады» — доступна только бригадиру объекта -->
+        <div id="siteCrewsModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); backdrop-filter:blur(3px); z-index:1100; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Бригады объекта</div>
+              <button type="button" id="siteCrewsModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <div style="display:flex; gap:8px; margin-bottom:14px;">
+                <input type="text" id="newCrewName" placeholder="Название бригады…" maxlength="100" style="flex:1; min-width:0;">
+                <button type="button" class="btn-save" style="flex-shrink:0;" onclick="createSiteCrew()">+ Бригада</button>
+              </div>
+              <div id="siteCrewsList" style="display:flex; flex-direction:column; gap:14px;"></div>
             </div>
           </div>
         </div>
@@ -1308,6 +1345,7 @@
         const data = await res.json();
         currentUserData = data.user;
         populateUI(data.user);
+        startHeroClock();
         // Карточку сотрудника и инструмент показываем только сотрудникам
         if (data.user.account_type === 'employee') {
           document.getElementById('myEmployeeCard').style.display = '';
@@ -2040,11 +2078,15 @@
               <span class="asset-chip asset-chip--${SITE_STATUS_VARIANT[s.status] || ''}"><b>${escapeHtml(statusLabel)}</b></span>
               ${assetChip('', s.category, 'cyan')}
               ${assetChip('Заказчик', s.customer)}
+              ${assetChip('Бригадир', s.foreman_name)}
             </div>
             ${issued ? `<div class="asset-item-footer">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Направлен ${issued}
             </div>` : ''}
+            <div style="margin-top:10px;">
+              <button type="button" class="btn btn-secondary" style="font-size:12px; padding:7px 12px;" onclick="openSiteColleaguesModal(${s.id}, '${escapeHtml(s.name).replace(/'/g, "\\'")}')">Коллеги по цеху</button>
+            </div>
           `;
           list.appendChild(item);
         });
@@ -2052,6 +2094,156 @@
         list.innerHTML = assetEmpty('12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'Не удалось загрузить.');
       }
     }
+
+    // --- «Коллеги по цеху»: список сотрудников на том же объекте, клик — в чат ---
+    let siteColleaguesCurrentSiteId = null;
+
+    window.openSiteColleaguesModal = async function (siteId, siteName) {
+      siteColleaguesCurrentSiteId = siteId;
+      document.getElementById('siteColleaguesModalTitle').textContent = `Коллеги по цеху — ${siteName}`;
+      document.getElementById('siteColleaguesForemanBtnWrap').style.display = 'none';
+      const list = document.getElementById('siteColleaguesList');
+      list.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Загрузка...</div>';
+      document.getElementById('siteColleaguesModalOverlay').style.display = 'flex';
+      try {
+        const res = await fetch(`/api/cabinet/site-colleagues?site_id=${siteId}`);
+        const data = res.ok ? await res.json() : { colleagues: [], is_foreman: false };
+        if (data.is_foreman) document.getElementById('siteColleaguesForemanBtnWrap').style.display = '';
+        const colleagues = data.colleagues || [];
+        if (!colleagues.length) {
+          list.innerHTML = '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:16px 0;">На этом объекте больше никого нет.</div>';
+          return;
+        }
+        list.innerHTML = colleagues.map(c => `
+          <div onclick="location.href='/messages.html?with=${c.user_id}'" style="display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor='var(--accent-purple)'" onmouseout="this.style.borderColor='var(--border-color)'">
+            <div style="width:34px; height:34px; border-radius:50%; background:var(--accent-purple, #7c5cff); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0;">${escapeHtml((c.name || '?').charAt(0).toUpperCase())}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:6px;">
+                ${escapeHtml(c.name)}
+                ${c.is_foreman ? '<span class="asset-chip asset-chip--amber" style="padding:1px 7px; font-size:10px;">Бригадир</span>' : ''}
+              </div>
+              ${c.position ? `<div style="font-size:12px; color:var(--text-muted);">${escapeHtml(c.position)}</div>` : ''}
+            </div>
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="16" height="16" style="flex-shrink:0; color:var(--text-muted);"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = '<div style="color:var(--accent-red); font-size:13px;">Не удалось загрузить список.</div>';
+      }
+    };
+
+    // --- «Бригады» (только бригадир объекта) ---
+    async function loadSiteCrews() {
+      const box = document.getElementById('siteCrewsList');
+      box.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">Загрузка...</div>';
+      try {
+        const [crewsRes, colleaguesRes] = await Promise.all([
+          fetch(`/api/cabinet/site-crews?site_id=${siteColleaguesCurrentSiteId}`),
+          fetch(`/api/cabinet/site-colleagues?site_id=${siteColleaguesCurrentSiteId}`)
+        ]);
+        const crewsData = crewsRes.ok ? await crewsRes.json() : { crews: [] };
+        const colleaguesData = colleaguesRes.ok ? await colleaguesRes.json() : { colleagues: [], my_employee_id: null };
+        const crews = crewsData.crews || [];
+        // Бригадир тоже может быть добавлен в бригаду — включаем себя в пул выбора.
+        const allPeople = colleaguesData.colleagues.slice();
+        if (colleaguesData.my_employee_id) {
+          allPeople.push({ employee_id: colleaguesData.my_employee_id, name: 'Я (бригадир)' });
+        }
+        if (!crews.length) {
+          box.innerHTML = '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:12px 0;">Бригад пока нет — создайте первую выше.</div>';
+          return;
+        }
+        box.innerHTML = crews.map(crew => {
+          const memberIds = new Set(crew.members.map(m => m.employee_id));
+          const available = allPeople.filter(p => !memberIds.has(p.employee_id));
+          const toolCount = crew.members.reduce((sum, m) => sum + (m.tools ? m.tools.length : 0), 0);
+          return `
+          <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div>
+                <div style="font-weight:600; font-size:13.5px;">${escapeHtml(crew.name)}</div>
+                <div style="font-size:11px; color:var(--text-muted);">${crew.members.length} чел. · ${toolCount} ед. инструмента на бригаде</div>
+              </div>
+              <button type="button" onclick="deleteSiteCrew(${crew.id})" style="background:none; border:none; color:var(--accent-red); cursor:pointer; font-size:12px;">Удалить</button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:${available.length ? '10px' : '0'};">
+              ${crew.members.length
+                ? crew.members.map(m => `
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; background:rgba(255,255,255,0.03); border-radius:8px;">
+                    <div style="min-width:0;">
+                      <div style="font-size:12.5px; font-weight:600;">${escapeHtml(m.name)}</div>
+                      <div style="font-size:11px; color:var(--text-muted);">${m.tools && m.tools.length ? '🔧 ' + m.tools.map(escapeHtml).join(', ') : 'Без закреплённого инструмента'}</div>
+                    </div>
+                    <b style="cursor:pointer; flex-shrink:0; color:var(--text-muted);" onclick="removeSiteCrewMember(${crew.id}, ${m.employee_id})" title="Убрать из бригады">✕</b>
+                  </div>`).join('')
+                : '<span style="color:var(--text-muted); font-size:12px;">Пока никого.</span>'}
+            </div>
+            ${available.length ? `
+              <select onchange="if(this.value) addSiteCrewMember(${crew.id}, parseInt(this.value,10)); this.value='';" style="width:100%; font-size:12px; padding:6px 8px;">
+                <option value="">+ Добавить в бригаду…</option>
+                ${available.map(p => `<option value="${p.employee_id}">${escapeHtml(p.name)}</option>`).join('')}
+              </select>` : ''}
+          </div>`;
+        }).join('');
+      } catch (e) {
+        box.innerHTML = '<div style="color:var(--accent-red); font-size:13px;">Не удалось загрузить бригады.</div>';
+      }
+    }
+
+    window.openSiteCrewsModal = function () {
+      document.getElementById('newCrewName').value = '';
+      document.getElementById('siteCrewsModalOverlay').style.display = 'flex';
+      loadSiteCrews();
+    };
+
+    window.createSiteCrew = async function () {
+      const name = document.getElementById('newCrewName').value.trim();
+      if (!name) return;
+      try {
+        const res = await fetch('/api/cabinet/site-crews', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ site_id: siteColleaguesCurrentSiteId, name })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          document.getElementById('newCrewName').value = '';
+          showToast('Бригада создана', 'success');
+          loadSiteCrews();
+        } else {
+          showToast(data.message || 'Не удалось создать бригаду', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
+      }
+    };
+
+    window.deleteSiteCrew = async function (id) {
+      if (!await confirmDialog('Удалить бригаду?', { okText: 'Удалить', danger: true })) return;
+      try {
+        const res = await fetch(`/api/cabinet/site-crews?id=${id}`, { method: 'DELETE' });
+        if (res.ok) { showToast('Бригада удалена', 'success'); loadSiteCrews(); }
+        else { const d = await res.json().catch(() => ({})); showToast(d.message || 'Не удалось удалить', 'error'); }
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.addSiteCrewMember = async function (crewId, employeeId) {
+      try {
+        const res = await fetch('/api/cabinet/site-crews/members', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ crew_id: crewId, employee_id: employeeId })
+        });
+        if (res.ok) loadSiteCrews();
+        else { const d = await res.json().catch(() => ({})); showToast(d.message || 'Не удалось добавить', 'error'); }
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    };
+
+    window.removeSiteCrewMember = async function (crewId, employeeId) {
+      try {
+        const res = await fetch(`/api/cabinet/site-crews/members?crew_id=${crewId}&employee_id=${employeeId}`, { method: 'DELETE' });
+        if (res.ok) loadSiteCrews();
+        else { const d = await res.json().catch(() => ({})); showToast(d.message || 'Не удалось убрать', 'error'); }
+      } catch (e) { showToast('Ошибка сети', 'error'); }
+    };
 
     async function loadMyVehicles() {
       const list = document.getElementById('myVehiclesList');
@@ -2206,6 +2398,20 @@
         if (data.unread > 0) { badge.textContent = data.unread; badge.style.display = 'inline-flex'; }
         else badge.style.display = 'none';
       } catch (e) {}
+    }
+
+    // Текущие дата/время по Литве (Europe/Vilnius), не по поясу устройства.
+    function startHeroClock() {
+      const el = document.getElementById('heroClock');
+      if (!el) return;
+      const tick = () => {
+        const now = new Date();
+        const datePart = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timePart = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
+        el.textContent = `${datePart}, ${timePart}`;
+      };
+      tick();
+      setInterval(tick, 30000);
     }
 
     function populateUI(user) {
@@ -4151,6 +4357,24 @@
         if (e.target.id === 'peerTransferDeclineModalOverlay') closePeerTransferDeclineModal();
       });
       document.getElementById('peerTransferDeclineSubmit').onclick = submitPeerTransferDecline;
+
+      // Модалки «Коллеги по цеху» / «Бригады».
+      ['siteColleaguesModalOverlay', 'siteCrewsModalOverlay'].forEach(mid => {
+        const m = document.getElementById(mid);
+        if (m && m.parentElement !== document.body) document.body.appendChild(m);
+      });
+      document.getElementById('siteColleaguesModalClose').onclick = () => {
+        document.getElementById('siteColleaguesModalOverlay').style.display = 'none';
+      };
+      document.getElementById('siteColleaguesModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'siteColleaguesModalOverlay') document.getElementById('siteColleaguesModalOverlay').style.display = 'none';
+      });
+      document.getElementById('siteCrewsModalClose').onclick = () => {
+        document.getElementById('siteCrewsModalOverlay').style.display = 'none';
+      };
+      document.getElementById('siteCrewsModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'siteCrewsModalOverlay') document.getElementById('siteCrewsModalOverlay').style.display = 'none';
+      });
 
       // Init
       (async () => {
