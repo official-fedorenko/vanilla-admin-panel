@@ -6,9 +6,11 @@ const { db } = require('../../db');
  *
  *  Пользователь (свои записи):
  *    POST   /api/worklogs           — добавить запись { work_date, hours, note, site_id }
- *    GET    /api/worklogs/mine       — свои записи + итог
+ *    GET    /api/worklogs/mine       — свои записи + итог + ставка/заработано
  *    PUT    /api/worklogs?id=        — изменить заметку/объект своей записи { note, site_id }
  *    DELETE /api/worklogs?id=        — удалить свою запись
+ *    GET    /api/worklogs/rate       — своя ставка в час (EUR)
+ *    PUT    /api/worklogs/rate       — установить свою ставку { rate }
  *
  *  Админ (по всем):
  *    GET    /api/worklogs/all[?user_id=&from=&to=] — записи всех (или одного)
@@ -45,6 +47,25 @@ function parseSiteId(raw) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+// Сумма часов, уже внесённых пользователем за дату (кроме записи excludeId).
+function sumHoursForDate(userId, workDate, excludeId, cb) {
+  const sql = excludeId
+    ? "SELECT COALESCE(SUM(hours), 0) AS total FROM work_logs WHERE user_id = ? AND work_date = ? AND id != ?"
+    : "SELECT COALESCE(SUM(hours), 0) AS total FROM work_logs WHERE user_id = ? AND work_date = ?";
+  const params = excludeId ? [userId, workDate, excludeId] : [userId, workDate];
+  db.get(sql, params, cb);
+}
+
+// Есть ли у пользователя уже запись на этот объект в эту дату (кроме excludeId).
+function siteAlreadyLogged(userId, workDate, siteId, excludeId, cb) {
+  if (!siteId) return cb(null, false);
+  const sql = excludeId
+    ? "SELECT id FROM work_logs WHERE user_id = ? AND work_date = ? AND site_id = ? AND id != ?"
+    : "SELECT id FROM work_logs WHERE user_id = ? AND work_date = ? AND site_id = ?";
+  const params = excludeId ? [userId, workDate, siteId, excludeId] : [userId, workDate, siteId];
+  db.get(sql, params, (err, row) => cb(err, !!row));
+}
+
 async function addOwn(req, res, user) {
   try {
     const body = await getJsonBody(req);
@@ -55,12 +76,23 @@ async function addOwn(req, res, user) {
     if (!workDate) return sendJson(res, 400, { success: false, message: 'Некорректная дата' });
     if (hours == null) return sendJson(res, 400, { success: false, message: 'Часы: число от 0 до 24' });
 
-    db.run("INSERT INTO work_logs (user_id, work_date, hours, note, site_id) VALUES (?, ?, ?, ?, ?)",
-      [user.id, workDate, hours, note, siteId], function (err) {
-        if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
-        logAction(user.username, `Внёс ${hours} ч за ${workDate}`);
-        sendJson(res, 201, { success: true, id: this.lastID });
+    sumHoursForDate(user.id, workDate, null, (sumErr, row) => {
+      if (sumErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if ((row.total || 0) + hours > 24) {
+        return sendJson(res, 400, { success: false, message: 'Суммарно за один день нельзя внести больше 24 часов' });
+      }
+      siteAlreadyLogged(user.id, workDate, siteId, null, (siteErr, used) => {
+        if (siteErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (used) return sendJson(res, 400, { success: false, message: 'На этот объект в эту дату уже внесена запись' });
+
+        db.run("INSERT INTO work_logs (user_id, work_date, hours, note, site_id) VALUES (?, ?, ?, ?, ?)",
+          [user.id, workDate, hours, note, siteId], function (err) {
+            if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+            logAction(user.username, `Внёс ${hours} ч за ${workDate}`);
+            sendJson(res, 201, { success: true, id: this.lastID });
+          });
       });
+    });
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
   }
@@ -75,8 +107,40 @@ function listMine(req, res, user) {
     [user.id], (err, rows) => {
       if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
       const total = (rows || []).reduce((s, r) => s + (r.hours || 0), 0);
-      sendJson(res, 200, { success: true, entries: rows || [], total });
+      db.get("SELECT hourly_rate FROM users WHERE id = ?", [user.id], (rateErr, rateRow) => {
+        const rate = (!rateErr && rateRow && rateRow.hourly_rate != null) ? rateRow.hourly_rate : null;
+        sendJson(res, 200, { success: true, entries: rows || [], total, rate, earned: rate != null ? total * rate : null });
+      });
     });
+}
+
+// Ставка: неотрицательное число, не больше разумного предела (защита от опечаток).
+function parseRate(raw) {
+  if (raw == null || raw === '') return null;
+  const r = Math.round(parseFloat(raw) * 100) / 100;
+  if (!Number.isFinite(r) || r < 0 || r > 10000) return undefined; // undefined = невалидно
+  return r;
+}
+
+function getRate(req, res, user) {
+  db.get("SELECT hourly_rate FROM users WHERE id = ?", [user.id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    sendJson(res, 200, { success: true, rate: (row && row.hourly_rate != null) ? row.hourly_rate : null });
+  });
+}
+
+async function setRate(req, res, user) {
+  try {
+    const body = await getJsonBody(req);
+    const rate = parseRate(body.rate);
+    if (rate === undefined) return sendJson(res, 400, { success: false, message: 'Ставка: число от 0 до 10000' });
+    db.run("UPDATE users SET hourly_rate = ? WHERE id = ?", [rate, user.id], function (err) {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+      sendJson(res, 200, { success: true, rate });
+    });
+  } catch (e) {
+    sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
+  }
 }
 
 // Редактирование своей записи: только заметка и объект (дата/часы неизменны).
@@ -87,14 +151,25 @@ async function editOwn(req, res, user, parsedUrl) {
     const body = await getJsonBody(req);
     const note = (body.note == null ? '' : String(body.note)).trim().slice(0, 300) || null;
     const siteId = parseSiteId(body.site_id);
-    const sql = isAdmin(user)
-      ? "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ?"
-      : "UPDATE work_logs SET note = ?, site_id = ? WHERE id = ? AND user_id = ?";
-    const params = isAdmin(user) ? [note, siteId, id] : [note, siteId, id, user.id];
-    db.run(sql, params, function (err) {
-      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
-      if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
-      sendJson(res, 200, { success: true });
+
+    const lookupSql = isAdmin(user)
+      ? "SELECT user_id, work_date FROM work_logs WHERE id = ?"
+      : "SELECT user_id, work_date FROM work_logs WHERE id = ? AND user_id = ?";
+    const lookupParams = isAdmin(user) ? [id] : [id, user.id];
+    db.get(lookupSql, lookupParams, (lookupErr, entry) => {
+      if (lookupErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      if (!entry) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
+
+      siteAlreadyLogged(entry.user_id, entry.work_date, siteId, id, (siteErr, used) => {
+        if (siteErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (used) return sendJson(res, 400, { success: false, message: 'На этот объект в эту дату уже внесена запись' });
+
+        db.run("UPDATE work_logs SET note = ?, site_id = ? WHERE id = ?", [note, siteId, id], function (err) {
+          if (err) return sendJson(res, 500, { success: false, message: 'Ошибка сохранения' });
+          if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Запись не найдена' });
+          sendJson(res, 200, { success: true });
+        });
+      });
     });
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Некорректный запрос' });
@@ -166,6 +241,8 @@ module.exports = async function handleWorklogs(req, res, user, parsedUrl, method
   if (p === '/api/worklogs/mine' && method === 'GET') return listMine(req, res, user);
   if (p === '/api/worklogs' && method === 'PUT') return editOwn(req, res, user, parsedUrl);
   if (p === '/api/worklogs' && method === 'DELETE') return deleteOwn(req, res, user, parsedUrl);
+  if (p === '/api/worklogs/rate' && method === 'GET') return getRate(req, res, user);
+  if (p === '/api/worklogs/rate' && method === 'PUT') return setRate(req, res, user);
   if (p === '/api/worklogs/all' && method === 'GET') return listAll(req, res, user, parsedUrl);
   if (p === '/api/worklogs/summary' && method === 'GET') return summary(req, res, user);
 

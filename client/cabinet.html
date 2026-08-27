@@ -826,15 +826,43 @@
               </div>
               <button type="submit" class="btn-save" style="grid-column:1/-1; margin-top:2px;">Добавить запись</button>
             </form>
+
+            <!-- Своя ставка в час — для автоматического расчёта заработанного -->
+            <div style="display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.015); flex-wrap:wrap;">
+              <label for="wlRateInput" style="margin:0; font-size:12px; white-space:nowrap;">Ставка, €/ч:</label>
+              <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="width:90px; padding:6px 8px; font-size:12px;">
+              <button type="button" id="wlRateSaveBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">Сохранить</button>
+              <span id="wlRateHint" style="font-size:11px; color:var(--text-muted);"></span>
+            </div>
+
             <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px; gap:10px; flex-wrap:wrap;">
               <span style="font-size:13px; color:var(--text-secondary);">Мои записи</span>
-              <div style="display:flex; align-items:center; gap:10px;">
-                <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong></span>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong><span id="wlEarnedWrap" style="display:none;"> · <strong id="wlEarned" style="color:var(--green);"></strong></span></span>
                 <button type="button" id="wlOpenCalendarBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">Этот месяц</button>
+                <button type="button" id="wlOpenForecastBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(0,210,255,0.10); border:1px solid rgba(0,210,255,0.3); color:var(--accent-cyan); cursor:pointer;">Прогноз на месяц</button>
               </div>
             </div>
             <div id="wlList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
               <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Модалка «Прогноз на месяц» — гипотетический расчёт по будним (+ опц. субботам) -->
+        <div id="wlForecastModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(420px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div>
+                <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Прогноз на месяц</div>
+                <div id="wlForecastMonth" style="font-size:12px; color:var(--text-muted); text-transform:capitalize;"></div>
+              </div>
+              <button type="button" id="wlForecastModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">По 10 часов в каждый будний день месяца.</div>
+              <div id="wlForecastBody"></div>
+              <button type="button" id="wlForecastSaturdaysBtn" style="width:100%; margin-top:14px; padding:9px; font-size:13px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">+ Субботы</button>
             </div>
           </div>
         </div>
@@ -1456,12 +1484,17 @@
       completed: 'Завершён'
     };
 
+    // Объект(ы), на котором сотрудник сейчас числится — используется как
+    // значение по умолчанию при выборе объекта в учёте рабочего времени.
+    let myCurrentSiteIds = [];
+
     async function loadMyConstructionSites() {
       const list = document.getElementById('myConstructionSiteList');
       try {
         const res = await fetch('/api/cabinet/my-construction-sites');
         const data = res.ok ? await res.json() : { sites: [] };
         const sites = data.sites || [];
+        myCurrentSiteIds = sites.map(s => s.id);
         if (!sites.length) {
           list.innerHTML = assetEmpty('12 2l9 4.5v11L12 22l-9-4.5v-11L12 2zM9 22V12M15 22V12M3 6.5l9 4.5 9-4.5', 'Сейчас не направлен ни на один объект.');
           return;
@@ -2871,7 +2904,7 @@
 
       // Модалки должны жить в <body> — иначе фиксированный navbar (z-index:100)
       // перекрывает шапку модалки, т.к. .page создаёт свой stacking-context.
-      ['wlCalendarModalOverlay', 'wlDayModalOverlay'].forEach(mid => {
+      ['wlCalendarModalOverlay', 'wlDayModalOverlay', 'wlForecastModalOverlay'].forEach(mid => {
         const m = document.getElementById(mid);
         if (m && m.parentElement !== document.body) document.body.appendChild(m);
       });
@@ -2889,8 +2922,21 @@
         if (e.target.id === 'wlDayModalOverlay') closeWlDayModal();
       });
 
+      document.getElementById('wlOpenForecastBtn').onclick = openWlForecast;
+      document.getElementById('wlForecastModalClose').onclick = closeWlForecast;
+      document.getElementById('wlForecastModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'wlForecastModalOverlay') closeWlForecast();
+      });
+      document.getElementById('wlForecastSaturdaysBtn').onclick = () => {
+        wlForecastIncludeSaturdays = !wlForecastIncludeSaturdays;
+        renderWlForecast();
+      };
+
+      document.getElementById('wlRateSaveBtn').onclick = saveWlRate;
+
       loadMyWorkLogs();
       loadWlSites();
+      loadWlRate();
     }
 
     async function loadWlSites() {
@@ -2901,6 +2947,53 @@
       } catch (_) { wlSitesCache = []; }
     }
 
+    // === Своя ставка в час (EUR) ===
+    let wlHourlyRate = null;
+
+    async function loadWlRate() {
+      try {
+        const res = await fetch('/api/worklogs/rate');
+        const d = await res.json();
+        wlHourlyRate = (res.ok && d.rate != null) ? d.rate : null;
+        document.getElementById('wlRateInput').value = wlHourlyRate != null ? wlHourlyRate : '';
+        updateWlEarnedDisplay();
+      } catch (_) { /* оставляем как есть */ }
+    }
+
+    async function saveWlRate() {
+      const raw = document.getElementById('wlRateInput').value;
+      try {
+        const res = await fetch('/api/worklogs/rate', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rate: raw === '' ? null : raw })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) {
+          wlHourlyRate = d.rate;
+          showToast('Ставка сохранена', 'success');
+          const hint = document.getElementById('wlRateHint');
+          hint.textContent = 'Сохранено';
+          setTimeout(() => { hint.textContent = ''; }, 2000);
+          updateWlEarnedDisplay();
+        } else showToast(d.message || 'Не удалось сохранить ставку', 'error');
+      } catch (_) { showToast('Ошибка сети', 'error'); }
+    }
+
+    function fmtEuro(v) {
+      const n = Math.round((v || 0) * 100) / 100;
+      return (Number.isInteger(n) ? n : n.toFixed(2)) + ' €';
+    }
+
+    // Пересчитывает и показывает «Заработано» рядом с «Итого» по общей сумме часов.
+    function updateWlEarnedDisplay() {
+      const wrap = document.getElementById('wlEarnedWrap');
+      const totalText = document.getElementById('wlTotal').textContent;
+      const totalHours = parseFloat(totalText) || 0;
+      if (wlHourlyRate == null) { wrap.style.display = 'none'; return; }
+      document.getElementById('wlEarned').textContent = fmtEuro(totalHours * wlHourlyRate);
+      wrap.style.display = '';
+    }
+
     async function loadMyWorkLogs() {
       const box = document.getElementById('wlList');
       if (!box) return;
@@ -2909,18 +3002,25 @@
         const d = await res.json();
         wlEntriesCache = (d && d.entries) || [];
         document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
+        if (d && d.rate != null) wlHourlyRate = d.rate;
+        updateWlEarnedDisplay();
         if (!wlEntriesCache.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
         box.innerHTML = '';
-        wlEntriesCache.forEach(r => {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01);';
-          const dateStr = new Date(r.work_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+        // Отработанные часы и объект не показываем прямо в списке — только
+        // дату; сколько часов и на каком объекте видно в модалке дня (клик).
+        const dateOrder = [];
+        const seenDates = new Set();
+        wlEntriesCache.forEach(r => { if (!seenDates.has(r.work_date)) { seenDates.add(r.work_date); dateOrder.push(r.work_date); } });
+        dateOrder.forEach(dateKey => {
+          const entries = wlEntriesCache.filter(r => r.work_date === dateKey);
+          const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01); width:100%; text-align:left; cursor:pointer; color:inherit; font-family:inherit;';
           row.innerHTML = `
-            <div style="min-width:0;">
-              <div style="font-size:13px; font-weight:600;">${dateStr} · <span style="color:var(--accent-cyan);">${fmtHours(r.hours)}</span>${r.site_name ? ` · <span style="color:var(--text-secondary); font-weight:400;">${escapeHtmlC(r.site_name)}</span>` : ''}</div>
-              ${r.note ? `<div style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtmlC(r.note)}</div>` : ''}
-            </div>
-            <button type="button" title="Удалить" onclick="deleteMyWorkLog(${r.id})" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; flex-shrink:0;">&times;</button>`;
+            <span style="font-size:13px; font-weight:600;">${dateStr}${entries.length > 1 ? ` <span style="color:var(--text-muted); font-weight:400;">· ${entries.length} записи</span>` : ''}</span>
+            <span style="font-size:12px; color:var(--accent-cyan); flex-shrink:0;">Подробнее ›</span>`;
+          row.onclick = () => openWlDayModal(dateKey);
           box.appendChild(row);
         });
         // Если открыт календарь/детали дня — обновим их тоже.
@@ -2955,6 +3055,63 @@
       if (wlCalMonth < 0) { wlCalMonth = 11; wlCalYear--; }
       if (wlCalMonth > 11) { wlCalMonth = 0; wlCalYear++; }
       renderWlCalendar();
+    }
+
+    // === Модалка «Прогноз на месяц» ===
+    // Гипотетический расчёт: по 10 часов на каждый будний день текущего
+    // (открытого в календаре) месяца, опционально + субботы. В базу данных
+    // ничего не сохраняется — это просто прикидка «сколько бы заработал».
+    let wlForecastIncludeSaturdays = false;
+
+    function computeWlForecast(year, month, includeSaturdays) {
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      let weekdayCount = 0, saturdayCount = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(year, month, d).getDay(); // 0=Вс ... 6=Сб
+        if (dow >= 1 && dow <= 5) weekdayCount++;
+        else if (dow === 6) saturdayCount++;
+      }
+      const HOURS_PER_DAY = 10;
+      const weekdayHours = weekdayCount * HOURS_PER_DAY;
+      const saturdayHours = includeSaturdays ? saturdayCount * HOURS_PER_DAY : 0;
+      const totalHours = weekdayHours + saturdayHours;
+      return { weekdayCount, saturdayCount, weekdayHours, saturdayHours, totalHours };
+    }
+
+    function openWlForecast() {
+      wlForecastIncludeSaturdays = false;
+      renderWlForecast();
+      document.getElementById('wlForecastModalOverlay').style.display = 'flex';
+    }
+    function closeWlForecast() {
+      document.getElementById('wlForecastModalOverlay').style.display = 'none';
+    }
+
+    function renderWlForecast() {
+      const monthName = new Date(wlCalYear, wlCalMonth, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      document.getElementById('wlForecastMonth').textContent = monthName;
+
+      const f = computeWlForecast(wlCalYear, wlCalMonth, wlForecastIncludeSaturdays);
+      const earned = wlHourlyRate != null ? f.totalHours * wlHourlyRate : null;
+
+      const row = (label, value) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border-color); font-size:13px;">
+          <span style="color:var(--text-secondary);">${label}</span>
+          <span style="color:var(--text-primary); font-weight:600;">${value}</span>
+        </div>`;
+
+      document.getElementById('wlForecastBody').innerHTML =
+        row('Будних дней', `${f.weekdayCount} × ${10} ч = ${fmtHours(f.weekdayHours)}`) +
+        (wlForecastIncludeSaturdays ? row('Суббот', `${f.saturdayCount} × ${10} ч = ${fmtHours(f.saturdayHours)}`) : '') +
+        row('Итого часов', fmtHours(f.totalHours)) +
+        (earned != null
+          ? `<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0 4px; font-size:15px;">
+               <span style="color:var(--text-secondary);">Прогноз заработка</span>
+               <span style="color:var(--green); font-weight:700;">${fmtEuro(earned)}</span>
+             </div>`
+          : `<div style="padding:12px 0 4px; font-size:12px; color:var(--text-muted);">Укажите ставку в час выше, чтобы увидеть прогноз заработка.</div>`);
+
+      document.getElementById('wlForecastSaturdaysBtn').textContent = wlForecastIncludeSaturdays ? '− Убрать субботы' : '+ Субботы';
     }
 
     function wlDayKey(y, m, d) {
@@ -3015,10 +3172,13 @@
     }
 
     // === Модалка деталей дня ===
+    // Текущий объект сотрудника помечаем в списке — его же используем как
+    // значение по умолчанию при добавлении новой записи.
     function siteSelectOptions(selectedId) {
       let opts = '<option value="">— не указан —</option>';
       wlSitesCache.forEach(s => {
-        opts += `<option value="${s.id}"${String(s.id) === String(selectedId) ? ' selected' : ''}>${escapeHtmlC(s.name)}</option>`;
+        const isCurrent = myCurrentSiteIds.includes(s.id);
+        opts += `<option value="${s.id}"${String(s.id) === String(selectedId) ? ' selected' : ''}>${escapeHtmlC(s.name)}${isCurrent ? ' (текущий)' : ''}</option>`;
       });
       return opts;
     }
@@ -3062,7 +3222,7 @@
           </div>
           <div class="form-group" style="margin:0;">
             <label style="font-size:11px;">Объект</label>
-            <select id="wlAddSite">${siteSelectOptions('')}</select>
+            <select id="wlAddSite">${siteSelectOptions(myCurrentSiteIds[0] || '')}</select>
           </div>
           <div class="form-group" style="margin:0;">
             <label style="font-size:11px;">Заметка</label>
