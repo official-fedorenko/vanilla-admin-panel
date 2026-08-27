@@ -1673,9 +1673,16 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .req-action {
   display: inline-flex; align-items: center; justify-content: center;
   padding: 5px 10px; font-size: 11.5px; font-weight: 600; line-height: 1.2;
-  border-radius: 7px; border: 1px solid transparent; cursor: pointer;
-  transition: all 0.15s; white-space: nowrap;
+  border-radius: 7px; border: 1px solid hsl(var(--border-color)); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; font-family: inherit;
   width: 100%; /* заполняет свою ячейку сетки 2×N — растёт в ширину, не в высоту */
+  /* Базовый нейтральный вид — без этого браузер подставляет свой дефолт
+     (серую/чёрную кнопку ОС), что и делало "Другие даты"/отключённое
+     "Обоснование" непохожими на остальные цветные варианты ниже. */
+  background: hsl(var(--bg-main)); color: hsl(var(--text-secondary));
+}
+.req-action:hover:not(:disabled) {
+  background: hsl(var(--bg-card)); color: hsl(var(--text-primary));
 }
 .req-action--green {
   background: hsl(var(--accent-green) / 0.15); color: hsl(var(--accent-green));
