@@ -1510,6 +1510,7 @@ table.data-table tbody tr:hover {
     border-right: none;
     border-bottom: 1px solid hsl(var(--border-color));
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     padding: 16px 24px;
@@ -1518,6 +1519,16 @@ table.data-table tbody tr:hover {
 
   .brand {
     margin-bottom: 0;
+  }
+
+  /* Часы в шапке сайдбара на мобильных не влезают в один ряд с лого/бургером
+     (толкают разметку и вызывают горизонтальный скролл) — переносим на
+     отдельную строку под лого во всю ширину. */
+  .sidebar-clock {
+    flex-basis: 100%;
+    order: 3;
+    padding: 6px 0 0;
+    justify-content: flex-start;
   }
 
   /* Бургер-меню: пункты — выпадающий вертикальный список под верхней панелью. */
