@@ -44,7 +44,7 @@ const REQUEST_TYPES = {
     ]
   },
   vehicle_order: {
-    label: 'Заказать авто',
+    label: 'Заявление на автомобиль',
     icon: 'car',
     fields: [
       { name: 'purpose', label: 'Цель', type: 'select', options: ['По работе', 'В личное пользование'], required: true },
