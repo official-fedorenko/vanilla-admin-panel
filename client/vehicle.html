@@ -103,7 +103,8 @@
     }
 
     function render(v){
-      document.getElementById('name').textContent = v.name || 'Без названия';
+      const displayName = [v.brand, v.model].filter(Boolean).join(' ') || v.name || 'Без названия';
+      document.getElementById('name').textContent = displayName;
       document.getElementById('cat').textContent = v.category || '';
 
       const badge = document.getElementById('status');
@@ -117,7 +118,7 @@
 
       if (v.photo_url) {
         document.getElementById('photoBox').innerHTML =
-          '<img src="' + esc(v.photo_url) + '" alt="' + esc(v.name || '') +
+          '<img src="' + esc(v.photo_url) + '" alt="' + esc(displayName || '') +
           '" onerror="this.parentNode.innerHTML=\'&lt;div class=&quot;ph&quot;&gt;🚗&lt;/div&gt;\'">';
       }
 

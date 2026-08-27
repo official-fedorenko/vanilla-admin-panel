@@ -5195,6 +5195,13 @@ const VEHICLE_STATUS = {
 
 const VEHICLE_PLACEHOLDER_ICON = '<i data-lucide="car" style="width:16px;height:16px;color:hsl(var(--text-muted));"></i>';
 
+// Отображаемое название авто — всегда марка + модель, а не старое поле
+// «Название» (убрано из формы, но могло остаться в старых записях).
+function vehicleDisplayName(v) {
+  if (!v) return 'Авто';
+  return [v.brand, v.model].filter(Boolean).join(' ') || v.name || 'Авто';
+}
+
 async function loadVehicles() {
   try {
     await loadVehicleExpirySettings();
@@ -5305,7 +5312,7 @@ function renderVehicles(filterQuery = '') {
     const expiry = vehicleExpiryStatus(v);
     const insuranceBadge = vehicleExpiryBadge('Страховка', expiry.insurance);
     const inspectionBadge = vehicleExpiryBadge('ТО', expiry.inspection);
-    const brandModel = [v.brand, v.model].filter(Boolean).map(escapeHtml).join(' ') || escapeHtml(v.name || '') || '—';
+    const brandModel = escapeHtml(vehicleDisplayName(v));
     const holder = v.current_holder
       ? `<strong>${escapeHtml(v.current_holder)}</strong>`
       : `<span style="color: hsl(var(--text-muted));">—</span>`;
@@ -5716,7 +5723,7 @@ window.editVehicle = (id) => {
 
 window.deleteVehicle = async (id) => {
   const vehicle = vehiclesList.find(v => v.id === id);
-  const name = vehicle ? vehicle.name : `id=${id}`;
+  const name = vehicle ? vehicleDisplayName(vehicle) : `id=${id}`;
   if (!await confirmDialog(`Удалить авто «${name}»? Вся история его закреплений тоже удалится. Это необратимо.`, { okText: 'Удалить', danger: true })) return;
   try {
     const res = await fetch(`/api/crud/vehicles?id=${id}`, { method: 'DELETE' });
@@ -5739,7 +5746,6 @@ function buildVehicleCard(vehicle) {
   const thumb = vehicle.photo_url
     ? `<img class="issue-tool-thumb" src="${vehicle.photo_url}">`
     : `<div class="issue-tool-thumb placeholder"><i data-lucide="car"></i></div>`;
-  const sub = [vehicle.brand, vehicle.model].filter(Boolean).join(' · ');
   const chips = [];
   if (vehicle.category) chips.push(escapeHtml(vehicle.category));
   if (vehicle.plate_number) chips.push('Номер: ' + escapeHtml(vehicle.plate_number));
@@ -5747,8 +5753,7 @@ function buildVehicleCard(vehicle) {
   return `
     ${thumb}
     <div class="issue-tool-meta">
-      <div class="t-name">${escapeHtml(vehicle.name)}</div>
-      ${sub ? `<div class="t-sub">${escapeHtml(sub)}</div>` : ''}
+      <div class="t-name">${escapeHtml(vehicleDisplayName(vehicle))}</div>
       <div class="t-chips">
         ${chips.map(c => `<span class="t-chip">${c}</span>`).join('')}
         <span class="badge ${st.badge}">${st.label}</span>
@@ -5878,7 +5883,7 @@ window.openVehicleDetail = async (vehicleId) => {
 
 function renderVehicleDetail(data) {
   const { vehicle, photos, history, stats } = data;
-  document.getElementById('vehicleDetailTitle').textContent = vehicle.name || 'Карточка авто';
+  document.getElementById('vehicleDetailTitle').textContent = vehicleDisplayName(vehicle) || 'Карточка авто';
   const st = VEHICLE_STATUS[vehicle.status] || VEHICLE_STATUS.available;
 
   const mainImgHtml = vehicle.photo_url
@@ -6096,12 +6101,12 @@ window.printVehicleQr = (id) => {
   const vehicle = vehiclesList.find(v => v.id === id) || {};
   const w = window.open('', '_blank', 'width=420,height=560');
   if (!w) { showToast('Разрешите всплывающие окна для печати', 'error'); return; }
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(vehicle.name || '')}</title>
+  const displayName = vehicleDisplayName(vehicle);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR ${escapeHtml(displayName)}</title>
     <body style="font-family:sans-serif;text-align:center;padding:24px;">
       <img src="/api/vehicles/qr?id=${id}&_=${Date.now()}" style="width:260px;height:260px;">
-      <h2 style="margin:12px 0 4px;">${escapeHtml(vehicle.name || '')}</h2>
+      <h2 style="margin:12px 0 4px;">${escapeHtml(displayName)}</h2>
       <div style="color:#555;">${escapeHtml(vehicle.plate_number || '')}</div>
-      <div style="color:#888;font-size:13px;">${escapeHtml([vehicle.brand, vehicle.model].filter(Boolean).join(' · '))}</div>
       <script>window.onload=()=>{setTimeout(()=>window.print(),300)}<\/script>
     </body>`);
   w.document.close();
@@ -6109,7 +6114,7 @@ window.printVehicleQr = (id) => {
 
 window.saveVehicleQr = async (id) => {
   const vehicle = vehiclesList.find(v => v.id === id) || {};
-  const base = `qr-${(vehicle.plate_number || vehicle.name || 'vehicle').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+  const base = `qr-${(vehicle.plate_number || vehicleDisplayName(vehicle) || 'vehicle').toString().replace(/[^A-Za-z0-9._-]+/g, '_')}`;
   try {
     const res = await fetch(`/api/vehicles/qr?id=${id}&_=${Date.now()}`);
     const svgText = await res.text();

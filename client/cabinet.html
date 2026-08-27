@@ -1482,7 +1482,8 @@
 
     window.saveMyVehicleQr = async (id) => {
       const vehicle = myVehiclesCache.find(v => v.id === id) || {};
-      const base = `qr-${String(vehicle.plate_number || vehicle.name || 'vehicle').replace(/[^A-Za-z0-9._-]+/g, '_')}`;
+      const vehicleName = [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicle.name || 'vehicle';
+      const base = `qr-${String(vehicle.plate_number || vehicleName).replace(/[^A-Za-z0-9._-]+/g, '_')}`;
       try {
         const res = await fetch(`/api/vehicles/qr?id=${id}`);
         const svgText = await res.text();
@@ -1791,7 +1792,7 @@
             ? `<img src="${v.photo_url}" class="asset-item-photo">`
             : `<div class="asset-item-photo-empty"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 17h14M5 17a2 2 0 01-2-2v-2a2 2 0 012-2l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 13a2 2 0 012 2v2a2 2 0 01-2 2M5 17a2 2 0 002 2h1a2 2 0 002-2m6 0a2 2 0 002 2h1a2 2 0 002-2M5 13h14"/></svg></div>`;
           const photo = `<button type="button" onclick="openItemPhotoModal('vehicle', ${v.id})" style="padding:0;border:none;background:none;cursor:pointer;line-height:0;flex-shrink:0;">${photoInner}</button>`;
-          const sub = [v.brand, v.model].filter(Boolean).join(' · ');
+          const displayName = [v.brand, v.model].filter(Boolean).join(' ') || v.name || 'Авто';
 
           const item = document.createElement('div');
           item.className = 'asset-item';
@@ -1799,8 +1800,7 @@
             <div class="asset-item-head">
               ${photo}
               <div style="flex:1;min-width:0;">
-                <div class="asset-item-title">${escapeHtml(v.name)}</div>
-                ${sub ? `<div class="asset-item-sub">${escapeHtml(sub)}</div>` : ''}
+                <div class="asset-item-title">${escapeHtml(displayName)}</div>
               </div>
               <div class="asset-item-actions">
                 <button type="button" onclick="saveMyVehicleQr(${v.id})" style="padding:6px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-secondary);border-radius:8px;cursor:pointer;font-size:12px;white-space:nowrap;">Скачать QR</button>
