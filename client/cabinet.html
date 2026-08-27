@@ -890,9 +890,9 @@
                 <label for="wlRateInput" style="margin:0 0 6px; font-size:12px;">Ставка, €/ч:</label>
                 <div style="display:flex; align-items:stretch; gap:8px;">
                   <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="flex:1; min-width:0; padding:9px 10px; font-size:12px; box-sizing:border-box;">
-                  <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex-shrink:0;">Сохранить</button>
-                  <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0; align-self:center;"></span>
+                  <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex:1; min-width:0;">Сохранить</button>
                 </div>
+                <span id="wlRateHint" style="display:block; font-size:11px; color:var(--text-muted); margin-top:6px;"></span>
               </div>
               <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
                 <button type="button" id="wlOpenCalendarBtn" class="wl-btn">Этот месяц</button>
@@ -1973,7 +1973,10 @@
           item.innerHTML = `
             <div>
               <div class="asset-item-title">${escapeHtml(a.name)}</div>
-              ${addressLine ? `<div class="asset-item-sub">${escapeHtml(addressLine)}</div>` : ''}
+              ${addressLine ? `<div class="asset-item-sub" style="display:flex; align-items:center; gap:5px;" title="Адрес жилья">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Адрес: ${escapeHtml(addressLine)}</span>
+              </div>` : ''}
             </div>
             ${(a.category || a.rooms || a.area) ? `
               <div class="asset-item-divider"></div>
