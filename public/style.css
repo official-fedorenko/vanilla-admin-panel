@@ -120,7 +120,7 @@ body {
 /* Admin Dashboard Layout */
 .app-container {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 320px 1fr;
   /* Плавно сворачиваем колонку меню в 0, а не просто прячем сайдбар —
      тогда контент сразу занимает освободившееся место. */
   transition: grid-template-columns 0.25s ease;
@@ -130,8 +130,10 @@ body {
   overflow: hidden;
 }
 
+/* Свёрнутое меню — не исчезает полностью, а сжимается до узкой полосы
+   с иконками пунктов и их счётчиками (бейджами), без подписей. */
 .app-container.sidebar-collapsed {
-  grid-template-columns: 0px 1fr;
+  grid-template-columns: 72px 1fr;
 }
 
 /* Sidebar */
@@ -149,9 +151,35 @@ aside.sidebar {
 }
 
 .app-container.sidebar-collapsed aside.sidebar {
-  padding: 24px 0;
-  opacity: 0;
-  pointer-events: none;
+  padding: 24px 8px;
+}
+
+/* Прячем всё, что не помещается в узкую полосу (подписи, текст бренда,
+   часы, имя пользователя) — остаются только иконки пунктов и их бейджи. */
+.app-container.sidebar-collapsed .brand-name,
+.app-container.sidebar-collapsed #sidebarClock,
+.app-container.sidebar-collapsed .nav-item a > span:not(.nav-badge),
+.app-container.sidebar-collapsed .user-info > div:not(.user-avatar) {
+  display: none;
+}
+.app-container.sidebar-collapsed .brand {
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.app-container.sidebar-collapsed .nav-item a {
+  justify-content: center;
+  padding: 12px 8px;
+  position: relative;
+}
+.app-container.sidebar-collapsed .nav-item a .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.app-container.sidebar-collapsed .sidebar-footer {
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
 }
 
 /* Кнопка сворачивания/разворачивания меню — «прилипает» к правому краю
@@ -159,7 +187,7 @@ aside.sidebar {
 .sidebar-collapse-toggle {
   position: fixed;
   top: 24px;
-  left: 280px;
+  left: 320px;
   z-index: 60;
   width: 26px;
   height: 40px;
@@ -186,7 +214,7 @@ aside.sidebar {
 }
 
 .app-container.sidebar-collapsed .sidebar-collapse-toggle {
-  left: 0;
+  left: 72px;
 }
 
 .app-container.sidebar-collapsed .sidebar-collapse-toggle i {
@@ -234,6 +262,15 @@ aside.sidebar {
   color: hsl(var(--accent-cyan));
 }
 
+.sidebar-clock {
+  padding: 0 20px 16px;
+  font-size: 12px;
+  color: hsl(var(--text-muted));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .nav-list {
   list-style: none;
   display: flex;
@@ -267,9 +304,8 @@ aside.sidebar {
 }
 
 .nav-item a > span:not(.nav-badge) {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: break-word;
   min-width: 0;
 }
 
@@ -1608,10 +1644,10 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
    один размер и форма, различаются только цветом по смыслу. */
 .req-action {
   display: inline-flex; align-items: center; justify-content: center;
-  padding: 6px 14px; font-size: 12px; font-weight: 600; line-height: 1;
-  border-radius: 8px; border: 1px solid transparent; cursor: pointer;
+  padding: 5px 10px; font-size: 11.5px; font-weight: 600; line-height: 1.2;
+  border-radius: 7px; border: 1px solid transparent; cursor: pointer;
   transition: all 0.15s; white-space: nowrap;
-  min-width: 112px; /* одинаковая ширина всех трёх кнопок */
+  width: 100%; /* заполняет свою ячейку сетки 2×N — растёт в ширину, не в высоту */
 }
 .req-action--green {
   background: hsl(var(--accent-green) / 0.15); color: hsl(var(--accent-green));

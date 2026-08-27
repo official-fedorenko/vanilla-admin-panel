@@ -109,6 +109,14 @@ const REQUEST_TYPES = {
       { name: 'description', label: 'Описание проблемы', type: 'textarea', required: true },
       { name: 'photo_url', label: 'Фото проблемы', type: 'photo' }
     ]
+  },
+  tool_loss: {
+    label: 'Заявление об утрате инструмента',
+    icon: 'alert-triangle',
+    fields: [
+      { name: 'tool_id', label: 'Выберите инструмент', type: 'assigned_tool', required: true },
+      { name: 'description', label: 'Обстоятельства утраты', type: 'textarea', required: true }
+    ]
   }
 };
 
@@ -160,6 +168,7 @@ function buildTitle(type, payload) {
       ? 'Переезд в собственное жильё'
       : 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
     case 'tool_service': return (payload.issue_type || 'Обслуживание') + ': ' + (payload.tool_name || ('id ' + payload.tool_id));
+    case 'tool_loss':    return 'Утрата: ' + (payload.tool_name || ('id ' + payload.tool_id));
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
 }
@@ -204,6 +213,25 @@ async function createRequest(req, res, user) {
     }
 
     if (type === 'tool_service') {
+      db.get("SELECT id FROM employees WHERE user_id = ?", [user.id], (eErr, emp) => {
+        if (eErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!emp) return sendJson(res, 400, { success: false, message: 'За вами не закреплено ни одного инструмента' });
+        db.get(
+          `SELECT t.id, t.name FROM tool_assignments a
+           JOIN tools t ON t.id = a.tool_id
+           WHERE a.tool_id = ? AND a.employee_id = ? AND a.returned_at IS NULL`,
+          [payload.tool_id, emp.id],
+          (tErr, tool) => {
+            if (tErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            if (!tool) return sendJson(res, 400, { success: false, message: 'Этот инструмент за вами не закреплён' });
+            insertRequest({ ...payload, tool_name: tool.name });
+          }
+        );
+      });
+      return;
+    }
+
+    if (type === 'tool_loss') {
       db.get("SELECT id FROM employees WHERE user_id = ?", [user.id], (eErr, emp) => {
         if (eErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
         if (!emp) return sendJson(res, 400, { success: false, message: 'За вами не закреплено ни одного инструмента' });
@@ -591,6 +619,29 @@ function receiveRequest(req, res, user, parsedUrl) {
 // requestRow нужен, чтобы узнать заявителя (requested_by) и закрепить за ним
 // инструмент, если он сотрудник.
 function approveSideEffect(type, payload, requestRow, reviewer, cb) {
+  if (type === 'tool_loss') {
+    // «Подтвердить утерю» — снимаем закрепление и переводим инструмент в
+    // статус «Утерян» (не удаляем: остаётся видимым по фильтру и в журнале
+    // статусов — кто заявил утрату и кто из админов подтвердил).
+    const toolId = parseInt(payload.tool_id, 10);
+    if (!toolId) return cb({ message: 'Инструмент не найден' });
+    return db.run("UPDATE tool_assignments SET returned_at = CURRENT_TIMESTAMP WHERE tool_id = ? AND returned_at IS NULL", [toolId], () => {
+      db.run("UPDATE tools SET status = 'lost' WHERE id = ?", [toolId], function (updErr) {
+        if (updErr) return cb({ message: 'Не удалось обновить статус инструмента' });
+        if (this.changes === 0) return cb({ message: 'Инструмент не найден' });
+        db.get("SELECT username FROM users WHERE id = ?", [requestRow.requested_by], (uErr, requester) => {
+          tools.logToolStatus(toolId, 'lost', {
+            changedBy: reviewer.username,
+            source: 'request',
+            requestId: requestRow.id,
+            requestedByUsername: requester ? requester.username : null,
+            note: payload.description || null
+          });
+          cb(null, String(toolId));
+        });
+      });
+    });
+  }
   if (type === 'tool_add' && payload.existing_tool_id) {
     // «Выдали инструмент» — предмет уже есть в инвентаре, просто закрепляем
     // его за заявителем вместо создания дубликата записи.

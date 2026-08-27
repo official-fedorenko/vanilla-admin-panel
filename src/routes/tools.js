@@ -24,7 +24,7 @@ function genInventory() {
  * Права: чтение — любой авторизованный; изменения/выдача/возврат — Admin/Superadmin.
  */
 
-const ALLOWED_STATUSES = ['available', 'assigned', 'repair', 'written_off'];
+const ALLOWED_STATUSES = ['available', 'assigned', 'repair', 'lost', 'written_off'];
 
 function parseId(parsedUrl, key = 'id') {
   const id = parseInt(parsedUrl.searchParams.get(key), 10);
@@ -33,6 +33,15 @@ function parseId(parsedUrl, key = 'id') {
 
 function canWrite(user) {
   return user && (user.role === 'Admin' || user.role === 'Superadmin');
+}
+
+// Журнал смены статуса — кто изменил (админ вручную или заявление сотрудника).
+function logToolStatus(toolId, status, opts = {}) {
+  db.run(
+    "INSERT INTO tool_status_log (tool_id, status, changed_by, source, request_id, requested_by_username, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [toolId, status, opts.changedBy || null, opts.source || 'admin', opts.requestId || null, opts.requestedByUsername || null, opts.note || null],
+    () => {}
+  );
 }
 
 const DUP_FIELD_LABEL = { serial_number: 'серийным номером', inventory_number: 'инвентарным номером' };
@@ -181,6 +190,7 @@ async function handleCrud(req, res, user, parsedUrl, method) {
         if (dupErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
         if (conflict) return sendJson(res, 409, { success: false, message: duplicateMessage(conflict) });
 
+      db.get("SELECT status FROM tools WHERE id = ?", [id], (prevErr, prevRow) => {
       db.run(
         `UPDATE tools SET name = ?, category = ?, brand = ?, model = ?, serial_number = ?,
            inventory_number = ?, status = ?, purchase_date = ?, photo_url = ?, notes = ? WHERE id = ?`,
@@ -189,10 +199,14 @@ async function handleCrud(req, res, user, parsedUrl, method) {
         function (err) {
           if (err) return sendJson(res, 500, { success: false, message: 'Ошибка обновления' });
           if (this.changes === 0) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
+          if (!prevErr && prevRow && prevRow.status !== values.status) {
+            logToolStatus(id, values.status, { changedBy: user.username, source: 'admin' });
+          }
           logAction(user.username, `Обновлён инструмент id=${id}`);
           sendJson(res, 200, { success: true });
         }
       );
+      }); // db.get prevRow
       }); // findDuplicate
     } catch (e) {
       sendJson(res, 400, { success: false, message: e.message || 'Невалидный JSON' });
@@ -220,14 +234,14 @@ async function handleCrud(req, res, user, parsedUrl, method) {
 }
 
 // Статус инструмента пересчитывается по числу оставшихся активных закреплений:
-// есть хоть одно — 'assigned', ни одного — 'available' ('written_off' не трогаем).
+// есть хоть одно — 'assigned', ни одного — 'available' ('written_off'/'lost' не трогаем).
 function recomputeToolStatus(toolId, cb) {
   db.get(
     "SELECT COUNT(*) AS c FROM tool_assignments WHERE tool_id = ? AND returned_at IS NULL",
     [toolId],
     (err, row) => {
       const newStatus = row && row.c > 0 ? 'assigned' : 'available';
-      db.run("UPDATE tools SET status = ? WHERE id = ? AND status != 'written_off'", [newStatus, toolId], () => cb && cb());
+      db.run("UPDATE tools SET status = ? WHERE id = ? AND status NOT IN ('written_off', 'lost')", [newStatus, toolId], () => cb && cb());
     }
   );
 }
@@ -250,6 +264,9 @@ async function handleIssue(req, res, user) {
       if (err || !tool) return sendJson(res, 404, { success: false, message: 'Инструмент не найден' });
       if (tool.status === 'written_off') {
         return sendJson(res, 400, { success: false, message: 'Инструмент списан — выдать нельзя' });
+      }
+      if (tool.status === 'lost') {
+        return sendJson(res, 400, { success: false, message: 'Инструмент числится утерянным — выдать нельзя' });
       }
       db.get(
         "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
@@ -403,6 +420,20 @@ function handleHistory(req, res, user, parsedUrl) {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
     sendJson(res, 200, rows);
   });
+}
+
+// ---- Журнал смены статуса инструмента (/api/tools/status-log) ----
+function handleStatusLog(req, res, user, parsedUrl) {
+  const toolId = parseId(parsedUrl, 'tool_id');
+  if (!toolId) return sendJson(res, 400, { success: false, message: 'Не указан tool_id' });
+  db.all(
+    "SELECT status, changed_by, source, request_id, requested_by_username, note, created_at FROM tool_status_log WHERE tool_id = ? ORDER BY id DESC",
+    [toolId],
+    (err, rows) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      sendJson(res, 200, rows || []);
+    }
+  );
 }
 
 // ---- Справочник категорий (/api/crud/tool-categories) ----
@@ -683,6 +714,7 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
   if (pathname === '/api/tools/transfer' && method === 'POST') return handleTransfer(req, res, user);
   if (pathname === '/api/tools/check-dup' && method === 'GET') return handleCheckDup(req, res, user, parsedUrl);
   if (pathname === '/api/tools/history' && method === 'GET') return handleHistory(req, res, user, parsedUrl);
+  if (pathname === '/api/tools/status-log' && method === 'GET') return handleStatusLog(req, res, user, parsedUrl);
   if (pathname === '/api/tools/details' && method === 'GET') return handleDetails(req, res, user, parsedUrl);
   if (pathname === '/api/tools/qr' && method === 'GET') return handleQr(req, res, user, parsedUrl);
   if (pathname === '/api/tools/photo' && method === 'POST') return addToolPhoto(req, res, user);
@@ -697,3 +729,4 @@ module.exports = async function handleTools(req, res, user, parsedUrl, method) {
 module.exports.extractToolFields = extractToolFields;
 module.exports.findDuplicate = findDuplicate;
 module.exports.duplicateMessage = duplicateMessage;
+module.exports.logToolStatus = logToolStatus;

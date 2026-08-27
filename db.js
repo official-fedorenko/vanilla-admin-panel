@@ -943,6 +943,42 @@ db.serialize(() => {
     catStmt.finalize();
   });
 
+  // Бригады внутри объекта — бригадир объекта делит направленных туда
+  // сотрудников на группы (свободная структура, не влияет на закрепление).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS site_crews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_id INTEGER NOT NULL REFERENCES construction_sites(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS site_crew_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      crew_id INTEGER NOT NULL REFERENCES site_crews(id) ON DELETE CASCADE,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      UNIQUE(crew_id, employee_id)
+    )
+  `);
+
+  // Журнал смены статуса инструмента (На складе/Выдан/В ремонте/Утерян/Списан) —
+  // кто это сделал: админ вручную или одобрение заявления сотрудника (и чьего).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tool_status_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      changed_by TEXT,
+      source TEXT NOT NULL DEFAULT 'admin',
+      request_id INTEGER REFERENCES requests(id) ON DELETE SET NULL,
+      requested_by_username TEXT,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Учёт рабочего времени. Пользователь вносит записи (дата + часы + заметка),
   // администраторы видят данные по всем. Одна строка — одна запись за день.
   db.run(`
