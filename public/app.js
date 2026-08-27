@@ -1301,10 +1301,12 @@ window.closeWorkTimeModal = () => {
 
 // ==== Заявления (админ) ====
 const REQ_STATUS = {
-  pending:  { label: 'Ожидает',   badge: 'badge-warning' },
-  approved: { label: 'Одобрено',  badge: 'badge-success' },
-  rejected: { label: 'Отклонено', badge: 'badge-danger' }
+  pending:   { label: 'Ожидает',                    badge: 'badge-warning' },
+  approved:  { label: 'Одобрено',                   badge: 'badge-success' },
+  rejected:  { label: 'Отклонено',                  badge: 'badge-danger' },
+  countered: { label: 'Предложены другие даты',     badge: 'badge-warning' }
 };
+const COUNTERABLE_TYPES = ['vacation', 'sick_leave'];
 let requestTypesCache = null;
 
 async function ensureRequestTypes() {
@@ -1415,12 +1417,18 @@ function renderRequests(list, types) {
     const moreBtn = hasExtra
       ? `<button class="req-action req-action--green" onclick="openRequestMoreInfo(${r.id})">Подробнее</button>`
       : '';
+    const counterBtn = (r.status === 'pending' && COUNTERABLE_TYPES.includes(r.type))
+      ? `<button class="req-action" onclick="openCounterModal(${r.id})">Другие даты</button>`
+      : '';
     const decide = r.status === 'pending'
       ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">Одобрить</button>
+         ${counterBtn}
          <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
-      : (r.review_note
-          ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
-          : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
+      : r.status === 'countered'
+        ? `<span style="font-size:12px;color:hsl(var(--text-muted));">Ждём ответа сотрудника (${escapeHtml(r.payload.alt_start_date || '?')} — ${escapeHtml(r.payload.alt_end_date || '?')})</span>`
+        : (r.review_note
+            ? `<span style="font-size:12px;color:hsl(var(--text-muted));" title="${escapeHtml(r.review_note)}">${escapeHtml(r.reviewed_by_name || '')} ✎</span>`
+            : `<span style="font-size:12px;color:hsl(var(--text-muted));">${escapeHtml(r.reviewed_by_name || '')}</span>`);
     const tr = document.createElement('tr');
     tr.onclick = mobileRowTap(() => {
       const def = types[r.type];
@@ -1441,9 +1449,13 @@ function renderRequests(list, types) {
       }
       const just = requestJustification(r, types);
       if (just.text) rows.push([just.label || 'Обоснование', just.text, 'block']);
+      if (r.status === 'countered' && r.payload.alt_start_date) {
+        rows.push(['Предложены даты', `${r.payload.alt_start_date} — ${r.payload.alt_end_date}`]);
+      }
       if (r.review_note) rows.push(['Комментарий администратора', r.review_note, 'block']);
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
+           ${COUNTERABLE_TYPES.includes(r.type) ? `<button class="btn btn-secondary" onclick="closeRowDetail(); openCounterModal(${r.id})">Другие даты</button>` : ''}
            <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">Одобрить</button>`
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
@@ -1511,6 +1523,37 @@ window.rejectRequest = async (id) => {
     });
     const d = await res.json().catch(() => ({}));
     if (res.ok) { showToast('Заявление отклонено', 'success'); loadRequests(); }
+    else showToast(d.message || 'Ошибка', 'error');
+  } catch (e) { showToast('Ошибка сети', 'error'); }
+};
+
+let counterModalRequestId = null;
+window.openCounterModal = (id) => {
+  counterModalRequestId = id;
+  document.getElementById('counterStartDate').value = '';
+  document.getElementById('counterEndDate').value = '';
+  document.getElementById('counterNote').value = '';
+  document.getElementById('counterModalOverlay').classList.add('active');
+};
+window.closeCounterModal = () => {
+  document.getElementById('counterModalOverlay').classList.remove('active');
+  counterModalRequestId = null;
+};
+window.submitCounterOffer = async () => {
+  const id = counterModalRequestId;
+  if (!id) return;
+  const alt_start_date = document.getElementById('counterStartDate').value;
+  const alt_end_date = document.getElementById('counterEndDate').value;
+  const review_note = document.getElementById('counterNote').value;
+  if (!alt_start_date || !alt_end_date) { showToast('Укажите обе даты', 'error'); return; }
+  if (alt_end_date < alt_start_date) { showToast('Дата окончания раньше даты начала', 'error'); return; }
+  try {
+    const res = await fetch(`/api/requests/counter?id=${id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alt_start_date, alt_end_date, review_note })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { showToast('Альтернативные даты отправлены сотруднику', 'success'); closeCounterModal(); loadRequests(); }
     else showToast(d.message || 'Ошибка', 'error');
   } catch (e) { showToast('Ошибка сети', 'error'); }
 };

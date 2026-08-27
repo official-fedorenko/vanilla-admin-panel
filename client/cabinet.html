@@ -2796,9 +2796,10 @@
 
     // === Заявления (универсальные) ===
     const TR_STATUS = {
-      pending:  { label: 'Ожидает',   color: 'var(--accent-cyan)' },
-      approved: { label: 'Одобрено',  color: '#22c55e' },
-      rejected: { label: 'Отклонено', color: '#ef4444' }
+      pending:   { label: 'Ожидает',              color: 'var(--accent-cyan)' },
+      approved:  { label: 'Одобрено',             color: '#22c55e' },
+      rejected:  { label: 'Отклонено',            color: '#ef4444' },
+      countered: { label: 'Предложены другие даты', color: '#f59e0b' }
     };
     let requestTypes = {};
     let toolCategories = [];
@@ -3603,20 +3604,28 @@
           // Одобренный заказ инструмента, ещё не полученный → кнопка «Получил».
           const isOrderType = r.type === 'tool_order' || r.type === 'vehicle_order';
           const awaitingReceipt = isOrderType && r.status === 'approved' && !r.received_at;
+          const isCountered = r.status === 'countered';
           const row = document.createElement('div');
           row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:rgba(255,255,255,0.01);';
           if (awaitingReceipt) row.style.borderColor = 'rgba(34,197,94,0.4)';
+          if (isCountered) row.style.borderColor = 'rgba(245,158,11,0.4)';
           const rightSide = awaitingReceipt
             ? `<button type="button" data-receive-id="${r.id}" style="padding:6px 14px; background:#22c55e; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Получил</button>`
-            : (isOrderType && r.received_at
-                ? `<span style="font-size:11px; font-weight:600; color:#22c55e;">✓ Получено</span>`
-                : `<span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`);
+            : isCountered
+              ? `<div style="display:flex; gap:6px;">
+                   <button type="button" data-counter-accept="${r.id}" style="padding:6px 10px; background:#22c55e; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Принять</button>
+                   <button type="button" data-counter-decline="${r.id}" style="padding:6px 10px; background:#ef4444; border:none; color:#fff; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">Отклонить</button>
+                 </div>`
+              : (isOrderType && r.received_at
+                  ? `<span style="font-size:11px; font-weight:600; color:#22c55e;">✓ Получено</span>`
+                  : `<span style="font-size:11px; font-weight:600; color:${st.color};">${st.label}</span>`);
           row.innerHTML = `
             <div style="flex:1; min-width:0;">
               <div style="font-size:13px; color:var(--text-primary);">${escapeHtmlC(r.title || '')}</div>
               <div style="font-size:11px; color:var(--text-muted);">${escapeHtmlC(r.type_label || r.type)}</div>
               ${r.status === 'rejected' && r.review_note ? `<div style="font-size:11px; color:#ef4444;">Причина: ${escapeHtmlC(r.review_note)}</div>` : ''}
               ${awaitingReceipt ? `<div style="font-size:11px; color:#22c55e;">Одобрено — ${r.type === 'vehicle_order' ? 'заберите авто' : 'заберите инструмент'} и нажмите «Получил»</div>` : ''}
+              ${isCountered ? `<div style="font-size:11px; color:#f59e0b;">Администратор предлагает: ${escapeHtmlC(r.payload.alt_start_date || '?')} — ${escapeHtmlC(r.payload.alt_end_date || '?')}${r.payload.counter_note ? ' · ' + escapeHtmlC(r.payload.counter_note) : ''}</div>` : ''}
             </div>
             ${rightSide}`;
           box.appendChild(row);
@@ -3625,9 +3634,34 @@
         box.querySelectorAll('[data-receive-id]').forEach(btn => {
           btn.addEventListener('click', () => markReceived(btn.getAttribute('data-receive-id'), btn));
         });
+        // Обработчики кнопок ответа на предложенные даты
+        box.querySelectorAll('[data-counter-accept]').forEach(btn => {
+          btn.addEventListener('click', () => respondToCounter(btn.getAttribute('data-counter-accept'), true));
+        });
+        box.querySelectorAll('[data-counter-decline]').forEach(btn => {
+          btn.addEventListener('click', () => respondToCounter(btn.getAttribute('data-counter-decline'), false));
+        });
         capListToRows(box, 5, 8);
       } catch (e) {
         box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
+      }
+    }
+
+    async function respondToCounter(id, accept) {
+      try {
+        const res = await fetch('/api/requests/counter-respond?id=' + encodeURIComponent(id), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accept })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && d.success) {
+          showToast(accept ? 'Даты приняты, заявление одобрено' : 'Предложенные даты отклонены', 'success');
+          loadMyRequests();
+        } else {
+          showToast(d.message || 'Не удалось сохранить', 'error');
+        }
+      } catch (e) {
+        showToast('Ошибка сети', 'error');
       }
     }
 

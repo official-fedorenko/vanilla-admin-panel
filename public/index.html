@@ -404,6 +404,7 @@
               <option value="pending">Ожидают</option>
               <option value="approved">Одобренные</option>
               <option value="rejected">Отклонённые</option>
+              <option value="countered">Предложены другие даты</option>
               <option value="">Все статусы</option>
             </select>
           </div>
@@ -1265,6 +1266,34 @@
       </div>
       <div class="modal-body">
         <p id="justificationModalText" style="white-space:pre-wrap;line-height:1.6;color:hsl(var(--text-primary));margin:0;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNTER-OFFER (АЛЬТЕРНАТИВНЫЕ ДАТЫ ОТПУСКА/БОЛЬНИЧНОГО) MODAL -->
+  <div class="modal-overlay" id="counterModalOverlay">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3>Предложить другие даты</h3>
+        <button class="modal-close" onclick="closeCounterModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">С</label>
+          <input type="date" id="counterStartDate" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">По</label>
+          <input type="date" id="counterEndDate" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Комментарий (необязательно)</label>
+          <textarea id="counterNote" class="form-control" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeCounterModal()">Отмена</button>
+        <button class="btn" onclick="submitCounterOffer()">Отправить сотруднику</button>
       </div>
     </div>
   </div>

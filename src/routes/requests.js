@@ -236,7 +236,7 @@ function listAll(req, res, user, parsedUrl) {
   const status = parsedUrl.searchParams.get('status');
   const type = parsedUrl.searchParams.get('type');
   const where = [], params = [];
-  if (status && ['pending', 'approved', 'rejected'].includes(status)) { where.push('r.status = ?'); params.push(status); }
+  if (status && ['pending', 'approved', 'rejected', 'countered'].includes(status)) { where.push('r.status = ?'); params.push(status); }
   if (type && REQUEST_TYPES[type]) { where.push('r.type = ?'); params.push(type); }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const sql = `
@@ -247,7 +247,7 @@ function listAll(req, res, user, parsedUrl) {
     LEFT JOIN users rv ON rv.id = r.reviewed_by
     LEFT JOIN employees e ON e.user_id = r.requested_by
     ${whereSql}
-    ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.id DESC
+    ORDER BY CASE r.status WHEN 'pending' THEN 0 WHEN 'countered' THEN 0 ELSE 1 END, r.id DESC
     LIMIT ? OFFSET ?`;
   db.all(sql, [...params, limit, offset], (err, rows) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
@@ -711,6 +711,96 @@ async function reject(req, res, user, parsedUrl) {
   });
 }
 
+// --- Предложить другие даты (админ) вместо отклонения отпуска/больничного ---
+// Переводит заявление в статус 'countered': сохраняет предложенные даты и
+// комментарий в payload, оригинальные start_date/end_date не трогает — их
+// нужно показать сотруднику для сравнения. Решение — за сотрудником
+// (см. counterRespond).
+async function counterOffer(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  let body;
+  try { body = await getJsonBody(req); } catch (e) { return sendJson(res, 400, { success: false, message: 'Невалидный запрос' }); }
+  const altStart = /^\d{4}-\d{2}-\d{2}$/.test(String(body.alt_start_date || '')) ? body.alt_start_date : '';
+  const altEnd = /^\d{4}-\d{2}-\d{2}$/.test(String(body.alt_end_date || '')) ? body.alt_end_date : '';
+  if (!altStart || !altEnd) return sendJson(res, 400, { success: false, message: 'Укажите обе альтернативные даты' });
+  if (altEnd < altStart) return sendJson(res, 400, { success: false, message: 'Дата окончания раньше даты начала' });
+  const note = str(body.review_note, 500);
+
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.type !== 'vacation' && row.type !== 'sick_leave') {
+      return sendJson(res, 400, { success: false, message: 'Альтернативные даты применимы только к отпуску/больничному' });
+    }
+    if (row.status !== 'pending') return sendJson(res, 409, { success: false, message: 'Заявление уже обработано' });
+
+    let payload = {};
+    try { payload = JSON.parse(row.payload || '{}'); } catch (e) {}
+    payload.alt_start_date = altStart;
+    payload.alt_end_date = altEnd;
+    payload.counter_note = note;
+
+    db.run(
+      "UPDATE requests SET status='countered', payload=?, reviewed_by=?, reviewed_at=CURRENT_TIMESTAMP, review_note=? WHERE id=?",
+      [JSON.stringify(payload), user.id, note || null, id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Предложил другие даты по заявлению id=${id}: ${altStart} — ${altEnd}`);
+        sendJson(res, 200, { success: true });
+      }
+    );
+  });
+}
+
+// --- Ответ сотрудника на предложенные даты ---
+// accept=true: заявление одобряется с предложенными датами (start/end
+// заменяются на alt_*, значения alt_* остаются в payload для истории).
+// accept=false: заявление отклоняется как есть (сотрудник условия не принял).
+async function counterRespond(req, res, user, parsedUrl) {
+  const id = parseId(parsedUrl);
+  if (!id) return sendJson(res, 400, { success: false, message: 'Не указан id' });
+  let body;
+  try { body = await getJsonBody(req); } catch (e) { return sendJson(res, 400, { success: false, message: 'Невалидный запрос' }); }
+  const accept = body.accept === true;
+
+  db.get("SELECT * FROM requests WHERE id = ?", [id], (err, row) => {
+    if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+    if (!row) return sendJson(res, 404, { success: false, message: 'Заявление не найдено' });
+    if (row.requested_by !== user.id) return sendJson(res, 403, { success: false, message: 'Это не ваша заявка' });
+    if (row.status !== 'countered') return sendJson(res, 409, { success: false, message: 'По этой заявке нет предложенных дат' });
+
+    let payload = {};
+    try { payload = JSON.parse(row.payload || '{}'); } catch (e) {}
+
+    if (!accept) {
+      return db.run(
+        "UPDATE requests SET status='rejected' WHERE id=?",
+        [id],
+        (uErr) => {
+          if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+          logAction(user.username, `Отклонил предложенные даты по заявлению id=${id}`);
+          sendJson(res, 200, { success: true });
+        }
+      );
+    }
+
+    payload.start_date = payload.alt_start_date;
+    payload.end_date = payload.alt_end_date;
+    const title = buildTitle(row.type, payload);
+    db.run(
+      "UPDATE requests SET status='approved', payload=?, title=? WHERE id=?",
+      [JSON.stringify(payload), title, id],
+      (uErr) => {
+        if (uErr) return sendJson(res, 500, { success: false, message: 'Не удалось сохранить' });
+        logAction(user.username, `Принял предложенные даты по заявлению id=${id}: ${payload.start_date} — ${payload.end_date}`);
+        syncEmployeeLeaveStatuses();
+        sendJson(res, 200, { success: true });
+      }
+    );
+  });
+}
+
 module.exports = function handleRequests(req, res, user, parsedUrl, method) {
   if (!user) return sendJson(res, 401, { success: false, message: 'Неавторизован' });
   const p = parsedUrl.pathname;
@@ -755,6 +845,11 @@ module.exports = function handleRequests(req, res, user, parsedUrl, method) {
     if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
     return reject(req, res, user, parsedUrl);
   }
+  if (p === '/api/requests/counter' && method === 'POST') {
+    if (!canReview(user)) return sendJson(res, 403, { success: false, message: 'Нет доступа' });
+    return counterOffer(req, res, user, parsedUrl);
+  }
+  if (p === '/api/requests/counter-respond' && method === 'POST') return counterRespond(req, res, user, parsedUrl);
 
   return sendJson(res, 404, { success: false, message: 'Не найдено' });
 };
