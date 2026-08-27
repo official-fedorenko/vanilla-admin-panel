@@ -847,9 +847,9 @@
               </div>
               <button type="submit" class="btn-save" style="margin-top:2px;">Добавить запись</button>
             </form>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">Заметку и объект можно указать, открыв нужный день в «Этот месяц» или «Мои записи».</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">Заметку и объект можно указать, открыв нужный день в «Этот месяц».</div>
 
-            <!-- Своя ставка в час + действия (календарь / список / прогноз) — единый блок -->
+            <!-- Своя ставка в час + действия (календарь / прогноз) — единый блок -->
             <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px; padding:12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.015);">
               <div style="display:flex; align-items:center; gap:8px;">
                 <label for="wlRateInput" style="margin:0; font-size:12px; white-space:nowrap;">Ставка, €/ч:</label>
@@ -857,29 +857,13 @@
                 <button type="button" id="wlRateSaveBtn" class="wl-btn" style="flex-shrink:0;">Сохранить</button>
                 <span id="wlRateHint" style="font-size:11px; color:var(--text-muted); flex-shrink:0;"></span>
               </div>
-              <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+              <div class="wl-btn-grid" style="display:grid; grid-template-columns:repeat(2, 1fr); gap:8px;">
                 <button type="button" id="wlOpenCalendarBtn" class="wl-btn">Этот месяц</button>
-                <button type="button" id="wlOpenListBtn" class="wl-btn">Мои записи</button>
                 <button type="button" id="wlOpenForecastBtn" class="wl-btn wl-btn--accent">Прогноз на месяц</button>
               </div>
             </div>
             <div style="margin-top:10px; font-size:13px;">
               Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong><span id="wlEarnedWrap" style="display:none;"> · <strong id="wlEarned" style="color:var(--green);"></strong></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Модалка «Мои записи» — сам список отработанного времени по дням -->
-        <div id="wlListModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
-          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
-            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
-              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Мои записи</div>
-              <button type="button" id="wlListModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
-            </div>
-            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
-              <div id="wlList" style="display:flex; flex-direction:column; gap:8px;">
-                <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
-              </div>
             </div>
           </div>
         </div>
@@ -917,6 +901,10 @@
             <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
               <div id="wlCalWeekdays" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; font-size:11px; color:var(--text-muted); text-align:center;"></div>
               <div id="wlCalGrid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px;"></div>
+              <div style="display:flex; gap:16px; margin-top:14px; font-size:11px; color:var(--text-muted);">
+                <span>🌴 Отпуск</span>
+                <span>🤒 Больничный</span>
+              </div>
             </div>
           </div>
         </div>
@@ -2916,7 +2904,7 @@
       if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
 
       // Быстрая форма — только дата и часы; заметка/объект добавляются позже,
-      // при открытии конкретного дня (в «Этот месяц» или «Мои записи»).
+      // при открытии конкретного дня в календаре («Этот месяц»).
       form.onsubmit = async (e) => {
         e.preventDefault();
         const payload = {
@@ -2939,7 +2927,7 @@
 
       // Модалки должны жить в <body> — иначе фиксированный navbar (z-index:100)
       // перекрывает шапку модалки, т.к. .page создаёт свой stacking-context.
-      ['wlCalendarModalOverlay', 'wlDayModalOverlay', 'wlForecastModalOverlay', 'wlListModalOverlay'].forEach(mid => {
+      ['wlCalendarModalOverlay', 'wlDayModalOverlay', 'wlForecastModalOverlay'].forEach(mid => {
         const m = document.getElementById(mid);
         if (m && m.parentElement !== document.body) document.body.appendChild(m);
       });
@@ -2969,15 +2957,10 @@
 
       document.getElementById('wlRateSaveBtn').onclick = saveWlRate;
 
-      document.getElementById('wlOpenListBtn').onclick = openWlListModal;
-      document.getElementById('wlListModalClose').onclick = closeWlListModal;
-      document.getElementById('wlListModalOverlay').addEventListener('click', (e) => {
-        if (e.target.id === 'wlListModalOverlay') closeWlListModal();
-      });
-
       loadMyWorkLogs();
       loadWlSites();
       loadWlRate();
+      loadWlLeaves();
     }
 
     async function loadWlSites() {
@@ -2986,6 +2969,27 @@
         const list = await res.json();
         wlSitesCache = Array.isArray(list) ? list.map(s => ({ id: s.id, name: s.name })) : [];
       } catch (_) { wlSitesCache = []; }
+    }
+
+    // === Отпуска / больничные — подсветка в календаре ===
+    let wlLeaveRanges = []; // [{ type: 'vacation'|'sick_leave', status, start, end }]
+
+    async function loadWlLeaves() {
+      try {
+        const res = await fetch('/api/requests/mine');
+        const d = await res.json();
+        const list = (d && d.requests) || [];
+        wlLeaveRanges = list
+          .filter(r => (r.type === 'vacation' || r.type === 'sick_leave') && (r.status === 'approved' || r.status === 'pending'))
+          .map(r => ({ type: r.type, status: r.status, start: r.payload.start_date, end: r.payload.end_date }))
+          .filter(r => r.start && r.end);
+        if (document.getElementById('wlCalendarModalOverlay').style.display === 'flex') renderWlCalendar();
+      } catch (_) { wlLeaveRanges = []; }
+    }
+
+    // Отпуск/больничный, действующий на конкретную дату (YYYY-MM-DD), если есть.
+    function wlLeaveForDate(dateKey) {
+      return wlLeaveRanges.find(r => dateKey >= r.start && dateKey <= r.end) || null;
     }
 
     // === Своя ставка в час (EUR) ===
@@ -3035,9 +3039,10 @@
       wrap.style.display = '';
     }
 
+    // Записи больше не рендерятся отдельным списком на странице — только
+    // «Итого»/заработано тут же, а сами записи по дням видно в календаре
+    // («Этот месяц»), где по клику на день открывается их детальная модалка.
     async function loadMyWorkLogs() {
-      const box = document.getElementById('wlList');
-      if (!box) return;
       try {
         const res = await fetch('/api/worklogs/mine');
         const d = await res.json();
@@ -3045,38 +3050,9 @@
         document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
         if (d && d.rate != null) wlHourlyRate = d.rate;
         updateWlEarnedDisplay();
-        if (!wlEntriesCache.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Записей пока нет</div>'; return; }
-        box.innerHTML = '';
-        // Отработанные часы и объект не показываем прямо в списке — только
-        // дату; сколько часов и на каком объекте видно в модалке дня (клик).
-        const dateOrder = [];
-        const seenDates = new Set();
-        wlEntriesCache.forEach(r => { if (!seenDates.has(r.work_date)) { seenDates.add(r.work_date); dateOrder.push(r.work_date); } });
-        dateOrder.forEach(dateKey => {
-          const entries = wlEntriesCache.filter(r => r.work_date === dateKey);
-          const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-          const row = document.createElement('button');
-          row.type = 'button';
-          row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--border-color); border-radius:10px; background:rgba(255,255,255,0.01); width:100%; text-align:left; cursor:pointer; color:inherit; font-family:inherit;';
-          row.innerHTML = `
-            <span style="font-size:13px; font-weight:600;">${dateStr}${entries.length > 1 ? ` <span style="color:var(--text-muted); font-weight:400;">· ${entries.length} записи</span>` : ''}</span>
-            <span style="font-size:12px; color:var(--accent-cyan); flex-shrink:0;">Подробнее ›</span>`;
-          row.onclick = () => openWlDayModal(dateKey);
-          box.appendChild(row);
-        });
         // Если открыт календарь/детали дня — обновим их тоже.
         if (document.getElementById('wlCalendarModalOverlay').style.display === 'flex') renderWlCalendar();
-      } catch (_) {
-        box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
-      }
-    }
-
-    // === Модалка «Мои записи» ===
-    function openWlListModal() {
-      document.getElementById('wlListModalOverlay').style.display = 'flex';
-    }
-    function closeWlListModal() {
-      document.getElementById('wlListModalOverlay').style.display = 'none';
+      } catch (_) { /* тихо оставляем предыдущее состояние */ }
     }
 
     window.deleteMyWorkLog = async (id) => {
@@ -3207,12 +3183,26 @@
         const info = byDay[key];
         const hours = info ? info.hours : 0;
         const isToday = key === todayKey;
-        // Интенсивность цвета — чем больше часов, тем ярче заливка.
-        const intensity = hours <= 0 ? 0 : Math.min(1, hours / 8);
-        const bg = hours > 0 ? `rgba(0, 200, 220, ${0.10 + intensity * 0.35})` : 'rgba(255,255,255,0.02)';
+        const leave = wlLeaveForDate(key);
+        // Интенсивность цвета — чем больше часов, тем ярче заливка. Дни
+        // отпуска/больничного подсвечиваются даже без внесённых часов.
+        let bg;
+        if (hours > 0) {
+          const intensity = Math.min(1, hours / 8);
+          bg = `rgba(0, 200, 220, ${0.10 + intensity * 0.35})`;
+        } else if (leave) {
+          bg = leave.type === 'vacation' ? 'rgba(160,110,255,0.14)' : 'rgba(255,120,120,0.14)';
+        } else {
+          bg = 'rgba(255,255,255,0.02)';
+        }
+        const leaveIcon = leave ? (leave.type === 'vacation' ? '🌴' : '🤒') : '';
+        const leaveTitle = leave
+          ? `${leave.type === 'vacation' ? 'Отпуск' : 'Больничный'}${leave.status === 'pending' ? ' (на рассмотрении)' : ''}`
+          : '';
         const cell = document.createElement('div');
-        cell.style.cssText = `aspect-ratio:1; border-radius:8px; border:1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-color)'}; background:${bg}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; padding:2px;`;
+        cell.style.cssText = `position:relative; aspect-ratio:1; border-radius:8px; border:1px solid ${isToday ? 'var(--accent-cyan)' : 'var(--border-color)'}; background:${bg}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; padding:2px;`;
         cell.innerHTML = `
+          ${leaveIcon ? `<span title="${leaveTitle}" style="position:absolute; top:2px; right:3px; font-size:11px; opacity:${leave.status === 'pending' ? 0.5 : 1};">${leaveIcon}</span>` : ''}
           <div style="font-size:12px; color:var(--text-secondary);">${d}</div>
           ${hours > 0 ? `<div style="font-size:11px; font-weight:700; color:var(--accent-cyan);">${fmtHours(hours)}</div>` : ''}`;
         cell.onclick = () => openWlDayModal(key);
