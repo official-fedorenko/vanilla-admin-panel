@@ -44,6 +44,9 @@
   --accent-cyan: 189 88% 42%;
 }
 
+html { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -574,6 +577,31 @@ main.main-content {
 .form-control:focus {
   border-color: hsl(var(--accent-purple));
   box-shadow: 0 0 0 3px hsl(var(--accent-purple) / 0.15);
+}
+
+/* Кастомизация выпадающих списков (<select>) под тёмную/светлую тему сайта:
+   убираем нативную браузерную стрелку и рисуем свою, красим сам список и
+   поповер опций (последнее браузеры поддерживают лишь частично — options
+   красятся, но не всегда их hover, это ограничение движка рендеринга ОС). */
+select.form-control,
+select:not(.form-input) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%237c8798' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px !important;
+  cursor: pointer;
+}
+select.form-control option,
+select:not(.form-input) option {
+  background-color: hsl(var(--bg-card));
+  color: hsl(var(--text-primary));
+}
+[data-theme="light"] select.form-control,
+[data-theme="light"] select:not(.form-input) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2398a0ac' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 /* Улучшения для настроек */

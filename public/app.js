@@ -1563,7 +1563,7 @@ function renderRequests(list, types) {
     const just = requestJustification(r, types);
     const justBtn = just.text
       ? `<button class="req-action req-action--green" onclick="openJustification(${r.id})">Обоснование</button>`
-      : `<button class="req-action req-action--red" disabled title="Обоснование не указано">Обоснование</button>`;
+      : `<button class="req-action" disabled title="Обоснование не указано">Обоснование</button>`;
     const hasExtra = requestExtraFields(types[r.type])
       .some(f => r.payload[f.name] !== '' && r.payload[f.name] != null);
     const moreBtn = hasExtra
