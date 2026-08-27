@@ -832,19 +832,31 @@
               <label for="wlRateInput" style="margin:0; font-size:12px; white-space:nowrap;">Ставка, €/ч:</label>
               <input type="number" id="wlRateInput" min="0" max="10000" step="0.01" placeholder="0.00" style="width:90px; padding:6px 8px; font-size:12px;">
               <button type="button" id="wlRateSaveBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">Сохранить</button>
+              <button type="button" id="wlOpenForecastBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(0,210,255,0.10); border:1px solid rgba(0,210,255,0.3); color:var(--accent-cyan); cursor:pointer;">Прогноз на месяц</button>
               <span id="wlRateHint" style="font-size:11px; color:var(--text-muted);"></span>
             </div>
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px; gap:10px; flex-wrap:wrap;">
-              <span style="font-size:13px; color:var(--text-secondary);">Мои записи</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 0; gap:10px; flex-wrap:wrap;">
+              <button type="button" id="wlOpenListBtn" style="background:none; border:none; padding:0; color:var(--text-secondary); font-size:13px; cursor:pointer; text-decoration:underline; text-underline-offset:3px;">Мои записи ›</button>
               <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span style="font-size:13px;">Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong><span id="wlEarnedWrap" style="display:none;"> · <strong id="wlEarned" style="color:var(--green);"></strong></span></span>
                 <button type="button" id="wlOpenCalendarBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer;">Этот месяц</button>
-                <button type="button" id="wlOpenForecastBtn" style="padding:6px 12px; font-size:12px; border-radius:8px; background:rgba(0,210,255,0.10); border:1px solid rgba(0,210,255,0.3); color:var(--accent-cyan); cursor:pointer;">Прогноз на месяц</button>
               </div>
             </div>
-            <div id="wlList" style="display:flex; flex-direction:column; gap:8px; max-height:320px; overflow-y:auto; padding-right:4px;">
-              <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+          </div>
+        </div>
+
+        <!-- Модалка «Мои записи» — сам список отработанного времени по дням -->
+        <div id="wlListModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(3px); z-index:1000; overflow-y:auto; padding:24px 12px;">
+          <div class="modal-panel-solid" style="border:1px solid var(--border-color); border-radius:16px; width:min(460px, 94vw); max-height:calc(100dvh - 48px); overflow:hidden; margin:auto; display:flex; flex-direction:column;">
+            <div style="flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border-color);">
+              <div style="font-weight:600; color:var(--text-primary); font-size:16px;">Мои записи</div>
+              <button type="button" id="wlListModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
+              <div id="wlList" style="display:flex; flex-direction:column; gap:8px;">
+                <div style="color:var(--text-muted); font-size:12px;">Загрузка...</div>
+              </div>
             </div>
           </div>
         </div>
@@ -2904,7 +2916,7 @@
 
       // Модалки должны жить в <body> — иначе фиксированный navbar (z-index:100)
       // перекрывает шапку модалки, т.к. .page создаёт свой stacking-context.
-      ['wlCalendarModalOverlay', 'wlDayModalOverlay', 'wlForecastModalOverlay'].forEach(mid => {
+      ['wlCalendarModalOverlay', 'wlDayModalOverlay', 'wlForecastModalOverlay', 'wlListModalOverlay'].forEach(mid => {
         const m = document.getElementById(mid);
         if (m && m.parentElement !== document.body) document.body.appendChild(m);
       });
@@ -2933,6 +2945,12 @@
       };
 
       document.getElementById('wlRateSaveBtn').onclick = saveWlRate;
+
+      document.getElementById('wlOpenListBtn').onclick = openWlListModal;
+      document.getElementById('wlListModalClose').onclick = closeWlListModal;
+      document.getElementById('wlListModalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'wlListModalOverlay') closeWlListModal();
+      });
 
       loadMyWorkLogs();
       loadWlSites();
@@ -3028,6 +3046,14 @@
       } catch (_) {
         box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Ошибка загрузки</div>';
       }
+    }
+
+    // === Модалка «Мои записи» ===
+    function openWlListModal() {
+      document.getElementById('wlListModalOverlay').style.display = 'flex';
+    }
+    function closeWlListModal() {
+      document.getElementById('wlListModalOverlay').style.display = 'none';
     }
 
     window.deleteMyWorkLog = async (id) => {
