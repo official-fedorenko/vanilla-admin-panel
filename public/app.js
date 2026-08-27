@@ -1326,7 +1326,7 @@ function renderTasksAdminTable(list) {
     return;
   }
   tbody.innerHTML = '';
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = vilniusDateKey();
   list.forEach(t => {
     const dateStr = new Date(t.due_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
     const overdue = !t.done && t.due_date < todayKey;
@@ -1380,7 +1380,7 @@ function renderTasksAdminTable(list) {
     document.getElementById('taskEmployeeSearch').value = '';
     renderEmpList(document.getElementById('taskEmployeeList'), employeesList, '', '', 'selectTaskEmployee');
     document.getElementById('taskEmployeeId').value = '';
-    document.getElementById('taskDueDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('taskDueDate').value = vilniusDateKey();
     modal.classList.add('active');
   });
   document.getElementById('closeTaskModalBtn').addEventListener('click', closeModal);
@@ -1573,7 +1573,7 @@ function renderRequests(list, types) {
       ? `<button class="req-action" onclick="openCounterModal(${r.id})">Другие даты</button>`
       : '';
     const decide = r.status === 'pending'
-      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Подтвердить утерю' : 'Одобрить'}</button>
+      ? `<button class="req-action req-action--green" onclick="approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Утерян' : 'Одобрить'}</button>
          ${counterBtn}
          <button class="req-action req-action--red" onclick="rejectRequest(${r.id})">Отклонить</button>`
       : r.status === 'countered'
@@ -1608,7 +1608,7 @@ function renderRequests(list, types) {
       const modalActions = r.status === 'pending'
         ? `<button class="btn btn-secondary" onclick="closeRowDetail(); rejectRequest(${r.id})">Отклонить</button>
            ${COUNTERABLE_TYPES.includes(r.type) ? `<button class="btn btn-secondary" onclick="closeRowDetail(); openCounterModal(${r.id})">Другие даты</button>` : ''}
-           <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Подтвердить утерю' : 'Одобрить'}</button>`
+           <button class="btn" onclick="closeRowDetail(); approveRequest(${r.id}, '${r.type}')">${r.type === 'tool_loss' ? 'Утерян' : 'Одобрить'}</button>`
         : '';
       showRowDetail(r.type_label || r.type, rows, modalActions);
     });
@@ -3020,6 +3020,17 @@ window.exportCSV = async (type) => {
     showToast('Ошибка экспорта CSV', 'error');
   }
 };
+
+// "Сегодня" по времени Литвы (Europe/Vilnius) в формате YYYY-MM-DD — не через
+// toISOString() (это UTC и рядом с местной полуночью даёт вчерашнюю дату).
+function vilniusDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Vilnius', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date);
+  const map2 = {};
+  parts.forEach(p => { map2[p.type] = p.value; });
+  return `${map2.year}-${map2.month}-${map2.day}`;
+}
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -6583,6 +6594,8 @@ async function loadApartments() {
 // «Настройки» → «Напоминания о недвижимости». 0 — выключено.
 let apartmentRentSoonDays = 30;
 
+let apartmentShowContacts = false;
+
 async function loadApartmentExpirySettings() {
   try {
     const res = await fetch('/api/settings');
@@ -6591,6 +6604,7 @@ async function loadApartmentExpirySettings() {
     const map = {};
     (rows || []).forEach(r => { map[r.key] = r.value; });
     if (map.apartment_rent_soon_days !== undefined) apartmentRentSoonDays = parseInt(map.apartment_rent_soon_days, 10) || 0;
+    apartmentShowContacts = map.apartment_show_owner_contacts === 'true';
   } catch (e) { /* используем значение по умолчанию */ }
 }
 
@@ -6743,6 +6757,8 @@ function openApartmentModal(apartment = null) {
   document.getElementById('apartmentRentFrom').value = apartment ? (apartment.rent_from || '') : '';
   document.getElementById('apartmentRentUntil').value = apartment ? (apartment.rent_until || '') : '';
   document.getElementById('apartmentNotes').value = apartment ? (apartment.notes || '') : '';
+  document.getElementById('apartmentContactType').value = apartment ? (apartment.contact_type || '') : '';
+  document.getElementById('apartmentContactInfo').value = apartment ? (apartment.contact_info || '') : '';
   populateApartmentCategorySelect(apartment ? (apartment.category || '') : '');
   toggleApartmentRentDates();
   document.getElementById('apartmentModalOverlay').classList.add('active');
@@ -6993,7 +7009,9 @@ function setupApartments() {
         ownership_type: document.getElementById('apartmentOwnership').value,
         rent_from: document.getElementById('apartmentRentFrom').value,
         rent_until: document.getElementById('apartmentRentUntil').value,
-        notes: document.getElementById('apartmentNotes').value
+        notes: document.getElementById('apartmentNotes').value,
+        contact_type: document.getElementById('apartmentContactType').value,
+        contact_info: document.getElementById('apartmentContactInfo').value
       };
       const url = id ? `/api/crud/apartments?id=${id}` : '/api/crud/apartments';
       try {
@@ -7063,6 +7081,7 @@ function setupApartments() {
     openSettingsBtn.addEventListener('click', async () => {
       await loadApartmentExpirySettings();
       document.getElementById('apartmentRentSoonDaysInput').value = apartmentRentSoonDays;
+      document.getElementById('apartmentShowContactsInput').checked = apartmentShowContacts;
       settingsModal.classList.add('active');
     });
   }
@@ -7071,11 +7090,12 @@ function setupApartments() {
   settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettingsModal(); });
   document.getElementById('saveApartmentSettingsBtn').addEventListener('click', async () => {
     const days = document.getElementById('apartmentRentSoonDaysInput').value;
+    const showContacts = document.getElementById('apartmentShowContactsInput').checked;
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apartment_rent_soon_days: days })
+        body: JSON.stringify({ apartment_rent_soon_days: days, apartment_show_owner_contacts: String(showContacts) })
       });
       if (res.ok) {
         showToast('Настройки сохранены', 'success');

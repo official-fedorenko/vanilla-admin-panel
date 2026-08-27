@@ -159,7 +159,7 @@ function getMyVehicles(req, res, user) {
 function getMyApartment(req, res, user) {
   const sql = `
     SELECT ap.id, ap.name, ap.category, ap.address, ap.house, ap.floor, ap.unit_number,
-           ap.rooms, ap.area, ap.photo_url, a.issued_at
+           ap.rooms, ap.area, ap.photo_url, ap.notes, ap.contact_type, ap.contact_info, a.issued_at
     FROM employees e
     JOIN apartment_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
     JOIN apartments ap ON ap.id = a.apartment_id
@@ -167,11 +167,17 @@ function getMyApartment(req, res, user) {
     ORDER BY a.issued_at DESC`;
   db.all(sql, [user.id], (err, apartments) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    db.get("SELECT own_housing FROM employees WHERE user_id = ?", [user.id], (e2, emp) => {
-      sendJson(res, 200, {
-        success: true,
-        apartments: apartments || [],
-        own_housing: !!(emp && emp.own_housing)
+    // Контакты владельца/риелтора показываем сотрудникам, только если это
+    // разрешено в настройках недвижимости; примечания (домофон/код) — всегда.
+    db.get("SELECT value FROM settings WHERE key = 'apartment_show_owner_contacts'", [], (sErr, setting) => {
+      const showContacts = !sErr && setting && setting.value === 'true';
+      const list = (apartments || []).map(a => showContacts ? a : { ...a, contact_type: null, contact_info: null });
+      db.get("SELECT own_housing FROM employees WHERE user_id = ?", [user.id], (e2, emp) => {
+        sendJson(res, 200, {
+          success: true,
+          apartments: list,
+          own_housing: !!(emp && emp.own_housing)
+        });
       });
     });
   });
