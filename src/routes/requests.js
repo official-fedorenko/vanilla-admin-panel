@@ -23,7 +23,9 @@ const REQUEST_TYPES = {
     label: 'Я получил новый инструмент',
     icon: 'wrench',
     fields: [
-      { name: 'name', label: 'Название', type: 'text', required: true },
+      { name: 'source', label: 'Как получен', type: 'select', options: ['Получил новый', 'Выдали инструмент'], required: true },
+      { name: 'existing_tool_id', label: 'Выберите инструмент со склада', type: 'existing_tool' },
+      { name: 'name', label: 'Название', type: 'text' },
       { name: 'category', label: 'Категория', type: 'category' },
       { name: 'brand', label: 'Бренд', type: 'text' },
       { name: 'model', label: 'Модель', type: 'text' },
@@ -124,7 +126,7 @@ function buildPayload(typeDef, body) {
   for (const f of typeDef.fields) {
     let val = body[f.name];
     if (f.type === 'photo') val = cleanPhoto(val);
-    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
+    else if (f.type === 'number' || f.type === 'apartment' || f.type === 'assigned_tool' || f.type === 'existing_tool') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
     else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
@@ -201,6 +203,23 @@ async function createRequest(req, res, user) {
           }
         );
       });
+      return;
+    }
+
+    if (type === 'tool_add') {
+      if (payload.source === 'Выдали инструмент') {
+        if (!payload.existing_tool_id) return sendJson(res, 400, { success: false, message: 'Выберите инструмент со склада' });
+        db.get("SELECT id, name, status FROM tools WHERE id = ?", [payload.existing_tool_id], (tErr, tool) => {
+          if (tErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+          if (!tool) return sendJson(res, 400, { success: false, message: 'Инструмент не найден' });
+          if (tool.status === 'written_off') return sendJson(res, 400, { success: false, message: 'Этот инструмент списан' });
+          insertRequest({ ...payload, name: tool.name });
+        });
+        return;
+      }
+      // 'Получил новый' — та же ветка, что раньше: обязательно название нового инструмента.
+      if (!payload.name) return sendJson(res, 400, { success: false, message: 'Поле «Название» обязательно' });
+      insertRequest(payload);
       return;
     }
 
@@ -556,6 +575,35 @@ function receiveRequest(req, res, user, parsedUrl) {
 // requestRow нужен, чтобы узнать заявителя (requested_by) и закрепить за ним
 // инструмент, если он сотрудник.
 function approveSideEffect(type, payload, requestRow, reviewer, cb) {
+  if (type === 'tool_add' && payload.existing_tool_id) {
+    // «Выдали инструмент» — предмет уже есть в инвентаре, просто закрепляем
+    // его за заявителем вместо создания дубликата записи.
+    const toolId = parseInt(payload.existing_tool_id, 10);
+    return db.get("SELECT id, status FROM tools WHERE id = ?", [toolId], (tErr, tool) => {
+      if (tErr) return cb({ message: 'Ошибка базы данных' });
+      if (!tool) return cb({ message: 'Инструмент не найден' });
+      if (tool.status === 'written_off') return cb({ message: 'Этот инструмент списан' });
+      db.get("SELECT id FROM employees WHERE user_id = ?", [requestRow.requested_by], (empErr, emp) => {
+        if (empErr || !emp) return cb({ message: 'Заявитель не найден среди сотрудников' });
+        db.get(
+          "SELECT id FROM tool_assignments WHERE tool_id = ? AND employee_id = ? AND returned_at IS NULL",
+          [toolId, emp.id],
+          (chkErr, already) => {
+            if (chkErr) return cb({ message: 'Ошибка базы данных' });
+            if (already) return cb(null, String(toolId));
+            db.run(
+              "INSERT INTO tool_assignments (tool_id, employee_id, issued_by) VALUES (?, ?, ?)",
+              [toolId, emp.id, reviewer.username],
+              (asgErr) => {
+                if (asgErr) return cb({ message: 'Не удалось выдать инструмент' });
+                db.run("UPDATE tools SET status = 'assigned' WHERE id = ? AND status != 'written_off'", [toolId], () => cb(null, String(toolId)));
+              }
+            );
+          }
+        );
+      });
+    });
+  }
   if (type === 'tool_add') {
     const { error, values } = tools.extractToolFields(payload);
     if (error) return cb({ message: error });

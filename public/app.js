@@ -1376,7 +1376,9 @@ function requestDateFields(def) {
 // информации», а не отдельными колонками таблицы.
 function requestExtraFields(def) {
   if (!def) return [];
-  return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea');
+  // existing_tool — служебная ссылка на id инструмента со склада; человекочитаемое
+  // название уже попадает в поле name на сервере при создании заявления.
+  return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea' && f.type !== 'existing_tool');
 }
 
 // Шапка таблицы заявок — фиксированный набор колонок вне зависимости от

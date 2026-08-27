@@ -2806,6 +2806,7 @@
     let vehicleCategoriesCab = [];
     let apartmentsCab = [];
     let myAssignedToolsCab = [];
+    let allToolsCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -2814,12 +2815,13 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat, vcat, apts, myTools] = await Promise.all([
+        const [rt, cat, vcat, apts, myTools, allTools] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
           fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
           fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => []),
           fetch('/api/crud/apartments?limit=1000').then(r => r.json()).catch(() => []),
-          fetch('/api/cabinet/my-tools').then(r => r.json()).catch(() => ({}))
+          fetch('/api/cabinet/my-tools').then(r => r.json()).catch(() => ({})),
+          fetch('/api/crud/tools?limit=2000').then(r => r.json()).catch(() => [])
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
@@ -2829,6 +2831,8 @@
           a.status !== 'written_off' && !['Офис', 'Земля'].includes(a.category)
         );
         myAssignedToolsCab = (myTools && myTools.tools) || [];
+        // Для «Выдали инструмент» — весь инструмент компании, кроме списанного.
+        allToolsCab = (Array.isArray(allTools) ? allTools : []).filter(t => t.status !== 'written_off');
       } catch (e) { requestTypes = {}; }
 
       // Скрытый select хранит выбранный тип (для submitRequest)
@@ -2920,9 +2924,11 @@
       box.innerHTML = '';
       if (!def) return;
 
-      // Для «Добавить инструмент» — подбор из каталога, как в админке
+      // Для «Я получил новый инструмент» — подбор из каталога (только когда
+      // источник = «Получил новый»), как в админке.
       if (typeKey === 'tool_add') {
         const picker = document.createElement('div');
+        picker.dataset.reqGroup = 'new';
         picker.innerHTML = `
           <button type="button" id="catPickBtn" style="width:100%; padding:9px; background:rgba(138,43,226,0.12); border:1px solid var(--accent-purple); color:var(--text-primary); border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;">📖 Подобрать из каталога</button>
           <input id="catPickSearch" class="form-input" placeholder="Поиск по каталогу…" style="display:none; margin-top:8px;">
@@ -2930,6 +2936,10 @@
         box.appendChild(picker);
         wireCatalogPicker();
       }
+
+      // Поля, нужные только когда «Как получен» = «Получил новый» —
+      // остальное (объект со склада) скрыто/показано через data-req-group.
+      const TOOL_ADD_NEW_ONLY = ['name', 'category', 'brand', 'model', 'serial_number', 'inventory_number', 'photo_url'];
 
       def.fields.forEach(f => {
         const wrap = document.createElement('div');
@@ -2969,6 +2979,15 @@
             .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`
             + (myAssignedToolsCab.length ? '' : '<div style="font-size:12px; color:var(--text-muted); margin-top:4px;">За вами не закреплён инструмент</div>');
+        } else if (f.type === 'existing_tool') {
+          const opts = ['<option value="">Выберите инструмент</option>']
+            .concat(allToolsCab.map(t => {
+              const labelText = [t.name, t.brand, t.model].filter(Boolean).join(' ')
+                + (t.inventory_number ? ` (№ ${t.inventory_number})` : '');
+              return `<option value="${t.id}">${escapeHtmlC(labelText)}</option>`;
+            }))
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {
           reqPhotoUrls[f.name] = '';
           wrap.innerHTML = label + `<div style="display:flex; align-items:center; gap:12px;">
@@ -2980,6 +2999,10 @@
           const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
           wrap.innerHTML = label + `<input id="${fid}" type="${inputType}" class="form-input" placeholder="${escapeHtmlC(f.label)}">`;
         }
+        if (typeKey === 'tool_add') {
+          if (f.name === 'existing_tool_id') wrap.dataset.reqGroup = 'existing';
+          else if (TOOL_ADD_NEW_ONLY.includes(f.name)) wrap.dataset.reqGroup = 'new';
+        }
         box.appendChild(wrap);
         if (f.type === 'photo') wirePhotoField(f.name, fid);
         // Инвентарный номер для «Добавить инструмент» — подставляем сразу
@@ -2988,6 +3011,20 @@
           if (el && !el.value) el.value = genInventoryNumberCab();
         }
       });
+
+      // «Я получил новый инструмент»: показываем либо поля нового
+      // инструмента (+ подбор из каталога), либо выбор со склада —
+      // в зависимости от значения «Как получен».
+      if (typeKey === 'tool_add') {
+        const sourceSel = document.getElementById('reqf_source');
+        const applyToolAddVisibility = () => {
+          const val = sourceSel.value;
+          box.querySelectorAll('[data-req-group="new"]').forEach(el => { el.style.display = val === 'Получил новый' ? '' : 'none'; });
+          box.querySelectorAll('[data-req-group="existing"]').forEach(el => { el.style.display = val === 'Выдали инструмент' ? '' : 'none'; });
+        };
+        sourceSel.addEventListener('change', applyToolAddVisibility);
+        applyToolAddVisibility();
+      }
     }
 
     // Клиентская генерация инвентарного номера (тот же формат, что на сервере)
@@ -3119,6 +3156,14 @@
         payload[f.name] = el ? el.value : '';
         if (f.required && !String(payload[f.name]).trim()) {
           showToast(`Заполните: ${f.label}`, 'error'); return;
+        }
+      }
+      if (typeKey === 'tool_add') {
+        if (payload.source === 'Выдали инструмент' && !String(payload.existing_tool_id || '').trim()) {
+          showToast('Выберите инструмент со склада', 'error'); return;
+        }
+        if (payload.source === 'Получил новый' && !String(payload.name || '').trim()) {
+          showToast('Заполните: Название', 'error'); return;
         }
       }
       try {
