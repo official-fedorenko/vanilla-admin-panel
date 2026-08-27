@@ -739,6 +739,8 @@ function loadSectionData(hash) {
     loadWorkTimeSummary();
   } else if (hash === 'peertransfers') {
     loadPeerTransfersAdmin();
+  } else if (hash === 'taskplanner') {
+    loadTasksAdmin();
   } else if (hash === 'vacations') {
     loadVacations();
   } else if (hash === 'toolorders') {
@@ -1279,6 +1281,125 @@ function renderPeerTransfersAdminTable(list) {
       (t.to_name || '').toLowerCase().includes(q)
     );
     renderPeerTransfersAdminTable(filtered);
+  });
+})();
+
+// ==== Планировщик задач сотрудников (админ) ====
+let tasksAdminCache = [];
+
+async function loadTasksAdmin() {
+  const tbody = document.getElementById('tasksAdminTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Загрузка...</td></tr>`;
+  try {
+    const res = await fetch('/api/tasks/all');
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff6b6b; padding:20px;">Нет доступа</td></tr>`; return; }
+    const d = await res.json();
+    tasksAdminCache = (d && d.tasks) || [];
+    renderTasksAdminTable(tasksAdminCache);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff6b6b; padding:20px;">Ошибка загрузки</td></tr>`;
+  }
+}
+
+function renderTasksAdminTable(list) {
+  const tbody = document.getElementById('tasksAdminTableBody');
+  if (!list.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="5" class="empty-state" style="text-align:center; color:hsl(var(--text-muted)); padding:20px;">Задач пока нет</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = '';
+  const todayKey = new Date().toISOString().slice(0, 10);
+  list.forEach(t => {
+    const dateStr = new Date(t.due_date + 'T00:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+    const overdue = !t.done && t.due_date < todayKey;
+    const statusBadge = t.done
+      ? '<span class="badge badge-success">Выполнено</span>'
+      : (overdue ? '<span class="badge badge-danger">Просрочена</span>' : '<span class="badge badge-warning">Ожидает</span>');
+
+    const tr = document.createElement('tr');
+    tr.onclick = mobileRowTap(() => showRowDetail('Задача', [
+      ['Срок', dateStr],
+      ['Сотрудник', escapeHtml(t.employee_name)],
+      ['Задача', escapeHtml(t.title)],
+      ['Заметка', t.notes ? escapeHtml(t.notes) : '—'],
+      ['Статус', statusBadge, true],
+      ['Поставил', escapeHtml(t.created_by_username || '—')]
+    ]));
+    tr.innerHTML = `
+      <td class="hide-mobile">${dateStr}</td>
+      <td class="mobile-primary"><strong>${escapeHtml(t.employee_name)}</strong></td>
+      <td class="mobile-hidden">${escapeHtml(t.title)}</td>
+      <td>${statusBadge}</td>
+      <td class="mobile-hidden">${escapeHtml(t.created_by_username || '—')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+(function setupTasksAdminSearch() {
+  const input = document.getElementById('tasksAdminSearch');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { renderTasksAdminTable(tasksAdminCache); return; }
+    const filtered = tasksAdminCache.filter(t =>
+      (t.employee_name || '').toLowerCase().includes(q) ||
+      (t.title || '').toLowerCase().includes(q)
+    );
+    renderTasksAdminTable(filtered);
+  });
+})();
+
+(function setupTaskModal() {
+  const btn = document.getElementById('addTaskBtn');
+  const modal = document.getElementById('taskModalOverlay');
+  const form = document.getElementById('taskForm');
+  if (!btn || !modal || !form) return;
+
+  const closeModal = () => { modal.classList.remove('active'); form.reset(); document.getElementById('taskEmployeeId').value = ''; };
+
+  btn.addEventListener('click', async () => {
+    if (!employeesList.length) { try { await loadEmployees(); } catch (e) {} }
+    document.getElementById('taskEmployeeSearch').value = '';
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, '', '', 'selectTaskEmployee');
+    document.getElementById('taskEmployeeId').value = '';
+    document.getElementById('taskDueDate').value = new Date().toISOString().slice(0, 10);
+    modal.classList.add('active');
+  });
+  document.getElementById('closeTaskModalBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelTaskModalBtn').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  document.getElementById('taskEmployeeSearch').addEventListener('input', (e) => {
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, e.target.value, document.getElementById('taskEmployeeId').value, 'selectTaskEmployee');
+  });
+  window.selectTaskEmployee = (id) => {
+    document.getElementById('taskEmployeeId').value = id;
+    renderEmpList(document.getElementById('taskEmployeeList'), employeesList, document.getElementById('taskEmployeeSearch').value, id, 'selectTaskEmployee');
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const employeeId = document.getElementById('taskEmployeeId').value;
+    if (!employeeId) { showToast('Выберите сотрудника', 'error'); return; }
+    const payload = {
+      employee_id: employeeId,
+      title: document.getElementById('taskTitle').value,
+      due_date: document.getElementById('taskDueDate').value,
+      notes: document.getElementById('taskNotes').value
+    };
+    try {
+      const res = await fetch('/api/tasks/assign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        showToast('Задача поставлена', 'success');
+        closeModal();
+        loadTasksAdmin();
+      } else showToast(d.message || 'Не удалось поставить задачу', 'error');
+    } catch (err) { showToast('Ошибка сети', 'error'); }
   });
 })();
 
