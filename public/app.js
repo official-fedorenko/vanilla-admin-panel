@@ -1531,6 +1531,17 @@ function requestExtraFields(def) {
   return (def.fields || []).filter(f => f.type !== 'date' && f.type !== 'textarea' && f.type !== 'existing_tool');
 }
 
+// Значение поля для показа человеку: assigned_tool хранит только id — сервер
+// параллельно кладёт в payload.tool_name человекочитаемое название, его и
+// показываем вместо голого числа.
+function requestFieldDisplayValue(f, payload) {
+  if (f.type === 'assigned_tool') return payload.tool_name || payload[f.name];
+  return payload[f.name];
+}
+function requestFieldDisplayLabel(f) {
+  return f.type === 'assigned_tool' ? 'Инструмент' : f.label;
+}
+
 // Шапка таблицы заявок — фиксированный набор колонок вне зависимости от
 // типа/фильтра: ID, Тип, С, По, От кого, Статус, Действия.
 function renderRequestsHead() {
@@ -1594,7 +1605,7 @@ function renderRequests(list, types) {
         .filter(f => f.type !== 'photo' && r.payload[f.name] !== '' && r.payload[f.name] != null);
       if (descFields.length) {
         rows.push(['Описание', null, 'section']);
-        descFields.forEach(f => rows.push([f.label, r.payload[f.name]]));
+        descFields.forEach(f => rows.push([requestFieldDisplayLabel(f), requestFieldDisplayValue(f, r.payload)]));
       }
       if (r.payload.photo_url) {
         rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
@@ -1634,7 +1645,7 @@ window.openRequestMoreInfo = function (id) {
   const def = requestsTypesCacheForRender[r.type];
   const rows = requestExtraFields(def)
     .filter(f => f.type !== 'photo')
-    .map(f => [f.label, r.payload[f.name]]);
+    .map(f => [requestFieldDisplayLabel(f), requestFieldDisplayValue(f, r.payload)]);
   if (r.payload.photo_url) {
     rows.push(['Фото', `<img class="req-desc-photo" src="${iconVer(r.payload.photo_url)}" style="max-width:160px;border-radius:8px;">`, true]);
   }
