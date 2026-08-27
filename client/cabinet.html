@@ -1973,7 +1973,10 @@
           item.innerHTML = `
             <div>
               <div class="asset-item-title">${escapeHtml(a.name)}</div>
-              ${addressLine ? `<div class="asset-item-sub">${escapeHtml(addressLine)}</div>` : ''}
+              ${addressLine ? `<div class="asset-item-sub" style="display:flex; align-items:center; gap:5px;" title="Адрес жилья">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <span>Адрес: ${escapeHtml(addressLine)}</span>
+              </div>` : ''}
             </div>
             ${(a.category || a.rooms || a.area) ? `
               <div class="asset-item-divider"></div>

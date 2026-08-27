@@ -46,7 +46,10 @@ function scheduleTaskReminders(taskId, employeeId, title, dueDate) {
       [2, 1].forEach(daysBefore => {
         const when = new Date(due.getTime() - daysBefore * 86400000);
         if (when.getTime() <= now.getTime()) return; // уже прошло — не создаём
-        const scheduledAt = when.toISOString().slice(0, 10) + ' ' + when.toTimeString().slice(0, 8);
+        // scheduled_at сравнивается с CURRENT_TIMESTAMP (SQLite хранит его в UTC),
+        // поэтому и здесь нужен UTC — иначе "09:00 по Вильнюсу" писалось бы с
+        // датой по UTC, но временем по местному поясу (несогласованно).
+        const scheduledAt = when.toISOString().slice(0, 19).replace('T', ' ');
         const dayWord = daysBefore === 1 ? 'завтра' : `через ${daysBefore} дня`;
         const message = `Напоминание: задача «${title}» — срок ${dayWord} (${dueDate}).`;
         db.run(

@@ -1,3 +1,9 @@
+// Портал работает с литовской компанией — всё серверное время (даты в
+// задачах/напоминаниях/логах/учёте времени, CURRENT_TIMESTAMP в базе и
+// т.д.) должно идти по времени Литвы, а не по TZ хостинга. Должно быть
+// установлено раньше любого require, использующего Date при загрузке.
+process.env.TZ = 'Europe/Vilnius';
+
 // Must run before any other require — modules like src/config.js and
 // src/routes/auth.js read process.env at load time, so .env has to be
 // populated first or those reads silently see undefined.

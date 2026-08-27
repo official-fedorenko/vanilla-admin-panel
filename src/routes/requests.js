@@ -3,6 +3,14 @@ const { db } = require('../../db');
 const tools = require('./tools');
 const apartments = require('./apartments');
 
+// "Сегодня" по местному времени сервера (Europe/Vilnius, см. TZ в server.js) —
+// а не по UTC, иначе статус отпуска/больничного мог бы переключаться на пару
+// часов раньше/позже фактической местной полуночи.
+function todayLocal() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 /**
  * Универсальные заявления пользователей.
  *
@@ -301,7 +309,7 @@ function syncEmployeeLeaveStatuses(cb) {
     WHERE r.type IN ('vacation', 'sick_leave') AND r.status = 'approved'`;
   db.all(sql, [], (err, rows) => {
     if (err) return cb && cb(err);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const activeEntries = [];
     (rows || []).forEach(r => {
       let payload = {};
@@ -363,7 +371,7 @@ function listVacations(req, res, user) {
     ORDER BY r.status DESC, r.id DESC`;
   db.all(sql, [], (err, rows) => {
     if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const vacations = (rows || []).map(r => {
       let payload = {};
       try { payload = JSON.parse(r.payload || '{}'); } catch (e) {}
