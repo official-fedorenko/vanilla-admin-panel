@@ -187,7 +187,7 @@ function getMyApartment(req, res, user) {
 // к текущему аккаунту (можно работать на нескольких объектах одновременно).
 function getMyConstructionSites(req, res, user) {
   const sql = `
-    SELECT s.id, s.name, s.category, s.address, s.customer, s.status, a.issued_at,
+    SELECT s.id, s.name, s.category, s.address, s.customer, s.status, a.issued_at, e.id AS my_employee_id,
            f.id AS foreman_id, f.first_name AS foreman_first_name, f.last_name AS foreman_last_name
     FROM employees e
     JOIN construction_site_assignments a ON a.employee_id = e.id AND a.returned_at IS NULL
@@ -201,7 +201,38 @@ function getMyConstructionSites(req, res, user) {
       ...s,
       foreman_name: s.foreman_id ? [s.foreman_last_name, s.foreman_first_name].filter(Boolean).join(' ') : null
     }));
-    sendJson(res, 200, { success: true, sites: withForeman });
+    if (!withForeman.length) return sendJson(res, 200, { success: true, sites: withForeman });
+
+    // Бригада, в которой сейчас состоит сам сотрудник — на каждом из его
+    // объектов (если он туда включён бригадиром), + с кем именно.
+    const myEmployeeId = withForeman[0].my_employee_id;
+    const siteIds = [...new Set(withForeman.map(s => s.id))];
+    const ph = siteIds.map(() => '?').join(',');
+    const myCrewSql = `
+      SELECT sc.id, sc.name, sc.site_id FROM site_crew_members m
+      JOIN site_crews sc ON sc.id = m.crew_id
+      WHERE sc.site_id IN (${ph}) AND m.employee_id = ?`;
+    db.all(myCrewSql, [...siteIds, myEmployeeId], (e2, myCrews) => {
+      if (e2 || !myCrews || !myCrews.length) return sendJson(res, 200, { success: true, sites: withForeman });
+      const crewIds = myCrews.map(c => c.id);
+      const ph2 = crewIds.map(() => '?').join(',');
+      db.all(
+        `SELECT m.crew_id, e.first_name, e.last_name FROM site_crew_members m
+         JOIN employees e ON e.id = m.employee_id
+         WHERE m.crew_id IN (${ph2}) AND m.employee_id != ?`,
+        [...crewIds, myEmployeeId],
+        (e3, mateRows) => {
+          const matesByCrew = {};
+          (mateRows || []).forEach(r => {
+            (matesByCrew[r.crew_id] = matesByCrew[r.crew_id] || []).push([r.last_name, r.first_name].filter(Boolean).join(' ') || '—');
+          });
+          const crewBySite = {};
+          myCrews.forEach(c => { crewBySite[c.site_id] = { id: c.id, name: c.name, mates: matesByCrew[c.id] || [] }; });
+          const sitesWithCrew = withForeman.map(s => ({ ...s, my_crew: crewBySite[s.id] || null }));
+          sendJson(res, 200, { success: true, sites: sitesWithCrew });
+        }
+      );
+    });
   });
 }
 
@@ -375,9 +406,18 @@ async function addSiteCrewMember(req, res, user) {
         db.get(memberCheckSql, [crew.site_id, employeeId], (e3, onSite) => {
           if (e3) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
           if (!onSite) return sendJson(res, 400, { success: false, message: 'Сотрудник не направлен на этот объект' });
-          db.run("INSERT OR IGNORE INTO site_crew_members (crew_id, employee_id) VALUES (?, ?)", [crewId, employeeId], (iErr) => {
-            if (iErr) return sendJson(res, 500, { success: false, message: 'Не удалось добавить в бригаду' });
-            sendJson(res, 200, { success: true });
+          // Один человек — только в одной бригаде объекта одновременно.
+          const otherCrewSql = `
+            SELECT sc.name FROM site_crew_members m
+            JOIN site_crews sc ON sc.id = m.crew_id
+            WHERE sc.site_id = ? AND m.employee_id = ? AND m.crew_id != ?`;
+          db.get(otherCrewSql, [crew.site_id, employeeId, crewId], (e4, other) => {
+            if (e4) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+            if (other) return sendJson(res, 400, { success: false, message: `Уже состоит в бригаде «${other.name}»` });
+            db.run("INSERT OR IGNORE INTO site_crew_members (crew_id, employee_id) VALUES (?, ?)", [crewId, employeeId], (iErr) => {
+              if (iErr) return sendJson(res, 500, { success: false, message: 'Не удалось добавить в бригаду' });
+              sendJson(res, 200, { success: true });
+            });
           });
         });
       });

@@ -1063,7 +1063,7 @@
             </div>
             <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
               <div id="siteColleaguesForemanBtnWrap" style="display:none; margin-bottom:12px;">
-                <button type="button" class="btn btn-secondary" style="width:100%;" onclick="openSiteCrewsModal()">Бригады</button>
+                <button type="button" class="wl-btn" style="width:100%;" onclick="openSiteCrewsModal()">Бригады</button>
               </div>
               <div id="siteColleaguesList" style="display:flex; flex-direction:column; gap:6px;"></div>
             </div>
@@ -1078,9 +1078,9 @@
               <button type="button" id="siteCrewsModalClose" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer; line-height:1;">&times;</button>
             </div>
             <div style="padding:16px 20px; overflow-y:auto; flex:1; min-height:0;">
-              <div style="display:flex; gap:8px; margin-bottom:14px;">
-                <input type="text" id="newCrewName" placeholder="Название бригады…" maxlength="100" style="flex:1; min-width:0;">
-                <button type="button" class="btn-save" style="flex-shrink:0;" onclick="createSiteCrew()">+ Бригада</button>
+              <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                <input type="text" id="newCrewName" placeholder="Название бригады…" maxlength="100">
+                <button type="button" class="btn-save" onclick="createSiteCrew()">+ Бригада</button>
               </div>
               <div id="siteCrewsList" style="display:flex; flex-direction:column; gap:14px;"></div>
             </div>
@@ -2100,12 +2100,16 @@
               ${assetChip('Заказчик', s.customer)}
               ${assetChip('Бригадир', s.foreman_name)}
             </div>
+            ${s.my_crew ? `<div class="asset-item-footer" style="align-items:flex-start;">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13" style="flex-shrink:0;margin-top:1px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-8 4 4 0 000 8zm6-3a4 4 0 10-8 0"/></svg>
+              <span>Моя бригада: <b>${escapeHtml(s.my_crew.name)}</b>${s.my_crew.mates.length ? ' — ' + escapeHtml(s.my_crew.mates.join(', ')) : ''}</span>
+            </div>` : ''}
             ${issued ? `<div class="asset-item-footer">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="12" height="12"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Направлен ${issued}
             </div>` : ''}
             <div style="margin-top:10px;">
-              <button type="button" class="btn btn-secondary" style="font-size:12px; padding:7px 12px;" onclick="openSiteColleaguesModal(${s.id}, '${escapeHtml(s.name).replace(/'/g, "\\'")}')">Коллеги по цеху</button>
+              <button type="button" class="wl-btn" style="width:100%;" onclick="openSiteColleaguesModal(${s.id}, '${escapeHtml(s.name).replace(/'/g, "\\'")}')">Коллеги по цеху</button>
             </div>
           `;
           list.appendChild(item);
@@ -2173,9 +2177,11 @@
           box.innerHTML = '<div style="color:var(--text-muted); font-size:13px; text-align:center; padding:12px 0;">Бригад пока нет — создайте первую выше.</div>';
           return;
         }
+        // Один человек — только в одной бригаде объекта: тот, кто уже в
+        // какой-либо бригаде, не предлагается для добавления в другую.
+        const assignedElsewhereIds = new Set(crews.flatMap(c => c.members.map(m => m.employee_id)));
         box.innerHTML = crews.map(crew => {
-          const memberIds = new Set(crew.members.map(m => m.employee_id));
-          const available = allPeople.filter(p => !memberIds.has(p.employee_id));
+          const available = allPeople.filter(p => !assignedElsewhereIds.has(p.employee_id));
           const toolCount = crew.members.reduce((sum, m) => sum + (m.tools ? m.tools.length : 0), 0);
           return `
           <div style="border:1px solid var(--border-color); border-radius:10px; padding:12px;">
