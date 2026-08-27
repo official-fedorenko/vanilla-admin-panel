@@ -2803,6 +2803,7 @@
     let requestTypes = {};
     let toolCategories = [];
     let vehicleCategoriesCab = [];
+    let apartmentsCab = [];
     const reqPhotoUrls = {}; // name -> uploaded url (для полей type=photo)
 
     async function setupToolRequests() {
@@ -2811,14 +2812,19 @@
 
       // Реестр типов и категории — грузим один раз
       try {
-        const [rt, cat, vcat] = await Promise.all([
+        const [rt, cat, vcat, apts] = await Promise.all([
           fetch('/api/request-types').then(r => r.json()).catch(() => ({})),
           fetch('/api/crud/tool-categories').then(r => r.json()).catch(() => []),
-          fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => [])
+          fetch('/api/crud/vehicle-categories').then(r => r.json()).catch(() => []),
+          fetch('/api/crud/apartments?limit=1000').then(r => r.json()).catch(() => [])
         ]);
         requestTypes = (rt && rt.types) || {};
         toolCategories = cat || [];
         vehicleCategoriesCab = vcat || [];
+        // Только жилая недвижимость (не офисы/земля) и не списанная.
+        apartmentsCab = (Array.isArray(apts) ? apts : []).filter(a =>
+          a.status !== 'written_off' && !['Офис', 'Земля'].includes(a.category)
+        );
       } catch (e) { requestTypes = {}; }
 
       // Скрытый select хранит выбранный тип (для submitRequest)
@@ -2937,6 +2943,16 @@
         } else if (f.type === 'select') {
           const opts = ['<option value="">Выберите</option>']
             .concat((f.options || []).map(o => `<option value="${escapeHtmlC(o)}">${escapeHtmlC(o)}</option>`))
+            .join('');
+          wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
+        } else if (f.type === 'apartment') {
+          const opts = ['<option value="">Выберите жильё</option>']
+            .concat(apartmentsCab.map(a => {
+              const ownership = a.ownership_type === 'rented' ? 'аренда' : 'собственность';
+              const addr = [a.address, a.house].filter(Boolean).join(' ');
+              const labelText = [a.name, addr].filter(Boolean).join(' — ') + ` (${ownership})`;
+              return `<option value="${a.id}">${escapeHtmlC(labelText)}</option>`;
+            }))
             .join('');
           wrap.innerHTML = label + `<select id="${fid}" class="form-input">${opts}</select>`;
         } else if (f.type === 'photo') {

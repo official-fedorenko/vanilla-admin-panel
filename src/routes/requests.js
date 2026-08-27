@@ -1,6 +1,7 @@
 const { sendJson, getJsonBody, logAction, parsePagination } = require('../utils');
 const { db } = require('../../db');
 const tools = require('./tools');
+const apartments = require('./apartments');
 
 /**
  * Универсальные заявления пользователей.
@@ -78,6 +79,15 @@ const REQUEST_TYPES = {
       { name: 'last_day', label: 'Последний рабочий день', type: 'date' },
       { name: 'reason', label: 'Причина', type: 'textarea' }
     ]
+  },
+  relocation: {
+    label: 'Заявление на смену места жительства',
+    icon: 'home',
+    fields: [
+      { name: 'apartment_id', label: 'Выберите жильё', type: 'apartment', required: true },
+      { name: 'desired_date', label: 'Желаемая дата переезда', type: 'date' },
+      { name: 'reason', label: 'Причина', type: 'textarea' }
+    ]
   }
 };
 
@@ -104,7 +114,7 @@ function buildPayload(typeDef, body) {
   for (const f of typeDef.fields) {
     let val = body[f.name];
     if (f.type === 'photo') val = cleanPhoto(val);
-    else if (f.type === 'number') { const n = parseInt(val, 10); val = Number.isFinite(n) ? n : ''; }
+    else if (f.type === 'number' || f.type === 'apartment') { const n = parseInt(val, 10); val = (Number.isInteger(n) && n > 0) ? n : ''; }
     else if (f.type === 'date') val = /^\d{4}-\d{2}-\d{2}$/.test(String(val || '')) ? val : '';
     else if (f.type === 'select') val = (f.options || []).includes(val) ? val : '';
     else val = str(val, f.type === 'textarea' ? 2000 : 300);
@@ -125,6 +135,7 @@ function buildTitle(type, payload) {
     case 'vacation':    return `Отпуск: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'sick_leave':  return `Больничный: ${payload.start_date || '?'} — ${payload.end_date || '?'}`;
     case 'resignation': return 'Увольнение' + (payload.last_day ? ` с ${payload.last_day}` : '');
+    case 'relocation': return 'Смена жилья: ' + (payload.apartment_name || ('id ' + payload.apartment_id));
     default:            return REQUEST_TYPES[type] ? REQUEST_TYPES[type].label : type;
   }
 }
@@ -140,16 +151,30 @@ async function createRequest(req, res, user) {
     const { payload, error } = buildPayload(typeDef, body.payload || body);
     if (error) return sendJson(res, 400, { success: false, message: error });
 
-    const title = buildTitle(type, payload);
-    db.run(
-      "INSERT INTO requests (type, title, payload, requested_by) VALUES (?, ?, ?, ?)",
-      [type, title, JSON.stringify(payload), user.id],
-      function (err) {
-        if (err) return sendJson(res, 500, { success: false, message: 'Не удалось создать заявление' });
-        logAction(user.username, `Создал заявление «${typeDef.label}»: ${title} (id=${this.lastID})`);
-        sendJson(res, 201, { success: true, id: this.lastID });
-      }
-    );
+    const insertRequest = (finalPayload) => {
+      const title = buildTitle(type, finalPayload);
+      db.run(
+        "INSERT INTO requests (type, title, payload, requested_by) VALUES (?, ?, ?, ?)",
+        [type, title, JSON.stringify(finalPayload), user.id],
+        function (err) {
+          if (err) return sendJson(res, 500, { success: false, message: 'Не удалось создать заявление' });
+          logAction(user.username, `Создал заявление «${typeDef.label}»: ${title} (id=${this.lastID})`);
+          sendJson(res, 201, { success: true, id: this.lastID });
+        }
+      );
+    };
+
+    if (type === 'relocation') {
+      db.get("SELECT id, name, address, status FROM apartments WHERE id = ?", [payload.apartment_id], (aErr, apt) => {
+        if (aErr) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+        if (!apt) return sendJson(res, 400, { success: false, message: 'Выбранное жильё не найдено' });
+        if (apt.status === 'written_off') return sendJson(res, 400, { success: false, message: 'Это жильё списано' });
+        insertRequest({ ...payload, apartment_name: [apt.name, apt.address].filter(Boolean).join(', ') });
+      });
+      return;
+    }
+
+    insertRequest(payload);
   } catch (e) {
     sendJson(res, 400, { success: false, message: 'Невалидный запрос' });
   }
@@ -533,6 +558,58 @@ function approveSideEffect(type, payload, requestRow, reviewer, cb) {
           });
         }
       );
+    });
+    return;
+  }
+  if (type === 'relocation') {
+    const apartmentId = parseInt(payload.apartment_id, 10);
+    if (!Number.isInteger(apartmentId) || apartmentId <= 0) return cb({ message: 'Не указано жильё' });
+    db.get("SELECT id, name, status FROM apartments WHERE id = ?", [apartmentId], (aErr, apt) => {
+      if (aErr) return cb({ message: 'Ошибка базы данных' });
+      if (!apt) return cb({ message: 'Выбранное жильё не найдено' });
+      if (apt.status === 'written_off') return cb({ message: 'Это жильё списано' });
+
+      db.get("SELECT id FROM employees WHERE user_id = ?", [requestRow.requested_by], (eErr, emp) => {
+        if (eErr) return cb({ message: 'Ошибка базы данных' });
+        // Заявитель без карточки сотрудника — одобряем, но заселять некого.
+        if (!emp) return cb(null, String(apartmentId));
+
+        db.all(
+          "SELECT id, apartment_id FROM apartment_assignments WHERE employee_id = ? AND returned_at IS NULL",
+          [emp.id],
+          (oErr, openAssignments) => {
+            if (oErr) return cb({ message: 'Ошибка базы данных' });
+            const oldApartmentIds = [...new Set((openAssignments || []).map(a => a.apartment_id))];
+
+            const closeOld = (done) => {
+              if (!openAssignments || !openAssignments.length) return done();
+              let n = 0;
+              openAssignments.forEach(a => {
+                db.run("UPDATE apartment_assignments SET returned_at = CURRENT_TIMESTAMP WHERE id = ?", [a.id], () => {
+                  if (++n === openAssignments.length) done();
+                });
+              });
+            };
+
+            closeOld(() => {
+              db.run(
+                "INSERT INTO apartment_assignments (apartment_id, employee_id, issued_by, notes) VALUES (?, ?, ?, ?)",
+                [apartmentId, emp.id, reviewer.username, 'Смена места жительства (заявка)'],
+                function (insErr) {
+                  if (insErr) return cb({ message: 'Не удалось заселить' });
+                  const affectedIds = [...new Set([...oldApartmentIds, apartmentId])];
+                  let done = 0;
+                  affectedIds.forEach(id => {
+                    apartments.recomputeApartmentStatus(id, () => {
+                      if (++done === affectedIds.length) cb(null, String(apartmentId));
+                    });
+                  });
+                }
+              );
+            });
+          }
+        );
+      });
     });
     return;
   }

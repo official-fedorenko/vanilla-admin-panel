@@ -445,3 +445,5 @@ module.exports = async function handleApartments(req, res, user, parsedUrl, meth
 
   return sendJson(res, 404, { success: false, message: 'Apartments endpoint не найден' });
 };
+
+module.exports.recomputeApartmentStatus = recomputeApartmentStatus;
