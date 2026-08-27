@@ -425,6 +425,13 @@
     .asset-chip--red { background: rgba(255,74,110,0.10); border-color: rgba(255,74,110,0.32); color: var(--red); }
     .asset-item-footer { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
     .asset-item-actions { display: flex; flex-direction: column; gap: 6px; margin-left: auto; flex-shrink: 0; }
+    /* Кнопки в этом блоке (Скачать QR / Передать инструмент-авто) —
+       одинаковая ширина независимо от длины подписи, чтобы карточки
+       инструмента и авто выглядели одинаково. */
+    .asset-item-actions button {
+      width: 168px; box-sizing: border-box; padding: 6px 12px; border-radius: 8px;
+      font-size: 12px; white-space: nowrap; cursor: pointer; text-align: center;
+    }
     .asset-empty {
       display: flex; align-items: center; gap: 10px; padding: 16px;
       border: 1px dashed var(--border-color); border-radius: 14px;
@@ -3883,6 +3890,13 @@
         const d = await res.json();
         const list = (d && d.requests) || [];
         if (!list.length) { box.innerHTML = '<div style="color:var(--text-muted); font-size:12px;">Заявлений пока нет</div>'; return; }
+        // Заявления, требующие моего действия («Получил» / ответ на
+        // предложенные даты), — наверх списка, чтобы их не пропустить.
+        const needsAction = (r) => {
+          const isOrderType = r.type === 'tool_order' || r.type === 'vehicle_order';
+          return (isOrderType && r.status === 'approved' && !r.received_at) || r.status === 'countered';
+        };
+        list.sort((a, b) => (needsAction(b) ? 1 : 0) - (needsAction(a) ? 1 : 0));
         box.innerHTML = '';
         list.forEach(r => {
           const st = TR_STATUS[r.status] || TR_STATUS.pending;
