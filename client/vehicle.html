@@ -135,6 +135,7 @@
         ['Гос. номер', v.plate_number],
         ['VIN', v.vin],
         ['Пробег', v.mileage != null ? (v.mileage + ' км') : ''],
+        ['Закреплён за', v.holder_name],
         ['Дата покупки', purchase],
         ['Заметки', v.notes]
       ].filter(r => r[1]);

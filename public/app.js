@@ -2872,8 +2872,8 @@ async function loadSettings() {
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
   };
   const CARD_GROUPS = {
-    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
-    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes'],
+    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes', 'public_card_show_holder'],
+    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes', 'public_vehicle_card_show_holder'],
     'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'],
     'Напоминания о недвижимости': ['apartment_rent_soon_days'],
     'Напоминания о строительных объектах': ['construction_site_deadline_soon_days']
@@ -2909,6 +2909,7 @@ async function loadSettings() {
     public_card_show_category: 'Показывать категорию',
     public_card_show_purchase_date: 'Показывать дату покупки',
     public_card_show_notes: 'Показывать заметки',
+    public_card_show_holder: 'Показывать, за кем закреплён',
     public_vehicle_card_enabled: 'Публичная карточка доступна всем (по QR)',
     public_vehicle_card_show_photo: 'Показывать фото',
     public_vehicle_card_show_brand: 'Показывать марку',
@@ -2921,6 +2922,7 @@ async function loadSettings() {
     public_vehicle_card_show_mileage: 'Показывать пробег',
     public_vehicle_card_show_purchase_date: 'Показывать дату покупки',
     public_vehicle_card_show_notes: 'Показывать заметки',
+    public_vehicle_card_show_holder: 'Показывать, за кем закреплён',
     vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
     vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)',
     apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)',

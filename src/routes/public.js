@@ -58,6 +58,19 @@ function getToolPublic(req, res, parsedUrl) {
       if (on('public_card_show_purchase_date')) out.purchase_date = tool.purchase_date;
       if (on('public_card_show_notes'))         out.notes = tool.notes;
 
+      if (on('public_card_show_holder')) {
+        const holderSql = `
+          SELECT e.first_name, e.last_name FROM tool_assignments a
+          JOIN employees e ON e.id = a.employee_id
+          WHERE a.tool_id = ? AND a.returned_at IS NULL
+          ORDER BY a.issued_at DESC LIMIT 1`;
+        db.get(holderSql, [id], (e3, holder) => {
+          if (holder) out.holder_name = [holder.last_name, holder.first_name].filter(Boolean).join(' ') || null;
+          sendJson(res, 200, { success: true, tool: out });
+        });
+        return;
+      }
+
       sendJson(res, 200, { success: true, tool: out });
     });
   });
@@ -99,6 +112,19 @@ function getVehiclePublic(req, res, parsedUrl) {
       if (on('public_vehicle_card_show_mileage'))       out.mileage = vehicle.mileage;
       if (on('public_vehicle_card_show_purchase_date')) out.purchase_date = vehicle.purchase_date;
       if (on('public_vehicle_card_show_notes'))         out.notes = vehicle.notes;
+
+      if (on('public_vehicle_card_show_holder')) {
+        const holderSql = `
+          SELECT e.first_name, e.last_name FROM vehicle_assignments a
+          JOIN employees e ON e.id = a.employee_id
+          WHERE a.vehicle_id = ? AND a.returned_at IS NULL
+          ORDER BY a.issued_at DESC LIMIT 1`;
+        db.get(holderSql, [id], (e3, holder) => {
+          if (holder) out.holder_name = [holder.last_name, holder.first_name].filter(Boolean).join(' ') || null;
+          sendJson(res, 200, { success: true, vehicle: out });
+        });
+        return;
+      }
 
       sendJson(res, 200, { success: true, vehicle: out });
     });
