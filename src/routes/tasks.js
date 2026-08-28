@@ -17,9 +17,11 @@ const { db } = require('../../db');
  *    DELETE /api/tasks?id=               — тоже доступно админу (удаляет любую)
  *
  * Напоминания: при создании/переносе даты задачи создаются обычные строки
- * в notifications с scheduled_at = due_date-2д и due_date-1д (те, что уже в
- * прошлом — не создаются). Существующая лента уведомлений в кабинете сама
- * фильтрует по scheduled_at, доп. логики не требуется.
+ * в notifications с scheduled_at, вычисленным из настраиваемых правил
+ * (см. TASK_REMINDER_SETTING_KEYS ниже — до двух напоминаний, каждое со
+ * своим «за сколько дней» и временем; те, что уже в прошлом — не создаются).
+ * Существующая лента уведомлений в кабинете сама фильтрует по scheduled_at,
+ * доп. логики не требуется.
  */
 
 function isAdmin(user) {
@@ -35,28 +37,56 @@ function parseDueDate(raw) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(s + 'T00:00:00')) ? s : null;
 }
 
-// Пересоздаёт напоминания за 2 и 1 день до due_date для задачи (сначала
-// убирая старые — на случай переноса даты/удаления).
+// Настраиваемые из админки правила напоминаний (Планировщик задач →
+// «Напоминания»), хранятся в settings как обычные key/value.
+const TASK_REMINDER_SETTING_KEYS = [
+  { daysKey: 'task_reminder1_days', timeKey: 'task_reminder1_time', defaultDays: 2, defaultTime: '09:00' },
+  { daysKey: 'task_reminder2_days', timeKey: 'task_reminder2_time', defaultDays: 1, defaultTime: '09:00' }
+];
+
+function getTaskReminderRules(cb) {
+  const keys = TASK_REMINDER_SETTING_KEYS.flatMap(r => [r.daysKey, r.timeKey]);
+  const ph = keys.map(() => '?').join(',');
+  db.all(`SELECT key, value FROM settings WHERE key IN (${ph})`, keys, (err, rows) => {
+    const map = {};
+    (rows || []).forEach(r => { map[r.key] = r.value; });
+    const rules = TASK_REMINDER_SETTING_KEYS.map(r => {
+      const rawDays = map[r.daysKey];
+      // Пустая строка/явно не заданное значение — напоминание отключено.
+      if (rawDays === '') return null;
+      const days = rawDays != null ? parseInt(rawDays, 10) : r.defaultDays;
+      const time = /^\d{2}:\d{2}$/.test(map[r.timeKey] || '') ? map[r.timeKey] : r.defaultTime;
+      if (!Number.isInteger(days) || days < 0) return null;
+      return { days, time };
+    }).filter(Boolean);
+    cb(rules);
+  });
+}
+
+// Пересоздаёт напоминания для задачи по текущим настраиваемым правилам
+// (сначала убирая старые — на случай переноса даты/удаления).
 function scheduleTaskReminders(taskId, employeeId, title, dueDate) {
   db.run("DELETE FROM notifications WHERE task_id = ?", [taskId], () => {
     db.get("SELECT user_id FROM employees WHERE id = ?", [employeeId], (err, emp) => {
       if (err || !emp || !emp.user_id) return;
-      const due = new Date(dueDate + 'T09:00:00');
-      const now = new Date();
-      [2, 1].forEach(daysBefore => {
-        const when = new Date(due.getTime() - daysBefore * 86400000);
-        if (when.getTime() <= now.getTime()) return; // уже прошло — не создаём
-        // scheduled_at сравнивается с CURRENT_TIMESTAMP (SQLite хранит его в UTC),
-        // поэтому и здесь нужен UTC — иначе "09:00 по Вильнюсу" писалось бы с
-        // датой по UTC, но временем по местному поясу (несогласованно).
-        const scheduledAt = when.toISOString().slice(0, 19).replace('T', ' ');
-        const dayWord = daysBefore === 1 ? 'завтра' : `через ${daysBefore} дня`;
-        const message = `Напоминание: задача «${title}» — срок ${dayWord} (${dueDate}).`;
-        db.run(
-          "INSERT INTO notifications (user_id, message, task_id, scheduled_at) VALUES (?, ?, ?, ?)",
-          [emp.user_id, message, taskId, scheduledAt],
-          () => {}
-        );
+      getTaskReminderRules((rules) => {
+        const now = new Date();
+        rules.forEach(({ days: daysBefore, time }) => {
+          const due = new Date(`${dueDate}T${time}:00`);
+          const when = new Date(due.getTime() - daysBefore * 86400000);
+          if (when.getTime() <= now.getTime()) return; // уже прошло — не создаём
+          // scheduled_at сравнивается с CURRENT_TIMESTAMP (SQLite хранит его в UTC),
+          // поэтому и здесь нужен UTC — иначе локальное время писалось бы с
+          // датой по UTC, но временем по местному поясу (несогласованно).
+          const scheduledAt = when.toISOString().slice(0, 19).replace('T', ' ');
+          const dayWord = daysBefore === 0 ? 'сегодня' : daysBefore === 1 ? 'завтра' : `через ${daysBefore} дня`;
+          const message = `Напоминание: задача «${title}» — срок ${dayWord} (${dueDate}).`;
+          db.run(
+            "INSERT INTO notifications (user_id, message, task_id, scheduled_at) VALUES (?, ?, ?, ?)",
+            [emp.user_id, message, taskId, scheduledAt],
+            () => {}
+          );
+        });
       });
     });
   });

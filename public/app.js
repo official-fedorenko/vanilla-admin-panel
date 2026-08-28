@@ -1420,6 +1420,58 @@ function renderTasksAdminTable(list) {
   });
 })();
 
+// Настройки напоминаний о задачах (Планировщик задач сотрудников →
+// «Напоминания») — до двух напоминаний, у каждого своё «за сколько дней»
+// и время; хранятся как обычные ключи в settings.
+(function setupTaskReminderSettings() {
+  const btn = document.getElementById('openTaskReminderSettingsBtn');
+  const modal = document.getElementById('taskReminderSettingsModalOverlay');
+  if (!btn || !modal) return;
+  const closeModal = () => modal.classList.remove('active');
+
+  btn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const rows = res.ok ? await res.json() : [];
+      const map = {};
+      (rows || []).forEach(r => { map[r.key] = r.value; });
+      document.getElementById('taskReminder1Days').value = map.task_reminder1_days != null ? map.task_reminder1_days : '2';
+      document.getElementById('taskReminder1Time').value = map.task_reminder1_time || '09:00';
+      document.getElementById('taskReminder2Days').value = map.task_reminder2_days != null ? map.task_reminder2_days : '1';
+      document.getElementById('taskReminder2Time').value = map.task_reminder2_time || '09:00';
+    } catch (e) {
+      showToast('Не удалось загрузить настройки', 'error');
+    }
+    modal.classList.add('active');
+  });
+  document.getElementById('closeTaskReminderSettingsBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelTaskReminderSettingsBtn').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  document.getElementById('saveTaskReminderSettingsBtn').addEventListener('click', async () => {
+    const body = {
+      task_reminder1_days: document.getElementById('taskReminder1Days').value,
+      task_reminder1_time: document.getElementById('taskReminder1Time').value || '09:00',
+      task_reminder2_days: document.getElementById('taskReminder2Days').value,
+      task_reminder2_time: document.getElementById('taskReminder2Time').value || '09:00'
+    };
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        showToast('Настройки сохранены', 'success');
+        closeModal();
+      } else {
+        showToast('Не удалось сохранить настройки', 'error');
+      }
+    } catch (e) {
+      showToast('Ошибка сети', 'error');
+    }
+  });
+})();
+
 window.openWorkTimeUser = async (userId, username) => {
   document.getElementById('workTimeModalTitle').textContent = 'Время: ' + username;
   const box = document.getElementById('workTimeEntries');
