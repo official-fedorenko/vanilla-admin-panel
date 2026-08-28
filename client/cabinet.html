@@ -327,6 +327,15 @@
       color: var(--accent-cyan); padding: 4px 10px; border-radius: 100px;
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
     }
+    .clock-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(0,210,255,0.08); border: 1px solid rgba(0,210,255,0.18);
+      color: var(--accent-cyan); padding: 5px 12px; border-radius: 100px;
+      font-size: 13px;
+    }
+    .clock-chip svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .clock-chip-time { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.3px; }
+    .clock-chip-date { color: var(--text-muted); font-size: 12px; }
 
     /* Grid */
     .grid {
@@ -716,9 +725,10 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
             <span id="heroEmail">...</span>
           </div>
-          <div class="meta-item">
+          <div class="clock-chip">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span id="heroClock">—</span>
+            <span class="clock-chip-time" id="heroClockTime">--:--</span>
+            <span class="clock-chip-date" id="heroClockDate">—</span>
           </div>
           <span class="badge-role" id="heroRole">User</span>
         </div>
@@ -2466,13 +2476,13 @@
 
     // Текущие дата/время по Литве (Europe/Vilnius), не по поясу устройства.
     function startHeroClock() {
-      const el = document.getElementById('heroClock');
-      if (!el) return;
+      const timeEl = document.getElementById('heroClockTime');
+      const dateEl = document.getElementById('heroClockDate');
+      if (!timeEl || !dateEl) return;
       const tick = () => {
         const now = new Date();
-        const datePart = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timePart = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
-        el.textContent = `${datePart}, ${timePart}`;
+        timeEl.textContent = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
+        dateEl.textContent = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', weekday: 'short', day: 'numeric', month: 'long' });
       };
       tick();
       setInterval(tick, 30000);

@@ -39,13 +39,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Текущие дата/время по Литве (Europe/Vilnius) — независимо от часового
 // пояса устройства зрителя, под логотипом в сайдбаре.
 function startSidebarClock() {
-  const el = document.getElementById('sidebarClockText');
-  if (!el) return;
+  const timeEl = document.getElementById('sidebarClockTime');
+  const dateEl = document.getElementById('sidebarClockDate');
+  if (!timeEl || !dateEl) return;
   const tick = () => {
     const now = new Date();
-    const datePart = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', day: '2-digit', month: '2-digit', year: 'numeric' });
-    const timePart = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
-    el.textContent = `${datePart}, ${timePart}`;
+    timeEl.textContent = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
+    dateEl.textContent = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', weekday: 'short', day: 'numeric', month: 'long' });
   };
   tick();
   setInterval(tick, 30000);
