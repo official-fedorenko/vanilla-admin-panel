@@ -39,13 +39,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Текущие дата/время по Литве (Europe/Vilnius) — независимо от часового
 // пояса устройства зрителя, под логотипом в сайдбаре.
 function startSidebarClock() {
-  const el = document.getElementById('sidebarClockText');
-  if (!el) return;
+  const timeEl = document.getElementById('sidebarClockTime');
+  const dateEl = document.getElementById('sidebarClockDate');
+  if (!timeEl || !dateEl) return;
   const tick = () => {
     const now = new Date();
-    const datePart = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', day: '2-digit', month: '2-digit', year: 'numeric' });
-    const timePart = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
-    el.textContent = `${datePart}, ${timePart}`;
+    timeEl.textContent = now.toLocaleTimeString('ru-RU', { timeZone: 'Europe/Vilnius', hour: '2-digit', minute: '2-digit' });
+    dateEl.textContent = now.toLocaleDateString('ru-RU', { timeZone: 'Europe/Vilnius', weekday: 'short', day: 'numeric', month: 'long' });
   };
   tick();
   setInterval(tick, 30000);
@@ -1417,6 +1417,58 @@ function renderTasksAdminTable(list) {
         loadTasksAdmin();
       } else showToast(d.message || 'Не удалось поставить задачу', 'error');
     } catch (err) { showToast('Ошибка сети', 'error'); }
+  });
+})();
+
+// Настройки напоминаний о задачах (Планировщик задач сотрудников →
+// «Напоминания») — до двух напоминаний, у каждого своё «за сколько дней»
+// и время; хранятся как обычные ключи в settings.
+(function setupTaskReminderSettings() {
+  const btn = document.getElementById('openTaskReminderSettingsBtn');
+  const modal = document.getElementById('taskReminderSettingsModalOverlay');
+  if (!btn || !modal) return;
+  const closeModal = () => modal.classList.remove('active');
+
+  btn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const rows = res.ok ? await res.json() : [];
+      const map = {};
+      (rows || []).forEach(r => { map[r.key] = r.value; });
+      document.getElementById('taskReminder1Days').value = map.task_reminder1_days != null ? map.task_reminder1_days : '2';
+      document.getElementById('taskReminder1Time').value = map.task_reminder1_time || '09:00';
+      document.getElementById('taskReminder2Days').value = map.task_reminder2_days != null ? map.task_reminder2_days : '1';
+      document.getElementById('taskReminder2Time').value = map.task_reminder2_time || '09:00';
+    } catch (e) {
+      showToast('Не удалось загрузить настройки', 'error');
+    }
+    modal.classList.add('active');
+  });
+  document.getElementById('closeTaskReminderSettingsBtn').addEventListener('click', closeModal);
+  document.getElementById('cancelTaskReminderSettingsBtn').addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+  document.getElementById('saveTaskReminderSettingsBtn').addEventListener('click', async () => {
+    const body = {
+      task_reminder1_days: document.getElementById('taskReminder1Days').value,
+      task_reminder1_time: document.getElementById('taskReminder1Time').value || '09:00',
+      task_reminder2_days: document.getElementById('taskReminder2Days').value,
+      task_reminder2_time: document.getElementById('taskReminder2Time').value || '09:00'
+    };
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        showToast('Настройки сохранены', 'success');
+        closeModal();
+      } else {
+        showToast('Не удалось сохранить настройки', 'error');
+      }
+    } catch (e) {
+      showToast('Ошибка сети', 'error');
+    }
   });
 })();
 
@@ -2820,8 +2872,8 @@ async function loadSettings() {
     'Контакты': ['contact_title', 'contact_subtitle', 'contact_email', 'contact_address']
   };
   const CARD_GROUPS = {
-    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes'],
-    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes'],
+    'Публичная карточка инструмента (по QR)': ['public_card_enabled', 'public_card_show_photo', 'public_card_show_category', 'public_card_show_brand', 'public_card_show_model', 'public_card_show_serial', 'public_card_show_inventory', 'public_card_show_status', 'public_card_show_purchase_date', 'public_card_show_notes', 'public_card_show_holder'],
+    'Публичная карточка авто (по QR)': ['public_vehicle_card_enabled', 'public_vehicle_card_show_photo', 'public_vehicle_card_show_category', 'public_vehicle_card_show_brand', 'public_vehicle_card_show_model', 'public_vehicle_card_show_year', 'public_vehicle_card_show_plate', 'public_vehicle_card_show_vin', 'public_vehicle_card_show_status', 'public_vehicle_card_show_mileage', 'public_vehicle_card_show_purchase_date', 'public_vehicle_card_show_notes', 'public_vehicle_card_show_holder'],
     'Напоминания об автопарке': ['vehicle_inspection_soon_days', 'vehicle_insurance_soon_days'],
     'Напоминания о недвижимости': ['apartment_rent_soon_days'],
     'Напоминания о строительных объектах': ['construction_site_deadline_soon_days']
@@ -2857,6 +2909,7 @@ async function loadSettings() {
     public_card_show_category: 'Показывать категорию',
     public_card_show_purchase_date: 'Показывать дату покупки',
     public_card_show_notes: 'Показывать заметки',
+    public_card_show_holder: 'Показывать, за кем закреплён',
     public_vehicle_card_enabled: 'Публичная карточка доступна всем (по QR)',
     public_vehicle_card_show_photo: 'Показывать фото',
     public_vehicle_card_show_brand: 'Показывать марку',
@@ -2869,6 +2922,7 @@ async function loadSettings() {
     public_vehicle_card_show_mileage: 'Показывать пробег',
     public_vehicle_card_show_purchase_date: 'Показывать дату покупки',
     public_vehicle_card_show_notes: 'Показывать заметки',
+    public_vehicle_card_show_holder: 'Показывать, за кем закреплён',
     vehicle_inspection_soon_days: 'Напоминание о ТО за сколько дней (0 — выключено)',
     vehicle_insurance_soon_days: 'Напоминание о страховке за сколько дней (0 — выключено)',
     apartment_rent_soon_days: 'Напоминание об окончании аренды за сколько дней (0 — выключено)',

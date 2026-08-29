@@ -1100,6 +1100,7 @@ db.serialize(() => {
   stmt.run("public_card_show_category", "true", "Публичная карточка: показывать категорию");
   stmt.run("public_card_show_purchase_date", "false", "Публичная карточка: показывать дату покупки");
   stmt.run("public_card_show_notes", "false", "Публичная карточка: показывать заметки");
+  stmt.run("public_card_show_holder", "false", "Публичная карточка: показывать, за кем закреплён");
   // Публичная карточка транспортного средства (общие настройки для всех QR-карточек автопарка)
   stmt.run("public_vehicle_card_enabled", "true", "Публичная карточка авто: доступна всем по QR");
   stmt.run("public_vehicle_card_show_photo", "true", "Публичная карточка авто: показывать фото");
@@ -1113,6 +1114,7 @@ db.serialize(() => {
   stmt.run("public_vehicle_card_show_mileage", "false", "Публичная карточка авто: показывать пробег");
   stmt.run("public_vehicle_card_show_purchase_date", "false", "Публичная карточка авто: показывать дату покупки");
   stmt.run("public_vehicle_card_show_notes", "false", "Публичная карточка авто: показывать заметки");
+  stmt.run("public_vehicle_card_show_holder", "false", "Публичная карточка авто: показывать, за кем закреплён");
   stmt.run("vehicle_inspection_soon_days", "30", "За сколько дней до окончания ТО показывать напоминание");
   stmt.run("vehicle_insurance_soon_days", "30", "За сколько дней до окончания страховки показывать напоминание");
   stmt.run("apartment_rent_soon_days", "30", "За сколько дней до окончания аренды показывать напоминание");

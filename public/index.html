@@ -24,8 +24,9 @@
         </span>
       </a>
       <div id="sidebarClock" class="sidebar-clock">
-        <i data-lucide="clock" style="width: 13px; height: 13px; flex-shrink: 0;"></i>
-        <span id="sidebarClockText">—</span>
+        <i data-lucide="clock" class="sidebar-clock-icon"></i>
+        <span class="sidebar-clock-time" id="sidebarClockTime">--:--</span>
+        <span class="sidebar-clock-date" id="sidebarClockDate">—</span>
       </div>
 
       <ul class="nav-list">
@@ -823,6 +824,10 @@
             <p>Кто что себе запланировал, и задачи, поставленные администрацией напрямую</p>
           </div>
           <div class="page-header-actions">
+            <button class="btn btn-secondary" id="openTaskReminderSettingsBtn" title="Настройки напоминаний">
+              <i data-lucide="settings"></i>
+              <span>Напоминания</span>
+            </button>
             <button class="btn" id="addTaskBtn">
               <i data-lucide="plus"></i>
               <span>Добавить задачу</span>
@@ -854,6 +859,52 @@
           </div>
         </div>
       </section>
+
+      <!-- TASK REMINDER SETTINGS MODAL -->
+      <div class="modal-overlay" id="taskReminderSettingsModalOverlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Настройки напоминаний о задачах</h3>
+            <button class="modal-close" id="closeTaskReminderSettingsBtn">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p style="color: hsl(var(--text-muted)); font-size: 13px; margin-bottom: 16px;">
+              Каждому сотруднику приходит до двух напоминаний перед сроком задачи — за сколько дней и в какое время каждое.
+            </p>
+            <div class="form-group">
+              <label>Напоминание 1</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div>
+                  <label for="taskReminder1Days" style="font-weight:400; font-size:12px;">За сколько дней</label>
+                  <input type="number" id="taskReminder1Days" class="form-control" min="0" max="30" placeholder="2">
+                </div>
+                <div>
+                  <label for="taskReminder1Time" style="font-weight:400; font-size:12px;">Время</label>
+                  <input type="time" id="taskReminder1Time" class="form-control">
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Напоминание 2</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div>
+                  <label for="taskReminder2Days" style="font-weight:400; font-size:12px;">За сколько дней</label>
+                  <input type="number" id="taskReminder2Days" class="form-control" min="0" max="30" placeholder="1">
+                </div>
+                <div>
+                  <label for="taskReminder2Time" style="font-weight:400; font-size:12px;">Время</label>
+                  <input type="time" id="taskReminder2Time" class="form-control">
+                </div>
+              </div>
+            </div>
+            <small style="color: hsl(var(--text-muted)); font-size: 12px;">0 дней — напоминание в день срока. Оставьте поле «За сколько дней» пустым, чтобы отключить это напоминание.</small>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancelTaskReminderSettingsBtn">Отмена</button>
+            <button type="button" class="btn" id="saveTaskReminderSettingsBtn">Сохранить</button>
+          </div>
+        </div>
+      </div>
 
       <!-- TASK MODAL DIALOG (админ ставит задачу сотруднику) -->
       <div class="modal-overlay" id="taskModalOverlay">
