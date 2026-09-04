@@ -7,6 +7,8 @@ const { db } = require('../../db');
  *  Пользователь (свои записи):
  *    POST   /api/worklogs           — добавить запись { work_date, hours, note, site_id }
  *    GET    /api/worklogs/mine       — свои записи + итог + ставка/заработано
+ *    GET    /api/worklogs/month?month=YYYY-MM — итог/заработок ЗА ОДИН месяц (для
+ *                                    зарплаты — общий «Итого» на форме не смешивает месяцы)
  *    PUT    /api/worklogs?id=        — изменить свою запись { note, site_id, hours }
  *    DELETE /api/worklogs?id=        — удалить свою запись
  *    GET    /api/worklogs/rate       — своя ставка в час (EUR)
@@ -112,6 +114,28 @@ function listMine(req, res, user) {
         sendJson(res, 200, { success: true, entries: rows || [], total, rate, earned: rate != null ? total * rate : null });
       });
     });
+}
+
+// Итог/заработок ЗА ОДИН календарный месяц — отдельно от /mine (который
+// отдаёт все записи разом), чтобы форма учёта показывала зарплату по
+// месяцам, а не одной накопленной суммой за всё время.
+function monthTotal(req, res, user, parsedUrl) {
+  const month = parsedUrl.searchParams.get('month');
+  if (!/^\d{4}-\d{2}$/.test(month || '')) {
+    return sendJson(res, 400, { success: false, message: 'Некорректный месяц (ожидается YYYY-MM)' });
+  }
+  db.get(
+    "SELECT COALESCE(SUM(hours), 0) AS total FROM work_logs WHERE user_id = ? AND work_date LIKE ?",
+    [user.id, month + '-%'],
+    (err, row) => {
+      if (err) return sendJson(res, 500, { success: false, message: 'Ошибка базы данных' });
+      const total = (row && row.total) || 0;
+      db.get("SELECT hourly_rate FROM users WHERE id = ?", [user.id], (rateErr, rateRow) => {
+        const rate = (!rateErr && rateRow && rateRow.hourly_rate != null) ? rateRow.hourly_rate : null;
+        sendJson(res, 200, { success: true, month, total, rate, earned: rate != null ? total * rate : null });
+      });
+    }
+  );
 }
 
 // Ставка: неотрицательное число, не больше разумного предела (защита от опечаток).
@@ -247,6 +271,7 @@ module.exports = async function handleWorklogs(req, res, user, parsedUrl, method
 
   if (p === '/api/worklogs' && method === 'POST') return addOwn(req, res, user);
   if (p === '/api/worklogs/mine' && method === 'GET') return listMine(req, res, user);
+  if (p === '/api/worklogs/month' && method === 'GET') return monthTotal(req, res, user, parsedUrl);
   if (p === '/api/worklogs' && method === 'PUT') return editOwn(req, res, user, parsedUrl);
   if (p === '/api/worklogs' && method === 'DELETE') return deleteOwn(req, res, user, parsedUrl);
   if (p === '/api/worklogs/rate' && method === 'GET') return getRate(req, res, user);

@@ -922,8 +922,13 @@
                 <button type="button" id="wlOpenForecastBtn" class="wl-btn">Прогноз на месяц</button>
               </div>
             </div>
-            <div style="margin-top:10px; font-size:13px;">
-              Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong><span id="wlEarnedWrap" style="display:none;"> · <strong id="wlEarned" style="color:var(--green);"></strong></span>
+            <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px;">
+              <button type="button" onclick="shiftWlTotalsMonth(-1)" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; padding:2px 6px; line-height:1;">‹</button>
+              <div style="text-align:center; flex:1; min-width:0;">
+                <div id="wlTotalsMonthLabel" style="font-size:11px; color:var(--text-muted); text-transform:capitalize;">—</div>
+                <div>Итого: <strong id="wlTotal" style="color:var(--accent-cyan);">0 ч</strong><span id="wlEarnedWrap" style="display:none;"> · <strong id="wlEarned" style="color:var(--green);"></strong></span></div>
+              </div>
+              <button type="button" onclick="shiftWlTotalsMonth(1)" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; padding:2px 6px; line-height:1;">›</button>
             </div>
           </div>
         </div>
@@ -3922,6 +3927,34 @@
       wrap.style.display = '';
     }
 
+    // «Итого» на форме — за ОДИН выбранный календарный месяц (для зарплаты
+    // месяцы не должны смешиваться в одну накопленную сумму). По умолчанию
+    // текущий месяц по Вильнюсу; ‹ › переключают месяц независимо от
+    // календаря/прогноза ниже.
+    const wlTotalsNow = vilniusDateKey().split('-');
+    let wlTotalsYear = parseInt(wlTotalsNow[0], 10);
+    let wlTotalsMonth = parseInt(wlTotalsNow[1], 10) - 1; // 0-based
+
+    window.shiftWlTotalsMonth = (delta) => {
+      wlTotalsMonth += delta;
+      if (wlTotalsMonth < 0) { wlTotalsMonth = 11; wlTotalsYear--; }
+      if (wlTotalsMonth > 11) { wlTotalsMonth = 0; wlTotalsYear++; }
+      loadWlMonthTotal();
+    };
+
+    async function loadWlMonthTotal() {
+      const monthKey = `${wlTotalsYear}-${String(wlTotalsMonth + 1).padStart(2, '0')}`;
+      document.getElementById('wlTotalsMonthLabel').textContent =
+        new Date(wlTotalsYear, wlTotalsMonth, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+      try {
+        const res = await fetch(`/api/worklogs/month?month=${monthKey}`);
+        const d = await res.json();
+        document.getElementById('wlTotal').textContent = fmtHours((res.ok && d.total) || 0);
+        if (res.ok && d.rate != null) wlHourlyRate = d.rate;
+        updateWlEarnedDisplay();
+      } catch (_) { /* тихо оставляем предыдущее состояние */ }
+    }
+
     // Записи больше не рендерятся отдельным списком на странице — только
     // «Итого»/заработано тут же, а сами записи по дням видно в календаре
     // («Этот месяц»), где по клику на день открывается их детальная модалка.
@@ -3930,9 +3963,8 @@
         const res = await fetch('/api/worklogs/mine');
         const d = await res.json();
         wlEntriesCache = (d && d.entries) || [];
-        document.getElementById('wlTotal').textContent = fmtHours(d.total || 0);
         if (d && d.rate != null) wlHourlyRate = d.rate;
-        updateWlEarnedDisplay();
+        loadWlMonthTotal();
         // Если открыт календарь/детали дня — обновим их тоже.
         if (document.getElementById('wlCalendarModalOverlay').style.display === 'flex') renderWlCalendar();
       } catch (_) { /* тихо оставляем предыдущее состояние */ }
